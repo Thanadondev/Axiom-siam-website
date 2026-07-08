@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.next/
+out/
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# prisma
+packages/db/node_modules/
+prisma/*.db
+
+# logs
+*.log
+npm-debug.log*
+logs/
+
+# misc
+.DS_Store
+coverage/
+.vscode/
+.idea/
+*.tsbuildinfo

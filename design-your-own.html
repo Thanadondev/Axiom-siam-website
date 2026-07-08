@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ออกแบบเสื้อกีฬาออนไลน์ | Axiom Siam Co.,Ltd.</title>
+<meta name="description" content="ออกแบบเสื้อกีฬา/Bibs ของคุณเองแบบ 3D เลือกสี ลาย โลโก้ เลข ชื่อ พร้อมราคาทันที — Axiom Siam โรงงานผลิตเสื้อกีฬาครบวงจร รับผลิต OEM/ODM ส่งออกทั่วโลก">
+<meta name="theme-color" content="#0a0e0d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230a0e0d'/%3E%3Cg fill='none' stroke='%234DBFB0' stroke-width='7' stroke-linejoin='round'%3E%3Cpath d='M50 12 L88 84 L12 84 Z'/%3E%3Cpath d='M50 32 L72 72 L28 72'/%3E%3C/g%3E%3Cpath d='M50 42 L61 62 L39 62 Z' fill='%233A9B8E'/%3E%3C/svg%3E">
+<meta property="og:title" content="ออกแบบเสื้อกีฬาออนไลน์ | Axiom Siam">
+<meta property="og:description" content="ออกแบบเสื้อกีฬาของคุณเองแบบ 3D พร้อมราคาทันที โดยโรงงาน Axiom Siam">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Noto+Sans+Thai:wght@400;500;700;900&family=Sora:wght@400;600;700;800&family=Oswald:wght@500;700&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0e0d;--bg2:#0f1614;--card:#16201d;--panel:#0f1614;--line:#26302e;--txt:#e8f5f2;--muted:#8fa6a1;
+  --accent:#4DBFB0;--accent-glow:#5fd9c8;--accent2:#ff6b5e;--accent3:#5fd9c8;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:'Sora','Noto Sans Thai',sans-serif;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.display{font-family:'Anton',sans-serif}.lang-th .display{font-family:'Noto Sans Thai',sans-serif;font-weight:900}
+[data-en]{display:none}.lang-en [data-en]{display:inline}.lang-en [data-th]{display:none}
+button{font-family:inherit;cursor:pointer}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:58px;padding:0 18px;background:rgba(10,10,12,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.logo{font-family:'Anton';font-size:21px;letter-spacing:2px;display:flex;align-items:center;gap:6px}
+.logo b{color:var(--accent)}.logo .dot{width:8px;height:8px;background:var(--accent2);border-radius:50%}
+.tb-actions{display:flex;gap:7px;align-items:center}
+.btn{border:1px solid var(--line);background:transparent;color:var(--txt);padding:8px 13px;border-radius:30px;font-weight:600;font-size:12px;transition:.2s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.solid{background:var(--accent);color:#0a0a0c;border-color:var(--accent)}
+.btn.solid:hover{transform:translateY(-2px)}
+.langbtn{border:1px solid var(--line);background:transparent;color:var(--txt);font-weight:700;font-size:12px;padding:7px 10px;border-radius:30px}
+.studio{display:grid;grid-template-columns:250px 1fr 296px;height:calc(100vh - 58px);min-height:560px}
+.col{overflow-y:auto;height:100%}.col::-webkit-scrollbar{width:7px}.col::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+.left{background:var(--panel);border-right:1px solid var(--line)}
+.right{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.sect{padding:13px;border-bottom:1px solid var(--line)}
+.sect h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);margin-bottom:9px}
+.toolgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.tool{aspect-ratio:1;background:var(--card);border:1.5px solid var(--line);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:8.5px;color:var(--muted);transition:.15s}
+.tool svg{width:19px;height:19px}.tool:hover{border-color:var(--muted)}
+.tool.active{border-color:var(--accent);background:rgba(77,191,176,.1);color:var(--accent)}
+.tool.active svg [stroke]{stroke:var(--accent)}
+.qadd{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.qadd button{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 4px;font-size:11px;color:var(--txt)}
+.qadd button:hover{border-color:var(--accent);color:var(--accent)}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bgopt{background:var(--card);border:1.5px solid var(--line);border-radius:9px;padding:8px;font-size:11px;display:flex;align-items:center;gap:7px;transition:.15s}
+.bgopt:hover{border-color:var(--muted)}.bgopt.sel{border-color:var(--accent);color:var(--accent)}
+.bgopt .sw{width:20px;height:20px;border-radius:5px;border:1px solid var(--line);flex-shrink:0}
+.field{margin-bottom:11px}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.8px}
+.field input,.field select,.field textarea{width:100%;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--txt);font-family:inherit;font-size:13px}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.colorline{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;max-height:140px;overflow-y:auto;padding-right:4px}
+.colorline::-webkit-scrollbar{width:7px}.colorline::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+.cdot{width:auto;aspect-ratio:1;border-radius:4px;border:1.5px solid var(--line);cursor:pointer;position:relative}
+.cdot:hover{transform:scale(1.18);z-index:2}
+.cdot.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(77,191,176,.35)}
+.cdot.none{background:repeating-linear-gradient(45deg,#333,#333 4px,#555 4px,#555 8px)}
+.cdot.none::after{content:"";position:absolute;inset:0;background:linear-gradient(45deg,transparent 45%,var(--accent2) 45%,var(--accent2) 55%,transparent 55%)}
+.prop-empty{color:var(--muted);font-size:12px;text-align:center;padding:16px 0}
+.minirow{display:flex;gap:6px;margin-top:4px}
+.minirow button{flex:1;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;color:var(--txt);font-size:11px}
+.minirow button:hover{border-color:var(--accent);color:var(--accent)}
+.minirow button.on{border-color:var(--accent);color:var(--accent);background:rgba(77,191,176,.12);font-weight:700}
+.range{width:100%}
+.swatches{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;max-height:160px;overflow-y:auto;padding-right:4px}
+.swatches::-webkit-scrollbar{width:7px}.swatches::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+.sw2{aspect-ratio:1;border-radius:4px;border:1.5px solid var(--line);cursor:pointer;transition:.12s}
+.sw2:hover{transform:scale(1.18);z-index:2}.sw2.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(77,191,176,.35)}
+.center{background:radial-gradient(900px 500px at 50% 0%,rgba(77,191,176,.08),transparent 60%),var(--bg);display:flex;flex-direction:column;align-items:center;position:relative;padding:16px 14px}
+.views{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;justify-content:center}
+.viewbtn{border:1px solid var(--line);background:var(--card);color:var(--muted);padding:7px 14px;border-radius:30px;font-size:12px;font-weight:600;transition:.2s}
+.viewbtn.active{background:var(--accent);color:#0a0a0c;border-color:var(--accent)}
+.viewbtn .tagi{font-size:9px;opacity:.7;display:block}
+.stage-wrap{flex:1;display:flex;align-items:center;justify-content:center;width:100%;min-height:360px}
+.stage{position:relative;width:min(420px,80vw);aspect-ratio:400/470}
+.editlayer{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 22px 32px rgba(0,0,0,.5));cursor:crosshair}
+.editlayer.selmode{cursor:default}
+.c3d{position:absolute;inset:0;width:100%;height:100%;display:none}
+.stage.is3d .c3d{display:block;filter:drop-shadow(0 26px 30px rgba(0,0,0,.55))}
+.stage.is3d.rotated .editlayer{opacity:0;pointer-events:none}
+.r3d{display:none;align-items:center;gap:9px;margin-top:10px;width:min(420px,80vw)}
+.stage.is3d ~ .r3d,.center.show3d .r3d{display:flex}
+.r3d input[type=range]{flex:1}
+.r3d .mini{border:1px solid var(--line);background:var(--card);color:var(--muted);padding:6px 11px;border-radius:30px;font-size:11px}
+.r3d .mini:hover{border-color:var(--accent);color:var(--accent)}
+.hintbar{position:absolute;bottom:2px;left:0;right:0;text-align:center;color:var(--muted);font-size:11px}
+.layers{max-height:170px;overflow-y:auto}
+.layer{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;background:var(--card);font-size:12px;cursor:pointer}
+.layer.sel{border-color:var(--accent)}.layer .ic{width:15px;text-align:center}
+.layer .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.layer .lb{background:none;border:none;color:var(--muted);font-size:12px;padding:2px}.layer .lb:hover{color:var(--accent)}
+.summary{margin-top:auto}
+.qty-row{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.qty{display:flex;align-items:center;border:1px solid var(--line);border-radius:30px;overflow:hidden}
+.qty button{width:36px;height:36px;background:var(--card);border:none;color:var(--txt);font-size:17px}
+.qty button:hover{background:var(--line)}
+.qty input{width:50px;text-align:center;background:transparent;border:none;color:var(--txt);font-size:15px;font-weight:700}.qty input:focus{outline:none}
+.tier{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px;font-size:12px}
+.tier .trow{display:flex;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line)}
+.tier .trow:last-child{border:none}.tier .trow.on{background:rgba(77,191,176,.08);color:var(--accent);font-weight:700}
+.linep{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px}.linep b{color:var(--txt)}
+.total{border-top:1px solid var(--line);margin-top:9px;padding-top:11px;display:flex;justify-content:space-between;align-items:flex-end}
+.total .val{font-family:'Anton';font-size:28px;color:var(--accent)}.total .per{font-size:11px;color:var(--muted)}
+.sum-foot{padding:13px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.bigbtn{width:100%;padding:12px;border-radius:30px;font-weight:700;font-size:14px;border:none;transition:.2s}
+.bigbtn.primary{background:var(--accent);color:#0a0a0c}.bigbtn.primary:hover{transform:translateY(-2px)}
+.bigbtn.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}.bigbtn.ghost:hover{border-color:var(--accent);color:var(--accent)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+.modal.show{display:flex}
+.modal-card{background:var(--bg2);border:1px solid var(--line);border-radius:18px;width:100%;max-width:430px;padding:24px;position:relative}
+.modal-card h3{font-size:20px;margin-bottom:6px}.modal-card p.sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+.modal .close{position:absolute;top:13px;right:15px;background:none;border:none;color:var(--muted);font-size:21px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--accent);color:#0a0a0c;padding:12px 20px;border-radius:30px;font-weight:700;z-index:300;transition:.4s}.toast.show{transform:translateX(-50%) translateY(0)}
+.modechoose{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px}
+.modecard{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:20px 14px;text-align:center;color:var(--txt);transition:.18s}
+.modecard:hover{border-color:var(--accent);transform:translateY(-3px)}
+.modecard .micon{height:70px;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px}
+.modecard .mt{font-family:'Anton';font-size:22px;letter-spacing:1px}
+.lang-th .modecard .mt{font-family:'Noto Sans Thai';font-weight:900}
+.modecard .md{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+@media(max-width:1080px){.studio{grid-template-columns:220px 1fr 260px}}
+@media(max-width:880px){.studio{grid-template-columns:1fr;height:auto}.col{height:auto;overflow:visible}.center{order:-1}.stage{width:min(330px,86vw)}}
+</style>
+</head>
+<body class="lang-th">
+
+<div class="topbar">
+  <a href="index.html" class="logo" title="กลับหน้าแรก / Home">
+    <svg viewBox="0 0 100 100" width="30" height="30" style="flex-shrink:0"><g fill="none" stroke="#4DBFB0" stroke-width="7" stroke-linejoin="round"><path d="M50 8 L92 86 L8 86 Z"/><path d="M50 30 L74 74 L26 74"/></g><path d="M50 40 L62 62 L38 62 Z" fill="#3A9B8E"/></svg>
+    AXIOM<b>SIAM</b></a>
+  <div class="tb-actions">
+    <button class="btn" id="modeBtn"><span data-th>แบบ</span><span data-en>Mode</span>:&nbsp;<b id="modeLbl">2</b></button>
+    <button class="btn" id="d3Btn">🧊 <span data-th>3D</span><span data-en>3D</span></button>
+    <button class="langbtn" id="langBtn">EN</button>
+    <button class="btn" id="pngBtn">🖼️ <span data-th>PNG</span><span data-en>PNG</span></button>
+    <button class="btn" id="svgBtn">📐 <span data-th>SVG (AI)</span><span data-en>SVG (AI)</span></button>
+    <button class="btn" id="saveBtn">💾 <span data-th>เซฟ</span><span data-en>Save</span></button>
+    <button class="btn solid" id="quoteBtn">📋 <span data-th>ขอราคา</span><span data-en>Quote</span></button>
+  </div>
+</div>
+
+<div class="studio">
+  <!-- LEFT -->
+  <div class="col left">
+    <div class="sect"><h4 data-th>เครื่องมือ</h4><h4 data-en>Tools</h4><div class="toolgrid" id="toolGrid"></div></div>
+    <div class="sect"><h4 data-th>ใส่ด่วน</h4><h4 data-en>Quick Add</h4>
+      <div class="qadd"><button id="qNum"># <span data-th>เลข</span><span data-en>Number</span></button>
+        <button id="qName">A <span data-th>ชื่อ</span><span data-en>Name</span></button>
+        <button id="qLogo">🖼 <span data-th>โลโก้</span><span data-en>Logo</span></button></div>
+    </div>
+    <div class="sect"><h4 data-th>เทมเพลตทรง (จาก Illustrator)</h4><h4 data-en>Garment Template (from AI)</h4>
+      <div class="qadd" style="grid-template-columns:1fr 1fr">
+        <button id="impBtn">⬆ <span data-th>นำเข้า SVG</span><span data-en>Import SVG</span></button>
+        <button id="tplReset">↺ <span data-th>ค่าเริ่มต้น</span><span data-en>Reset</span></button></div>
+      <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);margin-top:8px">
+        <input type="checkbox" id="tplAll" checked> <span data-th>ใช้กับทุกหน้า</span><span data-en>Apply to all views</span></label>
+      <p style="font-size:11px;color:var(--muted);margin-top:6px"><span data-th>ใช้เส้น outline จาก AI เป็น clip จริง · เหมาะกับ path ปิด</span><span data-en>Uses your AI outline as the real clip · best with a closed path</span></p>
+    </div>
+    <div class="sect"><h4 data-th>ลายเต็มตัว (Sublimation)</h4><h4 data-en>Full-Print Pattern</h4>
+      <div class="bgrid" id="bgGrid"></div>
+      <div class="qadd" style="grid-template-columns:1fr 1fr;margin-top:7px">
+        <button id="patUpBtn">⬆ <span data-th>อัปโหลดลาย</span><span data-en>Upload pattern</span></button>
+        <button id="patClrBtn">✕ <span data-th>ล้างลาย</span><span data-en>Clear</span></button></div>
+      <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);margin-top:7px">
+        <input type="checkbox" id="patAll" checked> <span data-th>ใช้ลายกับทุกหน้า</span><span data-en>Apply to all views</span></label>
+      <label style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--accent);margin-top:6px">
+        <input type="checkbox" id="patSnap" checked> <span data-th>ปรับสีลายให้ตรงชาร์ตโรงงาน (กันสีเพี้ยนตอนพิมพ์)</span><span data-en>Match colors to factory chart (avoid print shift)</span></label></div>
+    <div class="sect"><h4 data-th>คุณสมบัติวัตถุ</h4><h4 data-en>Object Properties</h4>
+      <div id="props"><div class="prop-empty" data-th>เลือก/สร้างวัตถุเพื่อแก้ไข</div><div class="prop-empty" data-en>Select or create an object</div></div></div>
+    <div class="sect"><h4 data-th>สีตัวเสื้อ / ขลิบ</h4><h4 data-en>Body / Trim</h4>
+      <div class="field"><label data-th>สีตัวเสื้อ</label><label data-en>Body</label><div class="swatches" id="bodySw"></div>
+        <div id="bodyCode" style="font-size:10.5px;color:var(--accent);margin-top:4px"></div></div>
+      <div class="field"><label data-th>ขอบ/ขลิบ คอ-แขน</label><label data-en>Trim edge</label>
+        <div class="minirow" id="trimToggle">
+          <button id="trimOnBtn"><span data-th>มีขอบ</span><span data-en>With trim</span></button>
+          <button id="trimOffBtn"><span data-th>ไม่มีขอบ</span><span data-en>No trim</span></button>
+        </div></div>
+      <div class="field" id="trimWField"><label data-th>ความหนาขอบ: <span id="twV">0.55</span>× <small style="color:var(--muted)">(M.svg≈0.55 · แถบหนา≈1.0)</small></label><label data-en>Trim width: <span>0.55</span>×</label>
+        <input class="range" id="trimWidth" type="range" min="0.3" max="2" step="0.05" value="0.55"></div>
+      <div class="field" id="trimColorField"><label data-th>สีขลิบ (คอ/แขน)</label><label data-en>Trim color</label><div class="swatches" id="trimSw"></div>
+        <div id="trimCode" style="font-size:10.5px;color:var(--accent);margin-top:4px"></div></div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center">
+    <div class="views" id="views"></div>
+    <div class="stage-wrap"><div class="stage" id="stage">
+      <canvas class="c3d" id="c3d"></canvas>
+      <svg class="editlayer" id="editLayer" viewBox="0 0 400 470" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="hintbar" id="hintbar"></div>
+    </div></div>
+    <div class="r3d" id="r3d">
+      <button class="mini" id="faceBtn"><span data-th>หน้าตรง (แก้ไข)</span><span data-en>Face front (edit)</span></button>
+      <input type="range" id="rotY" min="-180" max="180" value="0">
+      <button class="mini" id="flipBtn"><span data-th>พลิกหลัง</span><span data-en>Flip back</span></button>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="col right">
+    <div class="sect"><h4 data-th>เลเยอร์ <span id="layerCtx" style="color:var(--accent)"></span></h4><h4 data-en>Layers <span style="color:var(--accent)"></span></h4>
+      <div class="layers" id="layersList"></div><div class="prop-empty" id="layersEmpty" data-th>ยังไม่มีวัตถุ</div></div>
+    <div class="sect"><h4 data-th>ไซส์ &amp; จำนวน</h4><h4 data-en>Size &amp; Quantity</h4>
+      <div class="row2"><div class="field"><label data-th>ไซส์</label><label data-en>Size</label>
+        <select id="sizeSel"><option>S</option><option selected>M</option><option>L</option><option>XL</option><option data-th>ทุกไซส์</option></select></div>
+        <div class="field"><label data-th>จำนวน</label><label data-en>Qty</label>
+          <div class="qty"><button id="qMinus">−</button><input id="qInput" type="number" value="15" min="1"><button id="qPlus">+</button></div></div></div>
+      <div class="field" style="margin-top:9px"><label data-th>ชนิดผ้า</label><label data-en>Fabric</label>
+        <select id="fabricSel"><option>Mesh</option><option>B1</option><option>C1</option></select></div>
+      <div id="dimInfo" style="font-size:11px;color:var(--muted);margin-top:9px"></div>
+    </div>
+    <div class="sect"><h4 data-th>ผลิตหลายตัว · เบอร์+ชื่อ</h4><h4 data-en>Batch · Number+Name</h4>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:7px"><span data-th>1 บรรทัด/คน &nbsp;→&nbsp; เบอร์,ชื่อ,ไซส์ (แยกเป็นไฟล์ทีละคน)</span><span data-en>1 line/player → number,name,size (1 file each)</span></p>
+      <textarea id="rosterTxt" rows="5" placeholder="10,SOMCHAI,M&#10;7,ANNA,L&#10;23,PETE,XL" style="width:100%;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--txt);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      <button class="bigbtn primary" id="rosterBtn" style="margin-top:8px"><span data-th>⬇ ดาวน์โหลดทั้งทีม (ZIP)</span><span data-en>⬇ Export team (ZIP)</span></button>
+      <p style="font-size:10.5px;color:var(--muted);margin-top:6px"><span data-th>* ต้องเพิ่ม "เลข"/"ชื่อ" ด้วยปุ่มใส่ด่วนก่อน แล้วระบบจะสลับให้ทีละคน</span><span data-en>* Add Number/Name via Quick Add first; each player is swapped in automatically</span></p>
+    </div>
+    <div class="sect summary"><h4 data-th>ราคา reversible · ขั้นต่ำ 10</h4><h4 data-en>Reversible price · Min 10</h4>
+      <div class="tier" id="tierTable"></div>
+      <div class="linep"><span data-th>ราคาฐาน/ตัว</span><span data-en>Base/pc</span><b id="lineBase">฿190</b></div>
+      <div class="linep"><span data-th>ค่าพิมพ์/ตัว</span><span data-en>Print/pc</span><b id="linePrint">฿0</b></div>
+      <div class="linep"><span data-th>จำนวน</span><span data-en>Qty</span><b id="lineQty">× 15</b></div>
+      <div class="total"><div><div class="per" data-th>ราคารวมโดยประมาณ</div><div class="per" data-en>Estimated total</div><div class="per" id="perPc"></div></div>
+        <div class="val" id="totalVal">฿2,850</div></div>
+    </div>
+    <div class="sum-foot"><button class="bigbtn primary" id="quoteBtn2"><span data-th>ขอใบเสนอราคา</span><span data-en>Request Quote</span></button>
+      <button class="bigbtn ghost" id="clearBtn"><span data-th>ล้างหน้านี้</span><span data-en>Clear View</span></button></div>
+  </div>
+</div>
+
+<div class="modal" id="quoteModal"><div class="modal-card"><button class="close" data-close>✕</button>
+  <h3 class="display"><span data-th>ขอใบเสนอราคา</span><span data-en>Request a Quote</span></h3>
+  <p class="sub" data-th>ทีมงานจะติดต่อกลับพร้อมราคาและตัวอย่างจริง</p><p class="sub" data-en>We will reply with pricing and a real mockup.</p>
+  <div class="field"><label data-th>ชื่อ / ทีม</label><label data-en>Name / Team</label><input id="qfName"></div>
+  <div class="row2"><div class="field"><label data-th>เบอร์โทร</label><label data-en>Phone</label><input id="qfPhone"></div>
+    <div class="field"><label>Email</label><input id="qfEmail"></div></div>
+  <div class="field"><label data-th>หมายเหตุ</label><label data-en>Notes</label><textarea id="qfNote" rows="2"></textarea></div>
+  <div class="field" style="background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px;font-size:12px;color:var(--muted)">
+    <span data-th>สรุป: </span><span data-en>Summary: </span><b id="qfSummary" style="color:var(--accent)"></b></div>
+  <button class="bigbtn primary" id="qfSubmit"><span data-th>ส่งคำขอ</span><span data-en>Submit</span></button></div></div>
+
+<div class="modal show" id="startModal"><div class="modal-card" style="max-width:520px">
+  <h3 class="display"><span data-th>เริ่มออกแบบเสื้อ Bibs</span><span data-en>Start Your Bibs</span></h3>
+  <p class="sub" data-th>เลือกก่อนว่าจะทำกี่แบบ</p><p class="sub" data-en>Choose how many designs first</p>
+  <div class="modechoose">
+    <button class="modecard" data-mode="single">
+      <div class="micon"><svg width="46" height="56" viewBox="0 0 400 470"><path d="M70 86 L150 84 C162 122 184 134 200 134 C216 134 238 122 250 84 L330 86 C322 134 305 168 288 202 L300 446 L100 446 L112 202 C95 168 78 134 72 94 Z" fill="#1f9fe0" stroke="#0a2a6b" stroke-width="8"/></svg></div>
+      <div class="mt" data-th>1 แบบ</div><div class="mt" data-en>1 Design</div>
+      <div class="md" data-th>ด้านเดียว · หน้า + หลัง</div><div class="md" data-en>Single-sided · front + back</div>
+    </button>
+    <button class="modecard" data-mode="reversible">
+      <div class="micon">
+        <svg width="40" height="50" viewBox="0 0 400 470"><path d="M70 86 L150 84 C162 122 184 134 200 134 C216 134 238 122 250 84 L330 86 C322 134 305 168 288 202 L300 446 L100 446 L112 202 C95 168 78 134 72 94 Z" fill="#1f9fe0" stroke="#0a2a6b" stroke-width="8"/></svg>
+        <svg width="40" height="50" viewBox="0 0 400 470"><path d="M70 86 L150 84 C162 122 184 134 200 134 C216 134 238 122 250 84 L330 86 C322 134 305 168 288 202 L300 446 L100 446 L112 202 C95 168 78 134 72 94 Z" fill="#ff4d97" stroke="#0a2a6b" stroke-width="8"/></svg>
+      </div>
+      <div class="mt" data-th>2 แบบ</div><div class="mt" data-en>2 Designs</div>
+      <div class="md" data-th>ใส่กลับด้านได้ · นอก + ใน</div><div class="md" data-en>Reversible · outer + inner</div>
+    </button>
+  </div>
+</div></div>
+<input type="file" id="imgFile" accept="image/*" hidden>
+<input type="file" id="patFile" accept="image/*" hidden>
+<input type="file" id="tplFile" accept=".svg,image/svg+xml" hidden>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="sizes.js"></script>
+<script src="palette.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
+const NS="http://www.w3.org/2000/svg";
+const VIEWS=['outF','outB','inF','inB'];
+const isFront=v=>v==='outF'||v==='inF';
+const isBack=v=>v==='outB'||v==='inB';
+
+const TOOLS=[
+  {k:'select',th:'เลือก',en:'Select',svg:'<path d="M5 3l14 7-6 2-2 6z" fill="none" stroke="#9a9aa6" stroke-width="2" stroke-linejoin="round"/>'},
+  {k:'rect',th:'สี่เหลี่ยม',en:'Rect',svg:'<rect x="4" y="6" width="16" height="12" rx="1" fill="none" stroke="#9a9aa6" stroke-width="2"/>'},
+  {k:'ellipse',th:'วงกลม',en:'Ellipse',svg:'<ellipse cx="12" cy="12" rx="9" ry="7" fill="none" stroke="#9a9aa6" stroke-width="2"/>'},
+  {k:'triangle',th:'สามเหลี่ยม',en:'Tri',svg:'<path d="M12 4l9 16H3z" fill="none" stroke="#9a9aa6" stroke-width="2" stroke-linejoin="round"/>'},
+  {k:'line',th:'เส้น',en:'Line',svg:'<line x1="4" y1="20" x2="20" y2="4" stroke="#9a9aa6" stroke-width="2"/>'},
+  {k:'pen',th:'ปากกา',en:'Pen',svg:'<path d="M4 20c4-1 5-9 9-12 2-1 4 1 3 3-3 4-11 5-12 9z" fill="none" stroke="#9a9aa6" stroke-width="2" stroke-linejoin="round"/>'},
+  {k:'text',th:'ข้อความ',en:'Text',svg:'<path d="M5 5h14M12 5v14" fill="none" stroke="#9a9aa6" stroke-width="2"/>'},
+  {k:'image',th:'รูป',en:'Image',svg:'<rect x="4" y="5" width="16" height="14" rx="1" fill="none" stroke="#9a9aa6" stroke-width="2"/><circle cx="9" cy="10" r="1.5" fill="#9a9aa6"/><path d="M5 18l5-5 4 3 3-2 3 3" fill="none" stroke="#9a9aa6" stroke-width="2"/>'},
+];
+const PAL=(window.AXIOM_PALETTE||[]);
+const PCODE={}; PAL.forEach(p=>{if(p&&p.c)PCODE[p.c.toLowerCase()]=p.k;});
+const COLORS=["#ffffff","#000000"].concat(PAL.map(p=>p.c));
+const ccode=c=>PCODE[(c||'').toLowerCase()]||c;
+/* factory-chart RGB list for snapping uploaded patterns to printable colors */
+const PALRGB=PAL.map(p=>{const h=p.c.replace('#','');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16),p.c];});
+function snapImageToPalette(dataURL,cb){
+  if(!PALRGB.length){cb(dataURL);return;}
+  const img=new Image();
+  img.onload=()=>{
+    const sc=Math.min(1,600/Math.max(img.width,img.height));
+    const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
+    const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+    x.drawImage(img,0,0,w,h);
+    let id;try{id=x.getImageData(0,0,w,h);}catch(err){cb(dataURL);return;}
+    const dt=id.data,cache=new Map();
+    for(let i=0;i<dt.length;i+=4){
+      if(dt[i+3]<12)continue;
+      const key=(dt[i]>>2<<12)|(dt[i+1]>>2<<6)|(dt[i+2]>>2);
+      let bi=cache.get(key);
+      if(bi===undefined){let bd=1e9;bi=0;
+        for(let k=0;k<PALRGB.length;k++){const p=PALRGB[k];const dr=dt[i]-p[0],dg=dt[i+1]-p[1],db=dt[i+2]-p[2];const d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;bi=k;}}
+        cache.set(key,bi);}
+      const p=PALRGB[bi];dt[i]=p[0];dt[i+1]=p[1];dt[i+2]=p[2];
+    }
+    x.putImageData(id,0,0);cb(c.toDataURL('image/png'));
+  };
+  img.onerror=()=>cb(dataURL);
+  img.src=dataURL;
+}
+const BGS=[
+  {kind:'none',th:'สีพื้น',en:'Solid',colors:[]},
+  {kind:'camoBlue',th:'คาโม่ฟ้า',en:'Camo Blue',colors:['#1f9fe0','#0e6fb8','#2bb7f0','#0a3d91']},
+  {kind:'camoPink',th:'คาโม่ชมพู',en:'Camo Pink',colors:['#ff4d97','#e0246e','#ff9ec4','#c81e63']},
+  {kind:'camoGreen',th:'คาโม่เขียว',en:'Camo Green',colors:['#6fbf3f','#4a8f2a','#9ad96a','#2f6b1f']},
+  {kind:'splatter',th:'ลายสาด',en:'Splatter',colors:['#0a2a6b','#3f8bff','#4DBFB0','#ffffff']},
+  {kind:'stripes',th:'ลายทาง',en:'Stripes',colors:['#0a0a0c','#4DBFB0']},
+];
+const TIERS=[{min:10,max:29,price:190},{min:30,max:49,price:170},{min:50,max:99,price:150},{min:100,max:199,price:135},{min:200,max:99999,price:119}];
+const TIERS_SINGLE=[{min:10,max:29,price:130},{min:30,max:49,price:115},{min:50,max:99,price:100},{min:100,max:199,price:88},{min:200,max:99999,price:78}];
+function CT(){return S.mode==='single'?TIERS_SINGLE:TIERS;}
+const MIN_QTY=10;
+
+const S={tool:'select',view:'outF',body:'#1f9fe0',trim:'#0a2a6b',trimOn:true,trimMul:0.55,trim2:'none',fabric:'Mesh',
+  fill:'#ffffff',stroke:'none',strokeWidth:0,opacity:1,font:'Archivo Black',
+  size:'M',mode:'reversible',qty:15,objects:[],sel:null,seq:0,lastNum:'14',lastName:'AGEDA',
+  bg:{outF:{kind:'none',colors:[]},outB:{kind:'none',colors:[]},inF:{kind:'none',colors:[]},inB:{kind:'none',colors:[]}}};
+
+S.tpl={outF:null,outB:null,inF:null,inB:null};
+const SIZES=window.AXIOM_SIZES||null;
+function realPath(view){if(!SIZES)return null;const z=SIZES[S.size]||SIZES.M;return z?(isFront(view)?z.front:z.back):null;}
+function realTrim(view){if(!SIZES)return null;const z=SIZES[S.size]||SIZES.M;if(!z)return null;const t=isFront(view)?z.trimFront:z.trimBack;return t||null;}
+function realHem(view){if(!SIZES)return null;const z=SIZES[S.size]||SIZES.M;if(!z)return null;return (isFront(view)?z.hemFront:z.hemBack)||null;}
+function realTrimW(view){if(!SIZES)return 9;const z=SIZES[S.size]||SIZES.M;if(!z)return 9;return (isFront(view)?z.trimWFront:z.trimWBack)||9;}
+const VIEWSETS={
+  single:[{v:'outF',th:'หน้า',en:'Front'},{v:'outB',th:'หลัง',en:'Back'}],
+  reversible:[{v:'outF',th:'นอก-หน้า',en:'Out F',tag:'OF'},{v:'outB',th:'นอก-หลัง',en:'Out B',tag:'OB'},{v:'inF',th:'ใน-หน้า',en:'In F',tag:'IF'},{v:'inB',th:'ใน-หลัง',en:'In B',tag:'IB'}]
+};
+function buildViews(){
+  const set=VIEWSETS[S.mode]||VIEWSETS.reversible;
+  if(!set.some(o=>o.v===S.view))S.view=set[0].v;
+  $('#views').innerHTML=set.map(o=>`<button class="viewbtn ${o.v===S.view?'active':''}" data-view="${o.v}"><span data-th>${o.th}</span><span data-en>${o.en}</span>${o.tag?`<span class="tagi">${o.tag}</span>`:''}</button>`).join('');
+}
+function chooseMode(m){S.mode=m;$('#modeLbl').textContent=(m==='single'?'1':'2');S.sel=null;buildViews();$('#startModal').classList.remove('show');buildBG();render();renderProps();updatePrice();}
+
+/* ---- imported AI template ---- */
+function parseSVGTemplate(text){
+  const doc=new DOMParser().parseFromString(text,'image/svg+xml');
+  const svg=doc.querySelector('svg');if(!svg)return null;
+  let minX=0,minY=0,W=0,H=0;
+  const vb=svg.getAttribute('viewBox');
+  if(vb){const a=vb.trim().split(/[\s,]+/).map(Number);minX=a[0];minY=a[1];W=a[2];H=a[3];}
+  else{W=parseFloat(svg.getAttribute('width'))||300;H=parseFloat(svg.getAttribute('height'))||350;}
+  if(!W||!H)return null;
+  const shapes=[];
+  svg.querySelectorAll('path,polygon,polyline,rect,circle,ellipse').forEach(el=>{
+    const tag=el.tagName.toLowerCase();let g='';
+    if(tag==='path')g=`<path d="${el.getAttribute('d')||''}"/>`;
+    else if(tag==='polygon')g=`<polygon points="${el.getAttribute('points')||''}"/>`;
+    else if(tag==='polyline')g=`<polyline points="${el.getAttribute('points')||''}"/>`;
+    else if(tag==='rect')g=`<rect x="${el.getAttribute('x')||0}" y="${el.getAttribute('y')||0}" width="${el.getAttribute('width')||0}" height="${el.getAttribute('height')||0}" rx="${el.getAttribute('rx')||0}"/>`;
+    else if(tag==='circle')g=`<circle cx="${el.getAttribute('cx')||0}" cy="${el.getAttribute('cy')||0}" r="${el.getAttribute('r')||0}"/>`;
+    else if(tag==='ellipse')g=`<ellipse cx="${el.getAttribute('cx')||0}" cy="${el.getAttribute('cy')||0}" rx="${el.getAttribute('rx')||0}" ry="${el.getAttribute('ry')||0}"/>`;
+    if(g)shapes.push(g);
+  });
+  if(!shapes.length)return null;
+  const tx0=58,ty0=66,tw=284,th=388;
+  const sc=Math.min(tw/W,th/H);
+  const tx=tx0+(tw-W*sc)/2,ty=ty0+(th-H*sc)/2;
+  const tf=`translate(${tx.toFixed(2)} ${ty.toFixed(2)}) scale(${sc.toFixed(4)}) translate(${(-minX).toFixed(2)} ${(-minY).toFixed(2)})`;
+  return {shapes,tf};
+}
+function injectTf(s,tf){return s.replace(/^<(\w+)/,(m,t)=>`<${t} transform="${tf}"`);}
+
+/* ---- garment geometry ---- */
+function bodyPath(view){
+  const neck=isFront(view)?"C162 122 184 134 200 134 C216 134 238 122 250 84":"C164 104 184 113 200 113 C216 113 236 104 250 84";
+  return `M84 84 Q74 84 72 94 L150 84 ${neck} L316 84 Q326 84 328 94 C322 134 305 168 288 202 L300 446 L100 446 L112 202 C95 168 78 134 72 94 Z`;
+}
+function neckTrim(view){return isFront(view)?"M150 84 C162 122 184 134 200 134 C216 134 238 122 250 84":"M150 84 C164 104 184 113 200 113 C216 113 236 104 250 84";}
+function trimMarkup(view){const t=S.trim;return `
+  <path d="${neckTrim(view)}" fill="none" stroke="${t}" stroke-width="9" stroke-linecap="round"/>
+  <path d="M328 94 C322 134 305 168 288 202" fill="none" stroke="${t}" stroke-width="9" stroke-linecap="round"/>
+  <path d="M72 94 C78 134 95 168 112 202" fill="none" stroke="${t}" stroke-width="9" stroke-linecap="round"/>`;}
+
+/* ---- patterns ---- */
+function patternDef(view){
+  const bg=S.bg[view];if(!bg||bg.kind==='none')return '';
+  if(bg.kind==='image')return '';
+  const c=bg.colors;
+  if(bg.kind.indexOf('camo')===0)return `<pattern id="bgpat" width="170" height="150" patternUnits="userSpaceOnUse" patternTransform="rotate(6)">
+    <rect width="170" height="150" fill="${c[0]}"/>
+    <ellipse cx="30" cy="26" rx="42" ry="25" fill="${c[1]}" transform="rotate(-18 30 26)"/>
+    <ellipse cx="125" cy="38" rx="48" ry="27" fill="${c[2]}" transform="rotate(12 125 38)"/>
+    <ellipse cx="78" cy="92" rx="44" ry="27" fill="${c[1]}" transform="rotate(20 78 92)"/>
+    <ellipse cx="162" cy="112" rx="36" ry="23" fill="${c[2]}" transform="rotate(-10 162 112)"/>
+    <ellipse cx="2" cy="120" rx="36" ry="23" fill="${c[2]}" transform="rotate(8 2 120)"/>
+    <ellipse cx="55" cy="55" rx="21" ry="13" fill="${c[3]}" transform="rotate(20 55 55)"/>
+    <ellipse cx="138" cy="80" rx="19" ry="12" fill="${c[3]}" transform="rotate(-14 138 80)"/>
+    <ellipse cx="22" cy="82" rx="15" ry="9" fill="${c[3]}"/>
+    <ellipse cx="104" cy="132" rx="21" ry="12" fill="${c[3]}" transform="rotate(10 104 132)"/></pattern>`;
+  if(bg.kind==='splatter')return `<pattern id="bgpat" width="100" height="100" patternUnits="userSpaceOnUse">
+    <rect width="100" height="100" fill="${c[0]}"/>
+    <circle cx="20" cy="22" r="11" fill="${c[1]}"/><circle cx="70" cy="40" r="7" fill="${c[2]}"/>
+    <circle cx="45" cy="68" r="13" fill="${c[1]}"/><circle cx="86" cy="82" r="6" fill="${c[3]}"/>
+    <circle cx="12" cy="78" r="5" fill="${c[2]}"/><circle cx="60" cy="14" r="4" fill="${c[3]}"/>
+    <circle cx="92" cy="18" r="5" fill="${c[1]}"/><circle cx="34" cy="44" r="3" fill="${c[3]}"/></pattern>`;
+  if(bg.kind==='stripes')return `<pattern id="bgpat" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+    <rect width="44" height="44" fill="${c[0]}"/><rect width="22" height="44" fill="${c[1]}"/></pattern>`;
+  return '';
+}
+
+/* ---- object svg ---- */
+function objSVG(o){
+  const cx=o.x+o.w/2,cy=o.y+o.h/2;
+  const rot=o.rot?` transform="rotate(${o.rot} ${cx} ${cy})"`:'';
+  const cur=S.tool==='select'?'move':'inherit';
+  const common=`fill="${o.fill==='none'?'none':o.fill}" stroke="${o.stroke==='none'?'none':o.stroke}" stroke-width="${o.sw}" opacity="${o.op}" data-id="${o.id}" style="cursor:${cur}"`;
+  if(o.type==='rect')return `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="3" ${common}${rot}/>`;
+  if(o.type==='ellipse')return `<ellipse cx="${cx}" cy="${cy}" rx="${o.w/2}" ry="${o.h/2}" ${common}${rot}/>`;
+  if(o.type==='triangle')return `<polygon points="${cx},${o.y} ${o.x+o.w},${o.y+o.h} ${o.x},${o.y+o.h}" ${common}${rot}/>`;
+  if(o.type==='line')return `<line x1="${o.x}" y1="${o.y}" x2="${o.x+o.w}" y2="${o.y+o.h}" stroke="${o.stroke==='none'?o.fill:o.stroke}" stroke-width="${Math.max(o.sw,2)}" stroke-linecap="round" opacity="${o.op}" data-id="${o.id}"${rot}/>`;
+  if(o.type==='path')return `<path d="${o.d}" fill="none" stroke="${o.stroke==='none'?o.fill:o.stroke}" stroke-width="${Math.max(o.sw,2)}" stroke-linecap="round" stroke-linejoin="round" opacity="${o.op}" data-id="${o.id}"${rot}/>`;
+  if(o.type==='text')return `<text x="${cx}" y="${(cy+o.fs*0.35).toFixed(1)}" font-family="${o.font}" font-size="${o.fs}" fill="${o.fill}" stroke="${o.stroke==='none'?'none':o.stroke}" stroke-width="${o.sw}" opacity="${o.op}" text-anchor="middle" data-id="${o.id}" style="cursor:${cur}"${rot}>${esc(o.text)}</text>`;
+  if(o.type==='image')return `<image href="${o.src}" xlink:href="${o.src}" x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" opacity="${o.op}" preserveAspectRatio="xMidYMid meet" data-id="${o.id}" style="cursor:${cur}"${rot}/>`;
+  return '';
+}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function selObj(){return S.objects.find(o=>o.id===S.sel)||null;}
+
+/* ---- scene ---- */
+function sceneMarkup(view){
+  const tpl=S.tpl[view];
+  let clipInner,baseInner,trim;
+  if(tpl){
+    clipInner=tpl.shapes.map(s=>injectTf(s,tpl.tf)).join('');
+    baseInner=`<g transform="${tpl.tf}" fill="${S.body}" stroke="rgba(0,0,0,.35)" stroke-width="2">${tpl.shapes.join('')}</g>`;
+    trim='';
+  }else{
+    const rp=realPath(view);
+    const bp=rp||bodyPath(view);
+    clipInner=`<path d="${bp}"/>`;
+    baseInner=`<path d="${bp}" fill="${S.body}" stroke="rgba(0,0,0,.28)" stroke-width="2" data-bg="1"/>`;
+    // binding = fill the real trim paths + hem rect, CLIPPED to silhouette → outer edge flush with garment edge (= M.svg)
+    const rt=realTrim(view),hm=realHem(view);
+    const hemSVG=hm?`<rect x="${hm[0]}" y="${hm[1]}" width="${hm[2]}" height="${hm[3]}" fill="${S.trim}"/>`:'';
+    const bindS=rt?`<path d="${rt}" fill="${S.trim}" stroke="none"/>`:`<path d="${bp}" fill="none" stroke="${S.trim}" stroke-width="10" stroke-linejoin="round"/>`;
+    trim=!S.trimOn?'':(rp?`<g clip-path="url(#bibClip)">${bindS}${hemSVG}</g>`:trimMarkup(view));
+  }
+  const defs=`<defs><clipPath id="bibClip" clipPathUnits="userSpaceOnUse">${clipInner}</clipPath>${patternDef(view)}</defs>`;
+  const bgv=S.bg[view], hasPat=bgv&&bgv.kind!=='none';
+  const bg=!hasPat?'':(bgv.kind==='image'
+    ?`<image href="${bgv.src}" xlink:href="${bgv.src}" x="0" y="0" width="400" height="470" preserveAspectRatio="xMidYMid slice"/>`
+    :`<rect x="0" y="0" width="400" height="470" fill="url(#bgpat)"/>`);
+  const art=S.objects.filter(o=>o.view===view).map(objSVG).join('');
+  return defs+baseInner+`<g clip-path="url(#bibClip)">${bg}${art}</g>`+trim;
+}
+function selectionMarkup(){
+  const o=selObj();if(!o)return '';
+  const cx=o.x+o.w/2,cy=o.y+o.h/2,rot=o.rot?` transform="rotate(${o.rot} ${cx} ${cy})"`:'';
+  return `<g${rot}>
+    <rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" fill="none" stroke="#4DBFB0" stroke-width="1.5" stroke-dasharray="5 4" pointer-events="none"/>
+    <circle cx="${o.x+o.w}" cy="${o.y+o.h}" r="7" fill="#4DBFB0" data-handle="resize" style="cursor:nwse-resize"/>
+    <line x1="${cx}" y1="${o.y}" x2="${cx}" y2="${o.y-16}" stroke="#3f8bff" stroke-width="1.5" pointer-events="none"/>
+    <circle cx="${cx}" cy="${o.y-22}" r="7" fill="#3f8bff" data-handle="rotate" style="cursor:grab"/></g>`;
+}
+function render(){const l=$('#editLayer');l.innerHTML=sceneMarkup(S.view)+selectionMarkup();l.classList.toggle('selmode',S.tool==='select');renderLayers();updateDims();if(window.THREEMODE)mark3DDirty();}
+function updateDims(){const el=$('#dimInfo');if(!el)return;const z=SIZES&&(SIZES[S.size]||SIZES.M);
+  if(!z||!z.dims){el.textContent='';return;}
+  const fb=isFront(S.view),d=fb?z.dims.front:z.dims.back;
+  el.innerHTML=(curLang()==='th'?('ขนาดจริง ('+(fb?'หน้า':'หลัง')+'): '):('Real size ('+(fb?'front':'back')+'): '))
+    +'<b style="color:var(--accent)">'+d[0]+' × '+d[1]+' cm</b>';}
+
+/* ---- coords ---- */
+function pt(e){const r=$('#editLayer').getBoundingClientRect();const p=e.touches?e.touches[0]:e;
+  return {x:(p.clientX-r.left)/r.width*400,y:(p.clientY-r.top)/r.height*470};}
+
+/* ---- create/interact ---- */
+let draft=null,drag=null,pendImg=null;
+$('#editLayer').addEventListener('mousedown',onDown);
+$('#editLayer').addEventListener('touchstart',onDown,{passive:false});
+function onDown(e){
+  const p=pt(e);const handle=e.target.dataset&&e.target.dataset.handle;
+  if(S.tool==='select'){
+    if(handle){startTransform(e,handle);return;}
+    const id=e.target.dataset&&e.target.dataset.id;
+    if(id){S.sel=+id;render();renderProps();startMove(e);}else{S.sel=null;render();renderProps();}
+    return;}
+  e.preventDefault();
+  if(S.tool==='pen'){draft={type:'path',pts:[[p.x,p.y]]};return;}
+  if(S.tool==='text'){placeText(p);return;}
+  if(S.tool==='image'){pendImg=p;$('#imgFile').click();return;}
+  draft={type:S.tool,x0:p.x,y0:p.y,x:p.x,y:p.y};
+}
+document.addEventListener('mousemove',onMove);document.addEventListener('touchmove',onMove,{passive:false});
+function onMove(e){
+  if(draft){e.preventDefault();const p=pt(e);
+    if(draft.type==='path'){draft.pts.push([p.x,p.y]);drawDraft();return;}
+    draft.x=p.x;draft.y=p.y;drawDraft();}
+  if(drag)drag(e);
+}
+document.addEventListener('mouseup',onUp);document.addEventListener('touchend',onUp);
+function onUp(){if(draft)finalizeDraft();drag=null;}
+function drawDraft(){
+  render();let s='';
+  if(draft.type==='path'){const d='M'+draft.pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+    s=`<path d="${d}" fill="none" stroke="${S.stroke==='none'?S.fill:S.stroke}" stroke-width="${Math.max(S.strokeWidth,3)}" stroke-linecap="round"/>`;}
+  else{const x=Math.min(draft.x0,draft.x),y=Math.min(draft.y0,draft.y),w=Math.abs(draft.x-draft.x0),h=Math.abs(draft.y-draft.y0);
+    const o={id:'d',type:draft.type,x,y,w,h,rot:0,fill:S.fill,stroke:S.stroke,sw:S.strokeWidth,op:S.opacity};
+    if(draft.type==='line'){o.x=draft.x0;o.y=draft.y0;o.w=draft.x-draft.x0;o.h=draft.y-draft.y0;}
+    s=objSVG(o);}
+  const g=$('#editLayer').querySelector('g[clip-path]');if(g)g.insertAdjacentHTML('beforeend',s);
+}
+function finalizeDraft(){
+  if(draft.type==='path'){if(draft.pts.length>2){const d='M'+draft.pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+    addObj({type:'path',d,stroke:S.stroke==='none'?S.fill:S.stroke,sw:Math.max(S.strokeWidth,3),x:0,y:0,w:0,h:0});}}
+  else{const x=Math.min(draft.x0,draft.x),y=Math.min(draft.y0,draft.y),w=Math.abs(draft.x-draft.x0),h=Math.abs(draft.y-draft.y0);
+    if(draft.type==='line')addObj({type:'line',x:draft.x0,y:draft.y0,w:draft.x-draft.x0,h:draft.y-draft.y0});
+    else if(w>4&&h>4)addObj({type:draft.type,x,y,w,h});}
+  draft=null;
+}
+function addObj(extra){
+  const o=Object.assign({id:++S.seq,view:S.view,type:'rect',x:150,y:200,w:90,h:90,rot:0,fill:S.fill,stroke:S.stroke,sw:S.strokeWidth,op:S.opacity,text:'',font:S.font,fs:48,src:'',d:''},extra);
+  S.objects.push(o);S.sel=o.id;
+  if(['rect','ellipse','triangle','line','path'].includes(o.type))setTool('select');
+  render();renderProps();updatePrice();return o;
+}
+$('#imgFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>{const p=pendImg||{x:200,y:230};addObj({type:'image',src:ev.target.result,x:p.x-55,y:p.y-55,w:110,h:110});setTool('select');};
+  r.readAsDataURL(f);e.target.value='';});
+function placeText(p){const v=prompt(curLang()==='th'?'ใส่ข้อความ':'Enter text',curLang()==='th'?'ข้อความ':'TEXT');if(v===null)return;
+  addObj({type:'text',text:v,x:p.x-50,y:p.y-25,w:100,h:50,fs:42,font:S.font,fill:S.fill,stroke:S.stroke,sw:S.strokeWidth});setTool('select');}
+
+/* ---- quick add ---- */
+function quickNumber(){const v=prompt(curLang()==='th'?'หมายเลขนักเตะ':'Player number',S.lastNum);if(v===null)return;S.lastNum=v;
+  const back=isBack(S.view);
+  addObj({type:'text',text:v,role:'num',font:'Archivo Black',fill:S.fill,stroke:S.trim,sw:back?3:2,
+    x:back?115:150,y:back?150:165,w:back?170:100,h:back?180:100,fs:back?160:96});setTool('select');}
+function quickName(){const v=prompt(curLang()==='th'?'ชื่อทีม/ผู้เล่น':'Team / player name',S.lastName);if(v===null)return;S.lastName=v;
+  const back=isBack(S.view);
+  addObj({type:'text',text:v,role:'name',font:'Archivo Black',fill:S.fill,stroke:S.trim,sw:1,
+    x:110,y:back?360:285,w:180,h:44,fs:38});setTool('select');}
+
+/* ---- move/transform ---- */
+function startMove(e){const o=selObj();if(!o)return;const sp=pt(e);const ox=o.x,oy=o.y;
+  drag=ev=>{const p=pt(ev);const dx=p.x-sp.x,dy=p.y-sp.y;
+    if(o.type==='path'){o.d=shiftPath(o.d,dx,dy);sp.x=p.x;sp.y=p.y;}else{o.x=ox+dx;o.y=oy+dy;}render();};}
+function shiftPath(d,dx,dy){return d.replace(/([ML]?)\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g,(_,c,a,b)=>`${c}${(+a+dx).toFixed(1)} ${(+b+dy).toFixed(1)}`);}
+function startTransform(e,mode){const o=selObj();if(!o)return;const sp=pt(e);const ow=o.w,oh=o.h,ofs=o.fs,cx=o.x+o.w/2,cy=o.y+o.h/2;
+  drag=ev=>{const p=pt(ev);
+    if(mode==='resize'){o.w=Math.max(10,ow+(p.x-sp.x));o.h=Math.max(8,oh+(p.y-sp.y));if(o.type==='text')o.fs=Math.max(10,ofs*(o.w/ow));}
+    else o.rot=Math.round(Math.atan2(p.y-cy,p.x-cx)*180/Math.PI+90);
+    render();renderProps();};}
+
+/* ---- properties ---- */
+function renderProps(){const o=selObj(),box=$('#props');
+  if(!o){box.innerHTML=`<div class="prop-empty" data-th>เลือก/สร้างวัตถุเพื่อแก้ไข</div><div class="prop-empty" data-en>Select or create an object</div>`;return;}
+  const isText=o.type==='text',isLine=o.type==='line'||o.type==='path';
+  box.innerHTML=`
+    ${isText?`<div class="field"><label data-th>ข้อความ</label><label data-en>Text</label><input id="pText" value="${esc(o.text)}"></div>
+      <div class="row2"><div class="field"><label data-th>ฟอนต์</label><label data-en>Font</label>
+      <select id="pFont">${['Archivo Black','Anton','Bebas Neue','Oswald','Sora','Noto Sans Thai'].map(f=>`<option ${o.font===f?'selected':''}>${f}</option>`).join('')}</select></div>
+      <div class="field"><label data-th>ขนาด</label><label data-en>Size</label><input id="pFs" type="number" value="${Math.round(o.fs)}"></div></div>`:''}
+    ${!isLine?`<div class="field"><label data-th>สีพื้น Fill</label><label data-en>Fill</label><div class="colorline" id="pFill"></div></div>`:''}
+    <div class="field"><label data-th>สีเส้น Stroke</label><label data-en>Stroke</label><div class="colorline" id="pStroke"></div></div>
+    <div class="field"><label data-th>ความหนาเส้น: <span id="pSwV">${o.sw}</span></label><label data-en>Stroke width</label><input class="range" id="pSw" type="range" min="0" max="20" value="${o.sw}"></div>
+    <div class="field"><label data-th>ความทึบ: <span id="pOpV">${Math.round(o.op*100)}%</span></label><label data-en>Opacity</label><input class="range" id="pOp" type="range" min="10" max="100" value="${Math.round(o.op*100)}"></div>
+    <div class="minirow"><button id="pCenterH"><span data-th>⇔ กลางแนวนอน</span><span data-en>Center H</span></button><button id="pCenterV"><span data-th>⇕ กลางแนวตั้ง</span><span data-en>Center V</span></button></div>
+    <div class="minirow"><button id="pFront" data-th>ขึ้นหน้า</button><button id="pFrontEn" data-en>Front</button><button id="pBack"><span data-th>ลงหลัง</span><span data-en>Back</span></button></div>
+    <div class="minirow"><button id="pDup"><span data-th>ทำซ้ำ</span><span data-en>Duplicate</span></button><button id="pDel" style="color:var(--accent2)"><span data-th>ลบ</span><span data-en>Delete</span></button></div>`;
+  if(!isLine)fillCL('pFill',o.fill,c=>{o.fill=c;render();renderProps();},true);
+  fillCL('pStroke',o.stroke,c=>{o.stroke=c;render();renderProps();},true);
+  if(isText){$('#pText').oninput=e=>{o.text=e.target.value;render();};$('#pFont').onchange=e=>{o.font=e.target.value;render();};$('#pFs').oninput=e=>{o.fs=+e.target.value;render();};}
+  $('#pSw').oninput=e=>{o.sw=+e.target.value;$('#pSwV').textContent=o.sw;render();};
+  $('#pOp').oninput=e=>{o.op=+e.target.value/100;$('#pOpV').textContent=e.target.value+'%';render();};
+  $('#pDel').onclick=()=>{S.objects=S.objects.filter(x=>x.id!==o.id);S.sel=null;render();renderProps();updatePrice();};
+  $('#pDup').onclick=()=>{const c=Object.assign({},o,{id:++S.seq,x:o.x+14,y:o.y+14});S.objects.push(c);S.sel=c.id;render();renderProps();updatePrice();};
+  const fwd=()=>reorder(o,1);$('#pFront').onclick=fwd;if($('#pFrontEn'))$('#pFrontEn').onclick=fwd;$('#pBack').onclick=()=>reorder(o,-1);
+  $('#pCenterH').onclick=()=>centerObj(o,'h');$('#pCenterV').onclick=()=>centerObj(o,'v');}
+function objBBoxCenter(o){
+  if(o.type==='path'){const n=(o.d.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number),xs=[],ys=[];
+    for(let i=0;i+1<n.length;i+=2){xs.push(n[i]);ys.push(n[i+1]);}
+    return xs.length?[(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2]:[200,235];}
+  return [o.x+o.w/2,o.y+o.h/2];
+}
+function centerObj(o,axis){
+  const c=objBBoxCenter(o),dx=axis==='h'?200-c[0]:0,dy=axis==='v'?235-c[1]:0;
+  if(o.type==='path')o.d=shiftPath(o.d,dx,dy);else{o.x+=dx;o.y+=dy;}
+  render();renderProps();}
+function fillCL(id,cur,cb,allowNone){const el=$('#'+id);if(!el)return;
+  el.innerHTML=(allowNone?`<div class="cdot none ${cur==='none'?'sel':''}" data-c="none"></div>`:'')+COLORS.map(c=>`<div class="cdot ${cur===c?'sel':''}" data-c="${c}" title="${ccode(c)}" style="background:${c}"></div>`).join('');
+  el.querySelectorAll('.cdot').forEach(d=>d.onclick=()=>cb(d.dataset.c));}
+function reorder(o,dir){const arr=S.objects;const i=arr.indexOf(o);if(i<0)return;const j=i+dir;if(j<0||j>=arr.length)return;arr.splice(i,1);arr.splice(j,0,o);render();}
+
+/* ---- layers ---- */
+function renderLayers(){
+  const labels={outF:'Out_F',outB:'Out_B',inF:'In_F',inB:'In_B'};
+  $('#layerCtx').textContent=labels[S.view];
+  const list=S.objects.filter(o=>o.view===S.view).slice().reverse();
+  $('#layersEmpty').style.display=list.length?'none':'block';
+  $('#layersList').innerHTML=list.map(o=>{
+    const ic={rect:'▭',ellipse:'◯',triangle:'△',line:'╱',path:'✎',text:'T',image:'🖼'}[o.type]||'▢';
+    const nm=o.type==='text'?o.text:o.type.charAt(0).toUpperCase()+o.type.slice(1);
+    return `<div class="layer ${o.id===S.sel?'sel':''}" data-lid="${o.id}"><span class="ic">${ic}</span><span class="nm">${esc(nm)}</span>
+      <button class="lb" data-up="${o.id}">▲</button><button class="lb" data-dn="${o.id}">▼</button><button class="lb" data-rm="${o.id}">✕</button></div>`;}).join('');
+  $$('#layersList .layer').forEach(l=>l.onclick=e=>{
+    const d=e.target.dataset;
+    if(d.up){reorder(byId(+d.up),1);return;}if(d.dn){reorder(byId(+d.dn),-1);return;}
+    if(d.rm){S.objects=S.objects.filter(x=>x.id!==+d.rm);S.sel=null;render();renderProps();updatePrice();return;}
+    S.sel=+l.dataset.lid;setTool('select');render();renderProps();});}
+function byId(id){return S.objects.find(o=>o.id===id);}
+
+/* ---- pricing ---- */
+function tierOf(q){const T=CT();return T.find(t=>q>=t.min&&q<=t.max)||T[T.length-1];}
+function printPerPc(){return new Set(S.objects.map(o=>o.view)).size*15;}
+function updatePrice(){const q=S.qty,eq=Math.max(q,MIN_QTY);
+  const base=tierOf(eq).price,print=printPerPc(),per=base+print,total=per*q;
+  $('#lineBase').textContent='฿'+base;$('#linePrint').textContent='฿'+print;$('#lineQty').textContent='× '+q;
+  $('#totalVal').textContent='฿'+total.toLocaleString();$('#perPc').textContent='฿'+per+(curLang()==='th'?' / ตัว':' / pc');
+  $('#tierTable').innerHTML=CT().map(t=>{const on=eq>=t.min&&eq<=t.max;const lab=t.max>=99999?`${t.min}+`:`${t.min}–${t.max}`;
+    return `<div class="trow ${on?'on':''}"><span>${lab} ${curLang()==='th'?'ตัว':'pcs'}</span><span>฿${t.price}</span></div>`;}).join('');}
+
+/* ---- build UI ---- */
+function buildTools(){$('#toolGrid').innerHTML=TOOLS.map(t=>`<button class="tool ${t.k===S.tool?'active':''}" data-tool="${t.k}" title="${t.en}"><svg viewBox="0 0 24 24" fill="none">${t.svg}</svg><span data-th>${t.th}</span><span data-en>${t.en}</span></button>`).join('');
+  $$('#toolGrid .tool').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));}
+function setTool(k){S.tool=k;$$('#toolGrid .tool').forEach(b=>b.classList.toggle('active',b.dataset.tool===k));$('#editLayer').classList.toggle('selmode',k==='select');setHint();render();}
+function buildBG(){$('#bgGrid').innerHTML=BGS.map((b,i)=>{
+  const sw=b.kind==='none'?S.body:(b.colors[0]||'#333');
+  return `<button class="bgopt ${S.bg[S.view].kind===b.kind?'sel':''}" data-bg="${i}"><span class="sw" style="background:${sw}"></span><span data-th>${b.th}</span><span data-en>${b.en}</span></button>`;}).join('');
+  $$('#bgGrid .bgopt').forEach(b=>b.onclick=()=>{const def=BGS[+b.dataset.bg];S.bg[S.view]={kind:def.kind,colors:def.colors.slice()};buildBG();render();});}
+function buildSwatches(){
+  $('#bodySw').innerHTML=COLORS.map(c=>`<div class="sw2 ${c===S.body?'sel':''}" data-c="${c}" title="${ccode(c)}" style="background:${c}"></div>`).join('');
+  $('#trimSw').innerHTML=COLORS.map(c=>`<div class="sw2 ${c===S.trim?'sel':''}" data-c="${c}" title="${ccode(c)}" style="background:${c}"></div>`).join('');
+  $$('#bodySw .sw2').forEach(s=>s.onclick=()=>{S.body=s.dataset.c;buildSwatches();buildBG();render();});
+  $$('#trimSw .sw2').forEach(s=>s.onclick=()=>{S.trim=s.dataset.c;buildSwatches();render();});
+  const bc=$('#bodyCode'),tc=$('#trimCode');
+  if(bc)bc.textContent='CMYK '+(PCODE[(S.body||'').toLowerCase()]||'— นอกชาร์ต (RGB)');
+  if(tc)tc.textContent='CMYK '+(PCODE[(S.trim||'').toLowerCase()]||'— นอกชาร์ต (RGB)');}
+function updateTrimToggle(){$('#trimOnBtn').classList.toggle('on',S.trimOn);$('#trimOffBtn').classList.toggle('on',!S.trimOn);
+  $('#trimColorField').style.display=S.trimOn?'':'none';
+  $('#trimWField').style.display='none';}
+function setHint(){const h={select:['ลากย้าย · มุมเหลืองปรับขนาด · จุดฟ้าหมุน','Drag move · yellow resize · blue rotate'],
+  rect:['ลากวาดสี่เหลี่ยม','Drag to draw rectangle'],ellipse:['ลากวาดวงกลม','Drag to draw ellipse'],triangle:['ลากวาดสามเหลี่ยม','Drag to draw triangle'],
+  line:['ลากวาดเส้น','Drag to draw line'],pen:['ลากวาดอิสระ','Drag to free-draw'],text:['คลิกวางข้อความ','Click to place text'],image:['คลิกอัปโหลดรูป','Click to upload image']}[S.tool];
+  $('#hintbar').innerHTML=`<span data-th>${h[0]}</span><span data-en>${h[1]}</span>`;}
+
+/* ---- export ---- */
+function exportPNG(){const bgc=S.bg[S.view].kind==='none'?'#0a0a0c':'#0a0a0c';
+  const svgStr=`<svg xmlns="${NS}" width="800" height="940" viewBox="0 0 400 470"><rect width="400" height="470" fill="${bgc}"/>${sceneMarkup(S.view)}</svg>`;
+  const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=800;c.height=940;c.getContext('2d').drawImage(img,0,0);
+    const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=`axiom-bib-${S.view}.png`;a.click();toast(curLang()==='th'?'ดาวน์โหลดรูปแล้ว ✓':'PNG exported ✓');};
+  img.onerror=()=>toast(curLang()==='th'?'ส่งออกรูปไม่สำเร็จ':'Export failed');
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgStr);}
+
+/* ---- export vector SVG (opens in Illustrator) ---- */
+function buildDesignSVG(){
+  const set=VIEWSETS[S.mode]||VIEWSETS.reversible;
+  const AW=400, AH=470, gap=26;
+  const MM=10/(410/76.4023);                 // mm per viewBox unit (true cm scale from sizes.js)
+  const tot=set.length*AW+(set.length-1)*gap;
+  const inner=set.map((o,i)=>{
+    // nested <svg> isolates each view's coordinates + clip (ids still namespaced to be safe)
+    const s=sceneMarkup(o.v).replace(/bibClip/g,'bibClip'+i).replace(/bgpat/g,'bgpat'+i);
+    const lab=(curLang()==='th'?o.th:o.en)+' · '+S.size;
+    const x=i*(AW+gap);
+    return `<svg x="${x}" y="0" width="${AW}" height="${AH}" viewBox="0 0 ${AW} ${AH}">`+
+           `${s}<text x="200" y="467" text-anchor="middle" font-family="Arial" font-size="12" fill="#999">${lab}</text></svg>`;
+  }).join('');
+  // ---- color spec (print by CMYK, not screen colour) ----
+  const cols=usedColors();
+  let legend=`<text x="4" y="${AH+16}" font-family="Arial" font-size="13" font-weight="bold" fill="#222">FABRIC / ผ้า: ${S.fabric}    ·    SIZE / ไซส์: ${S.size}</text>`;
+  const ly=AH+40;
+  if(cols.length){
+    legend+=`<text x="4" y="${ly}" font-family="Arial" font-size="12" font-weight="bold" fill="#222">COLOR SPEC — พิมพ์ตามโค้ด CMYK / print by CMYK code</text>`;
+    cols.forEach((e,i)=>{const yy=ly+14+i*22;
+      legend+=`<rect x="4" y="${yy}" width="16" height="16" fill="${e[0]}" stroke="#888"/>`
+             +`<text x="26" y="${yy+13}" font-family="Arial" font-size="12" fill="#222">${e[0].toUpperCase()}  —  ${e[1]}</text>`;});
+  }
+  const legH=48+(cols.length?(16+cols.length*22):0);
+  const totalH=AH+legH;
+  const Wmm=(tot*MM).toFixed(1), Hmm=(totalH*MM).toFixed(1);
+  return `<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink" width="${Wmm}mm" height="${Hmm}mm" viewBox="0 0 ${tot} ${totalH}">${inner}${legend}</svg>`;
+}
+function usedColors(){
+  const m=new Map();
+  const add=c=>{if(c&&c!=='none'&&!m.has(c.toLowerCase())){const h=c.toLowerCase();m.set(h,PCODE[h]||'(สีนอกชาร์ต RGB — อาจเพี้ยนตอนพิมพ์)');}};
+  add(S.body);add(S.trim);if(S.trim2&&S.trim2!=='none')add(S.trim2);
+  S.objects.forEach(o=>{add(o.fill);add(o.stroke);});
+  return [...m.entries()];
+}
+function exportSVG(){
+  const svgStr=buildDesignSVG();
+  const blob=new Blob([svgStr],{type:'image/svg+xml'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='axiom-design.svg';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  toast(curLang()==='th'?'ดาวน์โหลด SVG ขนาดจริงแล้ว — เปิด/บันทึกเป็น .ai ใน Illustrator ได้ ✓':'Real-size SVG exported — open & Save As .ai in Illustrator ✓');
+}
+/* ---- batch roster: 1 file per player (number+name+size) into a ZIP ---- */
+function setPlayer(num,name){S.objects.forEach(o=>{if(o.role==='num'&&num)o.text=num;if(o.role==='name'&&name)o.text=name;});}
+function exportRoster(){
+  if(typeof JSZip==='undefined'){toast(curLang()==='th'?'ตัวบีบอัดยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง':'Zip library still loading, try again');return;}
+  const lines=(($('#rosterTxt')||{}).value||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length){toast(curLang()==='th'?'ใส่รายชื่อก่อน (บรรทัดละ: เบอร์,ชื่อ,ไซส์)':'Enter roster first (line: number,name,size)');return;}
+  if(!S.objects.some(o=>o.role==='num'||o.role==='name')){toast(curLang()==='th'?'เพิ่ม "เลข"/"ชื่อ" ด้วยปุ่มใส่ด่วนก่อน':'Add Number/Name via Quick Add first');return;}
+  const snap=S.objects.map(o=>o.text), snapSize=S.size, zip=new JSZip();
+  lines.forEach((line,idx)=>{
+    const p=line.split(',').map(s=>(s||'').trim());
+    const num=p[0]||'', name=p[1]||'', size=p[2]||'';
+    setPlayer(num,name); if(size)S.size=size;
+    const safe=(name||'player').replace(/[^\w฀-๿]+/g,'-');
+    zip.file(`${String(num||idx+1).padStart(2,'0')}_${safe}${size?'_'+size:''}.svg`, buildDesignSVG());
+  });
+  S.objects.forEach((o,i)=>o.text=snap[i]); S.size=snapSize; render();
+  zip.generateAsync({type:'blob'}).then(blob=>{
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='axiom-roster.zip';a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2500);
+    toast((curLang()==='th'?'ดาวน์โหลด ZIP ':'Exported ZIP ')+lines.length+(curLang()==='th'?' ไฟล์ ✓':' files ✓'));
+  });
+}
+
+/* ---- lang ---- */
+function curLang(){return document.body.classList.contains('lang-en')?'en':'th';}
+
+/* ---- bind ---- */
+$('#views').addEventListener('click',e=>{const b=e.target.closest('.viewbtn');if(!b)return;
+  $$('.viewbtn').forEach(v=>v.classList.remove('active'));b.classList.add('active');
+  S.view=b.dataset.view;S.sel=null;buildBG();render();renderProps();});
+$('#qNum').onclick=quickNumber;$('#qName').onclick=quickName;$('#qLogo').onclick=()=>{pendImg=null;setTool('image');$('#imgFile').click();};
+$('#patUpBtn').onclick=()=>$('#patFile').click();
+$('#patFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{
+    const apply=src=>{const bg={kind:'image',src,colors:[]};
+      if($('#patAll').checked)VIEWS.forEach(v=>S.bg[v]=Object.assign({},bg));else S.bg[S.view]=bg;
+      buildBG();render();toast(curLang()==='th'?'ใส่ลายแล้ว ✓':'Pattern applied ✓');};
+    if($('#patSnap').checked){toast(curLang()==='th'?'กำลังปรับสีให้ตรงชาร์ตโรงงาน...':'Matching colors to chart...');
+      setTimeout(()=>snapImageToPalette(ev.target.result,apply),30);}
+    else apply(ev.target.result);};
+  r.readAsDataURL(f);e.target.value='';};
+$('#patClrBtn').onclick=()=>{if($('#patAll').checked)VIEWS.forEach(v=>S.bg[v]={kind:'none',colors:[]});else S.bg[S.view]={kind:'none',colors:[]};buildBG();render();};
+$('#impBtn').onclick=()=>$('#tplFile').click();
+$('#tplFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{const t=parseSVGTemplate(ev.target.result);
+    if(!t){toast(curLang()==='th'?'ไม่พบเส้น path ในไฟล์ SVG':'No path found in the SVG');return;}
+    if($('#tplAll').checked)VIEWS.forEach(v=>S.tpl[v]=t);else S.tpl[S.view]=t;
+    render();toast(curLang()==='th'?'นำเข้าเทมเพลตแล้ว ✓':'Template imported ✓');};
+  r.readAsText(f);e.target.value='';};
+$('#tplReset').onclick=()=>{if($('#tplAll').checked)VIEWS.forEach(v=>S.tpl[v]=null);else S.tpl[S.view]=null;render();toast(curLang()==='th'?'กลับค่าเริ่มต้น':'Reset to default');};
+$('#sizeSel').onchange=e=>{S.size=e.target.value;render();};
+$('#fabricSel').onchange=e=>{S.fabric=e.target.value;};
+$('#qInput').addEventListener('input',e=>{S.qty=Math.max(1,parseInt(e.target.value)||1);updatePrice();});
+$('#qMinus').onclick=()=>{S.qty=Math.max(1,S.qty-5);$('#qInput').value=S.qty;updatePrice();};
+$('#qPlus').onclick=()=>{S.qty+=5;$('#qInput').value=S.qty;updatePrice();};
+$('#langBtn').onclick=()=>{const en=document.body.classList.toggle('lang-en');document.body.classList.toggle('lang-th',!en);
+  document.documentElement.lang=en?'en':'th';$('#langBtn').textContent=en?'TH':'EN';updatePrice();renderProps();setHint();updateDims();};
+$('#trimOnBtn').onclick=()=>{S.trimOn=true;updateTrimToggle();render();};
+$('#trimOffBtn').onclick=()=>{S.trimOn=false;updateTrimToggle();render();};
+$('#trimWidth').oninput=e=>{S.trimMul=+e.target.value;$('#twV').textContent=(+e.target.value).toFixed(2);render();};
+$('#pngBtn').onclick=exportPNG;
+$('#svgBtn').onclick=exportSVG;
+$('#rosterBtn').onclick=exportRoster;
+$('#saveBtn').onclick=()=>{const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='axiom-bib-design.json';a.click();toast(curLang()==='th'?'บันทึกแล้ว ✓':'Saved ✓');};
+$('#clearBtn').onclick=()=>{if(confirm(curLang()==='th'?'ล้างวัตถุในหน้านี้?':'Clear objects in this view?')){S.objects=S.objects.filter(o=>o.view!==S.view);S.sel=null;render();renderProps();updatePrice();}};
+const openQ=()=>{const kind=S.mode==='single'?(curLang()==='th'?'Bibs 1 แบบ':'Bibs (1 design)'):(curLang()==='th'?'Bibs 2 แบบ (reversible)':'Reversible Bibs (2 designs)');
+  $('#qfSummary').textContent=`${kind} · ${curLang()==='th'?'ผ้า ':'Fabric '}${S.fabric} · ${curLang()==='th'?'ไซส์ ':'Size '}${S.size} · ${S.qty} ${curLang()==='th'?'ตัว':'pcs'} · ${$('#totalVal').textContent}`;$('#quoteModal').classList.add('show');};
+$('#modeBtn').onclick=()=>$('#startModal').classList.add('show');
+$$('#startModal .modecard').forEach(b=>b.onclick=()=>chooseMode(b.dataset.mode));
+$('#quoteBtn').onclick=openQ;$('#quoteBtn2').onclick=openQ;
+$$('[data-close]').forEach(b=>b.onclick=()=>$('#quoteModal').classList.remove('show'));
+$('#quoteModal').addEventListener('click',e=>{if(e.target.id==='quoteModal')e.target.classList.remove('show')});
+$('#qfSubmit').onclick=()=>{if(!$('#qfName').value||!($('#qfPhone').value||$('#qfEmail').value)){toast(curLang()==='th'?'กรอกชื่อและช่องทางติดต่อ':'Enter name and contact');return;}
+  $('#quoteModal').classList.remove('show');toast(curLang()==='th'?'ส่งคำขอแล้ว! ทีมงานจะติดต่อกลับ ✓':'Request sent! ✓');};
+document.addEventListener('keydown',e=>{if((e.key==='Delete'||e.key==='Backspace')&&S.sel&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){
+  S.objects=S.objects.filter(x=>x.id!==S.sel);S.sel=null;render();renderProps();updatePrice();}});
+
+/* ===================== 3D MODE ===================== */
+let THREEMODE=false; let TH=null, _dirty=false, _curSize=null;
+function mark3DDirty(){_dirty=true;}
+function parsePathToShape(d){
+  const sh=new THREE.Shape();const re=/([MLCQZ])([^MLCQZ]*)/gi;let m;
+  while((m=re.exec(d))){const c=m[1].toUpperCase();
+    const n=m[2].trim().split(/[\s,]+/).filter(s=>s!=='').map(Number);
+    if(c==='M')sh.moveTo(n[0],n[1]);
+    else if(c==='L'){for(let i=0;i+1<n.length;i+=2)sh.lineTo(n[i],n[i+1]);}
+    else if(c==='C'){for(let i=0;i+5<n.length;i+=6)sh.bezierCurveTo(n[i],n[i+1],n[i+2],n[i+3],n[i+4],n[i+5]);}
+    else if(c==='Q'){for(let i=0;i+3<n.length;i+=4)sh.quadraticCurveTo(n[i],n[i+1],n[i+2],n[i+3]);}
+    else if(c==='Z')sh.closePath();}
+  return sh;
+}
+function shellGeo(d){
+  const geo=new THREE.ShapeGeometry(parsePathToShape(d),30);
+  const pos=geo.attributes.position,uv=[];
+  for(let i=0;i<pos.count;i++)uv.push(pos.getX(i)/400,1-pos.getY(i)/470);
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  geo.scale(1,-1,1);geo.translate(-200,235,0);return geo;
+}
+function bodyGeo(d){
+  const geo=new THREE.ExtrudeGeometry(parsePathToShape(d),{depth:30,bevelEnabled:true,bevelThickness:5,bevelSize:5,bevelSegments:2});
+  geo.scale(1,-1,1);geo.translate(-200,235,-15);return geo;
+}
+function init3D(){
+  const cv=$('#c3d');
+  const r=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true});
+  r.setPixelRatio(Math.min(devicePixelRatio,2));
+  const scene=new THREE.Scene();
+  const cam=new THREE.OrthographicCamera(-200,200,235,-235,1,4000);cam.position.z=1000;
+  scene.add(new THREE.AmbientLight(0xffffff,0.9));
+  const dl=new THREE.DirectionalLight(0xffffff,0.55);dl.position.set(-1,2,3);scene.add(dl);
+  const grp=new THREE.Group();scene.add(grp);
+  const ftex=new THREE.CanvasTexture(document.createElement('canvas'));
+  const btex=new THREE.CanvasTexture(document.createElement('canvas'));
+  const front=new THREE.Mesh(new THREE.PlaneGeometry(400,470),new THREE.MeshBasicMaterial({map:ftex,transparent:true,alphaTest:0.3,side:THREE.DoubleSide}));front.position.z=17;
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(400,470),new THREE.MeshBasicMaterial({map:btex,transparent:true,alphaTest:0.3,side:THREE.DoubleSide}));back.position.z=-17;back.rotation.y=Math.PI;
+  const body=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshStandardMaterial({color:0x9aa0a4,roughness:.9,metalness:.05}));
+  grp.add(body);grp.add(front);grp.add(back);
+  TH={r,scene,cam,grp,front,back,body,ftex,btex,fc:document.createElement('canvas'),bc:document.createElement('canvas')};
+  resize3D();
+  (function loop(){requestAnimationFrame(loop);if(!THREEMODE)return;
+    if(_dirty){_dirty=false;refresh3D();}
+    grp.rotation.y=(+$('#rotY').value)*Math.PI/180;
+    $('#stage').classList.toggle('rotated',Math.abs(+$('#rotY').value)>8);
+    r.render(scene,cam);})();
+}
+function resize3D(){if(!TH)return;const s=$('#stage');TH.r.setSize(s.clientWidth,s.clientHeight,false);}
+function rebuildGeom(){
+  const z=window.AXIOM_SIZES&&(AXIOM_SIZES[S.size]||AXIOM_SIZES.M);if(!z)return;
+  TH.body.geometry.dispose();
+  TH.body.geometry=bodyGeo(z.front);
+  _curSize=S.size;
+}
+function rasterizeView(view,canvas,tex,flip){
+  const svgStr=`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="470" viewBox="0 0 400 470">${sceneMarkup(view)}</svg>`;
+  const img=new Image();
+  img.onload=()=>{canvas.width=400;canvas.height=470;const cx=canvas.getContext('2d');cx.clearRect(0,0,400,470);
+    if(flip){cx.translate(400,0);cx.scale(-1,1);}cx.drawImage(img,0,0);tex.image=canvas;tex.needsUpdate=true;};
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgStr);
+}
+function refresh3D(){
+  if(_curSize!==S.size)rebuildGeom();
+  rasterizeView(S.view.replace('B','F'),TH.fc,TH.ftex,false);
+  rasterizeView(S.view.replace('F','B'),TH.bc,TH.btex,true);
+}
+function toggle3D(){
+  if(!window.AXIOM_SIZES){toast(curLang()==='th'?'ต้องมี sizes.js (ทรงจริง)':'sizes.js (real shapes) required');return;}
+  THREEMODE=!THREEMODE;window.THREEMODE=THREEMODE;
+  $('#stage').classList.toggle('is3d',THREEMODE);
+  $('#r3d').style.display=THREEMODE?'flex':'none';
+  $('#d3Btn').classList.toggle('solid',THREEMODE);
+  if(THREEMODE){if(!TH)init3D();resize3D();_curSize=null;_dirty=true;}
+  else $('#stage').classList.remove('rotated');
+}
+$('#d3Btn').onclick=toggle3D;
+$('#faceBtn').onclick=()=>{$('#rotY').value=0;$('#stage').classList.remove('rotated');};
+$('#flipBtn').onclick=()=>{$('#rotY').value=180;};
+window.addEventListener('resize',resize3D);
+
+/* ---- init ---- */
+buildTools();buildViews();buildBG();buildSwatches();updateTrimToggle();render();renderProps();updatePrice();setHint();
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2400);}
+</script>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axiom Siam Co.,Ltd. — โรงงานผลิตเสื้อผ้ากีฬา OEM/ODM ส่งออกทั่วโลก</title>
+<meta name="description" content="Axiom Siam Co.,Ltd. โรงงานผลิตเสื้อผ้ากีฬาครบวงจร รับผลิต OEM/ODM คุณภาพส่งออก ทั้งในประเทศและต่างประเทศ — ออกแบบเสื้อของคุณเองได้แบบ 3D พร้อมขอใบเสนอราคา">
+<meta name="keywords" content="โรงงานเสื้อกีฬา, รับผลิตเสื้อกีฬา, OEM, ODM, sublimation, sportswear manufacturer Thailand, Axiom Siam">
+<meta name="theme-color" content="#0a0e0d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230a0e0d'/%3E%3Cg fill='none' stroke='%234DBFB0' stroke-width='7' stroke-linejoin='round'%3E%3Cpath d='M50 12 L88 84 L12 84 Z'/%3E%3Cpath d='M50 32 L72 72 L28 72'/%3E%3C/g%3E%3Cpath d='M50 42 L61 62 L39 62 Z' fill='%233A9B8E'/%3E%3C/svg%3E">
+<meta property="og:title" content="Axiom Siam Co.,Ltd. — โรงงานผลิตเสื้อผ้ากีฬา OEM/ODM">
+<meta property="og:description" content="รับผลิตเสื้อกีฬาคุณภาพส่งออก ออกแบบเองได้แบบ 3D พร้อมขอใบเสนอราคา">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Sora:wght@400;600;700;800&family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--mint:#4DBFB0;--mint-deep:#3A9B8E;--mint-glow:#5fd9c8;--ink:#e8f5f2;--muted:#8fa6a1;}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{color:var(--ink);font-family:'Sora','Noto Sans Thai',sans-serif;
+    background:radial-gradient(circle at 50% 30%,#1b2926 0%,#0c1110 55%,#05080a 100%);
+    background-attachment:fixed;overflow-x:hidden}
+  [data-en]{display:none}body.lang-en [data-en]{display:revert}body.lang-en [data-th]{display:none}
+
+  /* 3D background */
+  #scene{position:fixed;inset:0;z-index:1;pointer-events:none}
+  #scene canvas{display:block}
+
+  /* top bar */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;justify-content:space-between;
+    align-items:center;padding:16px 28px;background:linear-gradient(to bottom,rgba(8,12,11,.7),transparent)}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand svg{width:42px;height:42px}
+  .brand b{font-family:'Anton';font-size:19px;letter-spacing:1.5px}
+  .brand span{display:block;font-size:9px;letter-spacing:3px;color:var(--mint);text-transform:uppercase}
+  .nav{display:flex;gap:9px;align-items:center}
+  .nav a,.nav button{font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;
+    padding:8px 15px;border-radius:30px;transition:.2s;border:1px solid transparent;color:var(--ink);background:transparent}
+  .nav .ghost{border-color:rgba(77,191,176,.4)}
+  .nav .ghost:hover{border-color:var(--mint);color:var(--mint)}
+  .nav .solid{background:var(--mint);color:#04130f}
+  .nav .solid:hover{background:var(--mint-glow);transform:translateY(-2px)}
+  .lang{display:flex;border:1px solid rgba(77,191,176,.4);border-radius:30px;overflow:hidden}
+  .lang button{border:0;color:var(--muted);padding:7px 13px;font-size:12px;font-weight:700;letter-spacing:1px;border-radius:0}
+  .lang button.on{background:var(--mint);color:#04130f}
+
+  /* step dots */
+  .dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);z-index:25;display:flex;flex-direction:column;gap:14px}
+  .dots a{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(143,166,161,.6);transition:.25s}
+  .dots a.on{background:var(--mint);border-color:var(--mint);box-shadow:0 0 12px rgba(77,191,176,.7)}
+
+  /* sections */
+  main{position:relative;z-index:10}
+  .sec{min-height:100vh;display:flex;align-items:center;padding:90px 7vw;position:relative}
+  .sec .box{max-width:430px;background:rgba(10,16,14,.55);backdrop-filter:blur(7px);
+    border:1px solid rgba(77,191,176,.16);border-radius:18px;padding:32px 30px;
+    opacity:0;transform:translateY(40px);transition:opacity .8s,transform .8s}
+  .sec.in .box{opacity:1;transform:none}
+  .sec.right{justify-content:flex-end}
+  .sec.center{justify-content:center;text-align:center}
+  .sec.center .box{max-width:680px;background:transparent;border:0;backdrop-filter:none}
+  .eyebrow{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--mint);font-weight:700;margin-bottom:12px}
+  h1{font-family:'Anton';font-size:clamp(34px,6vw,68px);line-height:1.04;letter-spacing:.5px;margin-bottom:18px}
+  body.lang-th h1{font-family:'Noto Sans Thai';font-weight:700}
+  h2{font-family:'Anton';font-size:clamp(26px,4vw,40px);line-height:1.1;margin-bottom:16px}
+  body.lang-th h2{font-family:'Noto Sans Thai';font-weight:700}
+  .sec p{color:var(--muted);font-size:15.5px;line-height:1.75;margin-bottom:14px}
+  ul.feat{list-style:none;margin:6px 0 18px}
+  ul.feat li{padding:9px 0 9px 26px;position:relative;font-size:14.5px;border-bottom:1px solid rgba(255,255,255,.06)}
+  ul.feat li::before{content:"";position:absolute;left:0;top:15px;width:9px;height:9px;background:var(--mint);clip-path:polygon(50% 0,100% 100%,0 100%)}
+  .stats{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0}
+  .stat{flex:1;min-width:96px;background:rgba(77,191,176,.07);border:1px solid rgba(77,191,176,.18);border-radius:12px;padding:14px}
+  .stat b{display:block;font-family:'Anton';font-size:30px;color:var(--mint)}
+  .stat span{font-size:11px;color:var(--muted)}
+  .btnrow{display:flex;gap:11px;flex-wrap:wrap;margin-top:8px}
+  .btn{display:inline-block;padding:13px 24px;border-radius:30px;font-weight:700;font-size:14px;text-decoration:none;transition:.25s;cursor:pointer;border:1.5px solid var(--mint)}
+  .btn.solid{background:var(--mint);color:#04130f}
+  .btn.solid:hover{background:var(--mint-glow);box-shadow:0 8px 26px rgba(77,191,176,.4);transform:translateY(-2px)}
+  .btn.ghost{background:transparent;color:var(--mint)}
+  .btn.ghost:hover{background:rgba(77,191,176,.12)}
+  .gallery{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin:8px 0 18px}
+  .gcard{aspect-ratio:3/4;border-radius:10px;border:1px solid rgba(77,191,176,.2);position:relative;overflow:hidden;
+    display:flex;align-items:center;justify-content:center}
+  .gcard svg{width:46px;opacity:.6}
+  .steps{display:flex;flex-direction:column;gap:11px;margin:8px 0 18px}
+  .step{display:flex;gap:13px;align-items:flex-start}
+  .step .n{font-family:'Anton';font-size:22px;color:var(--mint);min-width:34px}
+  .step .t{font-size:14.5px}.step .t small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .cinfo{display:flex;flex-direction:column;gap:9px;margin:10px 0 18px}
+  .cinfo div{font-size:14px;background:rgba(77,191,176,.07);border:1px solid rgba(77,191,176,.18);border-radius:10px;padding:11px 14px}
+  .scrollhint{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:2px;
+    text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:7px}
+  .scrollhint .m{width:22px;height:34px;border:1.5px solid var(--muted);border-radius:12px;position:relative}
+  .scrollhint .m::after{content:"";position:absolute;left:50%;top:6px;width:3px;height:6px;background:var(--mint);border-radius:2px;transform:translateX(-50%);animation:mouse 1.6s infinite}
+  @keyframes mouse{0%{opacity:0;top:6px}40%{opacity:1}100%{opacity:0;top:16px}}
+
+  footer{position:relative;z-index:10;background:rgba(6,9,8,.85);border-top:1px solid rgba(77,191,176,.18);
+    padding:46px 7vw 34px;backdrop-filter:blur(8px)}
+  .fgrid{display:flex;flex-wrap:wrap;gap:34px;justify-content:space-between;max-width:1100px;margin:0 auto}
+  footer h4{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--mint);margin-bottom:12px}
+  footer p,footer a{color:var(--muted);font-size:13.5px;line-height:1.9;text-decoration:none;display:block}
+  footer a:hover{color:var(--mint)}
+  .fbrand b{font-family:'Anton';font-size:20px;color:var(--ink);letter-spacing:1px}
+  .copyr{text-align:center;color:var(--muted);font-size:12px;margin-top:30px;opacity:.7}
+
+  @media(max-width:760px){
+    .topbar{padding:12px 16px}.brand span{display:none}
+    .nav a,.nav button{padding:7px 11px;font-size:12px}
+    .dots{display:none}
+    .sec{padding:96px 22px 60px;align-items:flex-end}
+    .sec.right,.sec.center{justify-content:flex-start}
+    .sec .box{max-width:100%;background:rgba(10,16,14,.72)}
+    .gallery{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body class="lang-th">
+
+<div id="scene"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 100 100"><g fill="none" stroke="#4DBFB0" stroke-width="6.5" stroke-linejoin="round"><path d="M50 8 L92 86 L8 86 Z"/><path d="M50 30 L74 74 L26 74"/><path d="M26 74 L74 74"/></g><path d="M50 40 L62 62 L38 62 Z" fill="#3A9B8E"/></svg>
+    <div><b>AXIOM SIAM</b><span>Co.,Ltd.</span></div>
+  </div>
+  <div class="nav">
+    <a class="solid" href="design-your-own.html"><span data-th>🎨 ออกแบบเสื้อเอง</span><span data-en>🎨 Design Your Own</span></a>
+    <a class="ghost" href="#contact"><span data-th>ติดต่อ</span><span data-en>Contact</span></a>
+    <div class="lang"><button id="thBtn" class="on" onclick="setLang('th')">TH</button><button id="enBtn" onclick="setLang('en')">EN</button></div>
+  </div>
+</div>
+
+<div class="dots" id="dots"></div>
+
+<main>
+  <!-- 0 HERO -->
+  <section class="sec center" data-step="0">
+    <div class="box">
+      <div class="eyebrow">Sportswear Manufacturer · OEM / ODM</div>
+      <h1><span data-th>โรงงานผลิต<br>เสื้อผ้ากีฬาครบวงจร</span><span data-en>Full-Service<br>Sportswear Manufacturer</span></h1>
+      <p><span data-th>รับผลิตเสื้อกีฬาคุณภาพส่งออก ทั้งในประเทศและต่างประเทศ ด้วยมาตรฐานการผลิตระดับสากลและทีมงานมืออาชีพ</span>
+        <span data-en>Export-quality sportswear production for local and international markets, built on world-class standards and a professional team.</span></p>
+      <div class="btnrow" style="justify-content:center">
+        <a class="btn solid" href="design-your-own.html"><span data-th>เริ่มออกแบบเสื้อ</span><span data-en>Start Designing</span></a>
+        <a class="btn ghost" href="#contact"><span data-th>ขอใบเสนอราคา</span><span data-en>Get a Quote</span></a>
+      </div>
+    </div>
+    <div class="scrollhint"><div class="m"></div><span data-th>เลื่อนลง</span><span data-en>Scroll</span></div>
+  </section>
+
+  <!-- 1 ABOUT -->
+  <section class="sec" data-step="1">
+    <div class="box">
+      <div class="eyebrow">About Us</div>
+      <h2><span data-th>เกี่ยวกับ Axiom Siam</span><span data-en>About Axiom Siam</span></h2>
+      <p><span data-th>เราคือผู้ผลิตเสื้อผ้ากีฬาครบวงจร เชี่ยวชาญงานตัดเย็บคุณภาพสูง ใส่ใจทุกรายละเอียดตั้งแต่การเลือกผ้าจนถึงการส่งมอบ</span>
+        <span data-en>A full-service sportswear manufacturer specializing in high-quality garments — attentive to every detail from fabric to delivery.</span></p>
+      <ul class="feat">
+        <li><span data-th>ผ่านมาตรฐานการผลิตเพื่อการส่งออก</span><span data-en>Certified for export-grade manufacturing</span></li>
+        <li><span data-th>ทีมออกแบบ & พัฒนาแบบเฉพาะแบรนด์</span><span data-en>In-house design & brand development</span></li>
+        <li><span data-th>ควบคุมคุณภาพทุกขั้นตอน (QC)</span><span data-en>Full quality control at every step</span></li>
+      </ul>
+      <div class="stats">
+        <div class="stat"><b>15+</b><span data-th>ปีประสบการณ์</span><span data-en>Years</span></div>
+        <div class="stat"><b>20+</b><span data-th>ประเทศส่งออก</span><span data-en>Countries</span></div>
+        <div class="stat"><b>50K+</b><span data-th>ตัว/เดือน</span><span data-en>Units/mo</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 CAPABILITIES -->
+  <section class="sec right" data-step="2">
+    <div class="box">
+      <div class="eyebrow">Capabilities</div>
+      <h2><span data-th>บริการรับผลิต OEM / ODM</span><span data-en>OEM / ODM Manufacturing</span></h2>
+      <p><span data-th>รับผลิตเสื้อผ้ากีฬาทุกประเภทตามแบบของคุณ ด้วยเทคนิคหลากหลายและกำลังผลิตรองรับออเดอร์ใหญ่</span>
+        <span data-en>Every type of sportswear to your spec, with versatile techniques and the capacity for large orders.</span></p>
+      <ul class="feat">
+        <li><span data-th>เสื้อฟุตบอล • ชุดวิ่ง • เสื้อกล้าม • ชุดทีม</span><span data-en>Football • Running • Tank tops • Team kits</span></li>
+        <li><span data-th>Sublimation • สกรีน • ปัก • DTF</span><span data-en>Sublimation • Screen • Embroidery • DTF</span></li>
+        <li><span data-th>รับออกแบบฟรีพร้อมทำตัวอย่าง</span><span data-en>Free design service with samples</span></li>
+        <li><span data-th>MOQ ยืดหยุ่น รองรับแบรนด์เล็ก-ใหญ่</span><span data-en>Flexible MOQ for any brand size</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3 PORTFOLIO -->
+  <section class="sec" data-step="3">
+    <div class="box">
+      <div class="eyebrow">Portfolio</div>
+      <h2><span data-th>ผลงานที่ภาคภูมิใจ</span><span data-en>Work We're Proud Of</span></h2>
+      <p><span data-th>เราผลิตให้แบรนด์กีฬา ทีม สโมสร และร้านค้าทั้งในและต่างประเทศ</span>
+        <span data-en>We manufacture for sports brands, teams, clubs and retailers worldwide.</span></p>
+      <div class="gallery" id="gallery"></div>
+      <a class="btn ghost" href="#contact"><span data-th>ขอดูผลงานเพิ่มเติม</span><span data-en>Request more samples</span></a>
+    </div>
+  </section>
+
+  <!-- 4 PROCESS -->
+  <section class="sec right" data-step="4">
+    <div class="box">
+      <div class="eyebrow">Process</div>
+      <h2><span data-th>ขั้นตอนการสั่งผลิต</span><span data-en>How Ordering Works</span></h2>
+      <div class="steps">
+        <div class="step"><div class="n">01</div><div class="t"><span data-th>ส่งแบบ & ปรึกษา</span><span data-en>Brief & Consult</span><small><span data-th>ส่งดีไซน์หรือไอเดีย รับคำปรึกษาและใบเสนอราคา</span><span data-en>Send your idea, get advice and a quote</span></small></div></div>
+        <div class="step"><div class="n">02</div><div class="t"><span data-th>ทำตัวอย่าง</span><span data-en>Sampling</span><small><span data-th>ผลิต Sample ให้ตรวจก่อนผลิตจริง</span><span data-en>A sample for approval before production</span></small></div></div>
+        <div class="step"><div class="n">03</div><div class="t"><span data-th>ผลิตจริง</span><span data-en>Production</span><small><span data-th>เข้าสายการผลิตพร้อม QC ทุกขั้นตอน</span><span data-en>Into the line with QC at every stage</span></small></div></div>
+        <div class="step"><div class="n">04</div><div class="t"><span data-th>จัดส่ง</span><span data-en>Delivery</span><small><span data-th>แพ็คและจัดส่งทั้งในและต่างประเทศ</span><span data-en>Packed and shipped, locally or worldwide</span></small></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 CONTACT -->
+  <section class="sec center" id="contact" data-step="5">
+    <div class="box">
+      <div class="eyebrow">Get In Touch</div>
+      <h2><span data-th>พร้อมเริ่มออเดอร์ของคุณ</span><span data-en>Ready to Start Your Order</span></h2>
+      <p><span data-th>ติดต่อทีมงานเพื่อขอใบเสนอราคา หรือเริ่มออกแบบเสื้อของคุณได้เลย</span>
+        <span data-en>Reach out for a quote, or start designing your own kit right away.</span></p>
+      <div class="cinfo" style="max-width:420px;margin:14px auto 18px">
+        <div>📧 techkairos241@gmail.com</div>
+        <div>💬 LINE: @axiomsiam <span data-th>(แก้ไขได้)</span><span data-en>(edit)</span></div>
+        <div>📞 0XX-XXX-XXXX</div>
+      </div>
+      <div class="btnrow" style="justify-content:center">
+        <a class="btn solid" href="design-your-own.html"><span data-th>🎨 ออกแบบเสื้อเอง</span><span data-en>🎨 Design Your Own</span></a>
+        <a class="btn ghost" href="mailto:techkairos241@gmail.com"><span data-th>ส่งอีเมล</span><span data-en>Email Us</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="fgrid">
+    <div class="fbrand" style="max-width:280px">
+      <b>AXIOM SIAM</b>
+      <p style="margin-top:10px"><span data-th>โรงงานผลิตเสื้อผ้ากีฬาครบวงจร รับผลิต OEM/ODM คุณภาพส่งออก</span><span data-en>Full-service sportswear manufacturer. Export-quality OEM/ODM production.</span></p>
+    </div>
+    <div>
+      <h4><span data-th>เมนู</span><span data-en>Menu</span></h4>
+      <a href="#contact"><span data-th>เกี่ยวกับเรา</span><span data-en>About</span></a>
+      <a href="design-your-own.html"><span data-th>ออกแบบเสื้อ</span><span data-en>Design</span></a>
+      <a href="#contact"><span data-th>ติดต่อ</span><span data-en>Contact</span></a>
+    </div>
+    <div>
+      <h4><span data-th>ติดต่อ</span><span data-en>Contact</span></h4>
+      <a href="mailto:techkairos241@gmail.com">techkairos241@gmail.com</a>
+      <p>LINE: @axiomsiam</p>
+      <p>0XX-XXX-XXXX</p>
+    </div>
+  </div>
+  <div class="copyr">© 2026 Axiom Siam Co.,Ltd. · All rights reserved.</div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="logo-data.js"></script>
+<script>
+/* ===== scroll targets per section: jersey rotation/position ===== */
+const STEPS=[
+  {ry:0.0, rx:-0.05, px:0.0,  py:0.0,  s:1.0},   // hero center
+  {ry:-0.55,rx:0.05, px:2.3,  py:0.1,  s:0.95},  // about (shirt right, text left)
+  {ry:0.55, rx:0.05, px:-2.3, py:0.1,  s:0.95},  // capabilities (shirt left)
+  {ry:-0.4, rx:-0.1, px:2.2,  py:0.0,  s:0.95},  // portfolio
+  {ry:0.45, rx:0.08, px:-2.2, py:0.0,  s:0.95},  // process
+  {ry:0.0,  rx:-0.05,px:0.0,  py:0.0,  s:1.08}   // contact center
+];
+let isMobile=window.innerWidth<760;
+
+/* ===== THREE.JS jersey ===== */
+const sceneEl=document.getElementById('scene');
+const W=()=>innerWidth,H=()=>innerHeight;
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(W(),H());
+sceneEl.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x0a0e0d,0.07);
+const camera=new THREE.PerspectiveCamera(42,W()/H(),0.1,100);camera.position.set(0,0,9.2);
+scene.add(new THREE.AmbientLight(0x9fb4b0,0.55));
+const key=new THREE.DirectionalLight(0xffffff,1.25);key.position.set(4,6,8);scene.add(key);
+const fill=new THREE.DirectionalLight(0xbfd4d0,0.5);fill.position.set(-5,1,6);scene.add(fill);
+const rim=new THREE.PointLight(0x4DBFB0,1.8,40);rim.position.set(-6,2,4);scene.add(rim);
+const rim2=new THREE.PointLight(0x5fd9c8,1.1,40);rim2.position.set(6,-3,3);scene.add(rim2);
+
+function tankShape(){
+  const s=new THREE.Shape();
+  s.moveTo(-0.55,1.78);s.quadraticCurveTo(0,1.02,0.55,1.78);s.lineTo(0.92,1.82);
+  s.bezierCurveTo(0.74,1.25,0.92,0.55,1.12,0.18);s.lineTo(1.30,-2.05);
+  s.quadraticCurveTo(0,-2.38,-1.30,-2.05);s.lineTo(-1.12,0.18);
+  s.bezierCurveTo(-0.92,0.55,-0.74,1.25,-0.92,1.82);s.lineTo(-0.55,1.78);return s;
+}
+const geo=new THREE.ExtrudeGeometry(tankShape(),{depth:0.42,bevelEnabled:true,bevelThickness:0.16,bevelSize:0.16,bevelSegments:6,steps:1});
+geo.center();
+const pos=geo.attributes.position;
+for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i);pos.setZ(i,z+0.5*Math.cos(Math.min(Math.abs(x)/1.45,1)*Math.PI/2)-0.18);}
+geo.computeVertexNormals();geo.computeBoundingBox();
+const bb=geo.boundingBox,zf=bb.max.z+0.05;
+
+function meshTexture(){
+  const c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+  x.fillStyle='#bcc1c1';x.fillRect(0,0,256,256);
+  for(let r=0;r<16;r++)for(let col=0;col<16;col++){const ox=(r%2)*8;
+    x.fillStyle='#a3a9a9';x.beginPath();x.arc(col*16+ox+4,r*16+8,2.6,0,7);x.fill();
+    x.fillStyle='#8e9494';x.beginPath();x.arc(col*16+ox+4,r*16+8,1.3,0,7);x.fill();}
+  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(7,9);return t;
+}
+const fabric=meshTexture();
+const mat=new THREE.MeshStandardMaterial({color:0xb0b5b5,metalness:0.06,roughness:0.92,map:fabric,bumpMap:fabric,bumpScale:0.045,emissive:0x0c1413,emissiveIntensity:0.08});
+const jersey=new THREE.Group();
+jersey.add(new THREE.Mesh(geo,mat));
+const edges=new THREE.EdgesGeometry(geo,30);
+jersey.add(new THREE.LineSegments(edges,new THREE.LineBasicMaterial({color:0x4DBFB0,transparent:true,opacity:0.5})));
+const outline=new THREE.Mesh(geo.clone(),new THREE.MeshBasicMaterial({color:0x4DBFB0,side:THREE.BackSide}));
+outline.scale.set(1.045,1.04,1.0);jersey.add(outline);
+const logoTex=new THREE.TextureLoader().load(window.LOGO_SRC||'img/logo_shirt.png');
+logoTex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+const decal=new THREE.Mesh(new THREE.PlaneGeometry(2.1,2.1),new THREE.MeshBasicMaterial({map:logoTex,transparent:true}));
+decal.position.set(0,0.30,zf+0.02);jersey.add(decal);
+scene.add(jersey);
+
+/* particles */
+const pGeo=new THREE.BufferGeometry();const N=110,arr=new Float32Array(N*3);
+for(let i=0;i<N*3;i++)arr[i]=(Math.random()-0.5)*22;
+pGeo.setAttribute('position',new THREE.BufferAttribute(arr,3));
+const particles=new THREE.Points(pGeo,new THREE.PointsMaterial({color:0x4DBFB0,size:0.05,transparent:true,opacity:0.4}));
+scene.add(particles);
+
+/* ===== scroll mapping ===== */
+let cur={ry:0,rx:-0.05,px:0,py:0,s:1};
+function scrollTargets(){
+  const vh=innerHeight, y=scrollY, idx=y/vh;
+  const i0=Math.max(0,Math.min(STEPS.length-1,Math.floor(idx)));
+  const i1=Math.min(STEPS.length-1,i0+1);
+  const f=Math.max(0,Math.min(1,idx-i0));
+  const a=STEPS[i0],b=STEPS[i1];
+  const L=(k)=>a[k]+(b[k]-a[k])*f;
+  return {ry:L('ry'),rx:L('rx'),px:isMobile?0:L('px'),py:L('py'),s:L('s')};
+}
+function animate(){
+  requestAnimationFrame(animate);
+  const t=scrollTargets();
+  cur.ry+=(t.ry-cur.ry)*0.08;cur.rx+=(t.rx-cur.rx)*0.08;
+  cur.px+=(t.px-cur.px)*0.08;cur.py+=(t.py-cur.py)*0.08;cur.s+=(t.s-cur.s)*0.08;
+  jersey.rotation.y=cur.ry;jersey.rotation.x=cur.rx;
+  jersey.position.x=cur.px;jersey.position.y=cur.py+Math.sin(Date.now()*0.0007)*0.08;
+  jersey.scale.setScalar(cur.s);
+  particles.rotation.y+=0.0004;
+  renderer.render(scene,camera);
+}
+animate();
+addEventListener('resize',()=>{isMobile=innerWidth<760;camera.aspect=W()/H();camera.updateProjectionMatrix();renderer.setSize(W(),H());});
+
+/* ===== sections reveal + dots ===== */
+const secs=[...document.querySelectorAll('.sec')];
+const dotsWrap=document.getElementById('dots');
+secs.forEach((s,i)=>{const a=document.createElement('a');a.href='#';a.dataset.i=i;
+  a.onclick=e=>{e.preventDefault();scrollTo({top:i*innerHeight,behavior:'smooth'});};dotsWrap.appendChild(a);});
+const dots=[...dotsWrap.children];
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){e.target.classList.add('in');
+    const i=secs.indexOf(e.target);dots.forEach((d,k)=>d.classList.toggle('on',k===i));}
+}),{threshold:0.4});
+secs.forEach(s=>io.observe(s));
+
+/* ===== gallery ===== */
+const pal=['#1a1d1f','#1d4b45','#2a6b62','#111417','#3A9B8E','#15201d'];
+document.getElementById('gallery').innerHTML=pal.map((c,i)=>
+  `<div class="gcard" style="background:linear-gradient(150deg,${c},#0a0e0d)">
+   <svg viewBox="0 0 100 100"><path d="M38 20 Q50 30 62 20 L70 24 L66 40 L62 36 L62 80 L38 80 L38 36 L34 40 L30 24 Z" fill="${pal[(i+2)%6]}" stroke="#4DBFB0" stroke-width="2"/></svg></div>`).join('');
+
+/* ===== language ===== */
+function setLang(l){
+  document.body.classList.toggle('lang-en',l==='en');
+  document.body.classList.toggle('lang-th',l!=='en');
+  document.documentElement.lang=l;
+  document.getElementById('thBtn').classList.toggle('on',l!=='en');
+  document.getElementById('enBtn').classList.toggle('on',l==='en');
+}
+</script>
+</body>
+</html>

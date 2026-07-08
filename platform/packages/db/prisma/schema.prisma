@@ -1,0 +1,588 @@
+// Axiom Siam — Platform Database Schema
+// PostgreSQL + Prisma. Implements the DB design in Axiom-Siam-System-Design.docx
+// Convention: snake_case tables, UUID PK, created_at/updated_at, soft-delete where useful,
+// money stored as integer (smallest currency unit e.g. satang/cents).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+enum Role {
+  guest
+  customer
+  staff
+  production
+  admin
+}
+
+enum Locale {
+  th
+  en
+}
+
+enum TokenType {
+  email_verify
+  password_reset
+  refresh
+}
+
+enum DesignMode {
+  single
+  reversible
+}
+
+enum OrderStatus {
+  pending // created, awaiting payment
+  paid // deposit or full paid
+  approved // sample/artwork approved
+  in_production // printing / sewing / QC
+  shipped // dispatched with tracking
+  delivered // received by customer
+  completed // closed
+  cancelled
+  refunded
+}
+
+enum PaymentProvider {
+  stripe
+  omise
+  manual // bank transfer / offline
+}
+
+enum PaymentType {
+  deposit
+  full
+  balance
+  refund
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum Currency {
+  THB
+  USD
+}
+
+enum ShipmentStatus {
+  preparing
+  shipped
+  in_transit
+  delivered
+  returned
+}
+
+enum NotificationChannel {
+  email
+  line
+  in_app
+}
+
+// ---------- Auth / Users ----------
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   @map("password_hash") // null for OAuth-only
+  fullName      String?   @map("full_name")
+  phone         String?
+  companyName   String?   @map("company_name")
+  role          Role      @default(customer)
+  isVerified    Boolean   @default(false) @map("is_verified")
+  locale        Locale    @default(th)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  addresses         Address[]
+  designs           Design[]
+  carts             Cart[]
+  orders            Order[]
+  authTokens        AuthToken[]
+  quoteRequests     QuoteRequest[]
+  notifications     Notification[]
+  marketTemplates   MarketTemplate[]
+  templatePurchases TemplatePurchase[]
+  termsAcceptances  TermsAcceptance[]
+
+  @@index([role])
+  @@map("users")
+}
+
+// audit log — proof a user accepted the terms (e.g. when publishing a template)
+model TermsAcceptance {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  kind       String // "seller_publish"
+  version    String // terms version agreed to
+  ref        String? // related id e.g. template id
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([kind])
+  @@map("terms_acceptances")
+}
+
+model AuthToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      TokenType
+  token     String    @unique // hashed
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("auth_tokens")
+}
+
+model Address {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  label      String? // Home / Office
+  recipient  String
+  phone      String
+  line1      String
+  line2      String?
+  district   String?
+  province   String?
+  postalCode String   @map("postal_code")
+  country    String   @default("TH")
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shipOrders Order[] @relation("ShipAddress")
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ---------- Catalog ----------
+model Product {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  nameEn      String?  @map("name_en")
+  description String?
+  basePrice   Int      @map("base_price") // satang, tier pricing handled in app
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  designs Design[]
+
+  @@map("products")
+}
+
+model Fabric {
+  id        String   @id @default(uuid())
+  code      String   @unique // Mesh / B1 / C1
+  name      String
+  priceAdj  Int      @default(0) @map("price_adj") // per-piece adjustment (satang)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  designs Design[]
+
+  @@map("fabrics")
+}
+
+model Size {
+  id       String  @id @default(uuid())
+  code     String  @unique // S / M / L / XL
+  label    String
+  widthCm  Float?  @map("width_cm")
+  heightCm Float?  @map("height_cm")
+  sortOrder Int    @default(0) @map("sort_order")
+
+  @@map("sizes")
+}
+
+model Color {
+  id        String  @id @default(uuid())
+  hex       String  @unique // #RRGGBB
+  cmyk      String // "C.. M.. Y.. K.."
+  name      String?
+  colorGroup String? @map("color_group")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  @@map("colors")
+}
+
+// ---------- Designs ----------
+model Design {
+  id         String     @id @default(uuid())
+  userId     String?    @map("user_id") // null = guest/temp design
+  name       String     @default("Untitled")
+  productId  String?    @map("product_id")
+  fabricId   String?    @map("fabric_id")
+  mode       DesignMode @default(reversible)
+  stateJson  Json       @map("state_json") // full designer state
+  previewUrl String?    @map("preview_url")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  deletedAt  DateTime?  @map("deleted_at")
+
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product   Product?      @relation(fields: [productId], references: [id])
+  fabric    Fabric?       @relation(fields: [fabricId], references: [id])
+  assets    DesignAsset[]
+  cartItems CartItem[]
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@map("designs")
+}
+
+model DesignAsset {
+  id        String   @id @default(uuid())
+  designId  String   @map("design_id")
+  kind      String // svg / png / zip
+  url       String
+  view      String? // outF / outB / inF / inB
+  createdAt DateTime @default(now()) @map("created_at")
+
+  design Design @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  @@index([designId])
+  @@map("design_assets")
+}
+
+// ---------- Marketplace (designers sell design templates) ----------
+enum TemplateStatus {
+  draft
+  published
+  unlisted
+}
+
+model MarketTemplate {
+  id          String         @id @default(uuid())
+  designerId  String         @map("designer_id") // seller (User)
+  name        String
+  description String?
+  category    String? // sport / type e.g. football, basketball, running
+  tags        String[]       @default([])
+  price       Int            @default(0) // THB (whole baht)
+  previewUrl  String?        @map("preview_url")
+  stateJson   Json           @map("state_json") // full designer state to load into the editor
+  status      TemplateStatus @default(draft)
+  salesCount  Int            @default(0) @map("sales_count")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+
+  designer  User               @relation(fields: [designerId], references: [id], onDelete: Cascade)
+  purchases TemplatePurchase[]
+
+  @@index([status])
+  @@index([designerId])
+  @@index([category])
+  @@map("market_templates")
+}
+
+model TemplatePurchase {
+  id              String   @id @default(uuid())
+  templateId      String   @map("template_id")
+  buyerId         String   @map("buyer_id")
+  price           Int // paid amount (baht), frozen at sale
+  platformFee     Int      @map("platform_fee") // platform commission, frozen
+  designerEarning Int      @map("designer_earning") // seller earning, frozen
+  commissionPct   Int      @map("commission_pct") // % used at sale time
+  status          String   @default("paid") // paid / refunded (MVP: paid)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  template MarketTemplate @relation(fields: [templateId], references: [id])
+  buyer    User           @relation(fields: [buyerId], references: [id])
+
+  @@unique([templateId, buyerId]) // a user owns a given template once
+  @@index([buyerId])
+  @@index([templateId])
+  @@map("template_purchases")
+}
+
+// ---------- Cart ----------
+model Cart {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@index([userId])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String   @map("cart_id")
+  designId  String   @map("design_id")
+  size      String
+  qty       Int      @default(1)
+  unitPrice Int      @map("unit_price")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  design Design @relation(fields: [designId], references: [id])
+
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+// ---------- Orders ----------
+model Order {
+  id                String      @id @default(uuid())
+  orderNo           String      @unique @map("order_no")
+  userId            String      @map("user_id")
+  status            OrderStatus @default(pending)
+  currency          Currency    @default(THB)
+  subtotal          Int         @default(0)
+  discount          Int         @default(0)
+  shippingFee       Int         @default(0) @map("shipping_fee")
+  total             Int         @default(0)
+  depositAmount     Int         @default(0) @map("deposit_amount")
+  fabricSummary     String?     @map("fabric_summary")
+  note              String?
+  shippingAddressId String?     @map("shipping_address_id")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  user            User                 @relation(fields: [userId], references: [id])
+  shippingAddress Address?             @relation("ShipAddress", fields: [shippingAddressId], references: [id])
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  payments        Payment[]
+  invoices        Invoice[]
+  refunds         Refund[]
+  shipments       Shipment[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String   @id @default(uuid())
+  orderId        String   @map("order_id")
+  designId       String?  @map("design_id")
+  designSnapshot Json     @map("design_snapshot") // frozen design at order time
+  size           String
+  qty            Int
+  unitPrice      Int      @map("unit_price")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  order  Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  design Design?       @relation(fields: [designId], references: [id])
+  roster OrderRoster[]
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderRoster {
+  id          String   @id @default(uuid())
+  orderItemId String   @map("order_item_id")
+  number      String?
+  playerName  String?  @map("player_name")
+  size        String?
+  qty         Int      @default(1)
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("order_roster")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String      @map("order_id")
+  status    OrderStatus
+  note      String?
+  changedBy String?     @map("changed_by")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
+// ---------- Payments ----------
+model Payment {
+  id          String          @id @default(uuid())
+  orderId     String          @map("order_id")
+  provider    PaymentProvider
+  providerRef String?         @map("provider_ref") // charge/intent id
+  amount      Int
+  currency    Currency        @default(THB)
+  type        PaymentType     @default(full)
+  status      PaymentStatus   @default(pending)
+  rawPayload  Json?           @map("raw_payload")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([providerRef])
+  @@map("payments")
+}
+
+model Invoice {
+  id         String   @id @default(uuid())
+  orderId    String   @map("order_id")
+  invoiceNo  String   @unique @map("invoice_no")
+  amount     Int
+  currency   Currency @default(THB)
+  taxId      String?  @map("tax_id")
+  pdfUrl     String?  @map("pdf_url")
+  issuedAt   DateTime @default(now()) @map("issued_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+model Refund {
+  id          String   @id @default(uuid())
+  orderId     String   @map("order_id")
+  amount      Int
+  reason      String?
+  providerRef String?  @map("provider_ref")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("refunds")
+}
+
+// ---------- Shipping ----------
+model Shipment {
+  id          String         @id @default(uuid())
+  orderId     String         @map("order_id")
+  courier     String? // Kerry / Flash / ThaiPost / DHL
+  trackingNo  String?        @map("tracking_no")
+  status      ShipmentStatus @default(preparing)
+  shippedAt   DateTime?      @map("shipped_at")
+  deliveredAt DateTime?      @map("delivered_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("shipments")
+}
+
+// ---------- Leads / CMS ----------
+model QuoteRequest {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  name      String
+  email     String?
+  phone     String?
+  message   String?
+  designId  String?  @map("design_id")
+  status    String   @default("new") // new / contacted / closed
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("quote_requests")
+}
+
+model ContentPage {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  title       String
+  titleEn     String?  @map("title_en")
+  bodyJson    Json     @map("body_json")
+  isPublished Boolean  @default(true) @map("is_published")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("content_pages")
+}
+
+model PortfolioItem {
+  id        String   @id @default(uuid())
+  title     String
+  category  String?
+  imageUrl  String   @map("image_url")
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("portfolio_items")
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  url       String
+  mime      String?
+  bytes     Int?
+  ownerId   String?  @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("media")
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String              @map("user_id")
+  channel   NotificationChannel @default(in_app)
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean             @default(false) @map("is_read")
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model Coupon {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  discountType String    @map("discount_type") // percent / amount
+  value        Int
+  maxUses      Int?      @map("max_uses")
+  usedCount    Int       @default(0) @map("used_count")
+  expiresAt    DateTime? @map("expires_at")
+  isActive     Boolean   @default(true) @map("is_active")
+
+  @@map("coupons")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?  @map("actor_id")
+  action    String
+  entity    String?
+  entityId  String?  @map("entity_id")
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}

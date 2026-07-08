@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Validate Prisma schema
+        run: npx prisma validate --schema packages/db/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://u:p@localhost:5432/db
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Typecheck API
+        run: npm run typecheck --workspace apps/api
+
+      - name: Build web
+        run: npm run build --workspace apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000

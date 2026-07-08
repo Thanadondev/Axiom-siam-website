@@ -1,0 +1,149 @@
+"use client";
+
+import { Suspense, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "../../lib/auth-context";
+import { apiFetch } from "../../lib/api";
+
+function DesignerBridge() {
+  const { user, token } = useAuth();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const sp = useSearchParams();
+  const designId = sp.get("design");
+  const templateId = sp.get("template");
+
+  useEffect(() => {
+    function reply(msg: any) {
+      iframeRef.current?.contentWindow?.postMessage(msg, "*");
+    }
+
+    async function onMessage(ev: MessageEvent) {
+      const m = ev.data || {};
+      if (m.type === "axiom-ready") {
+        reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
+        if (designId && token) {
+          try {
+            const d = await apiFetch<{ stateJson: any }>(`/designs/${designId}`, { token });
+            reply({ type: "axiom-open", doc: d.stateJson });
+          } catch {
+            /* ignore */
+          }
+        } else if (templateId && token) {
+          try {
+            const d = await apiFetch<{ stateJson: any }>(`/templates/${templateId}/state`, { token });
+            reply({ type: "axiom-open", doc: d.stateJson });
+          } catch {
+            /* ignore — not owned or not found */
+          }
+        }
+      }
+      if (m.type === "axiom-save") {
+        if (!token) { reply({ type: "axiom-save-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }
+        try {
+          const p = m.payload || {};
+          const res = await apiFetch<{ id: string }>("/designs", {
+            method: "POST",
+            token,
+            body: JSON.stringify({
+              name: p.name || "ดีไซน์ใหม่",
+              mode: p.style === 2 ? "reversible" : "single",
+              stateJson: p.doc,
+              previewUrl: p.preview,
+            }),
+          });
+          reply({ type: "axiom-save-result", ok: true, id: res.id });
+        } catch (e: any) {
+          reply({ type: "axiom-save-result", ok: false, error: e.message });
+        }
+      }
+      if (m.type === "axiom-save-order") {
+        if (!token) { reply({ type: "axiom-save-order-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }
+        try {
+          const p = m.payload || {};
+          const nm = `${p.name || "ออเดอร์ทีม"} (${p.count || 0} ตัว)`;
+          const res = await apiFetch<{ id: string }>("/designs", {
+            method: "POST",
+            token,
+            body: JSON.stringify({
+              name: nm,
+              mode: p.style === 2 ? "reversible" : "single",
+              stateJson: p.doc,
+              previewUrl: p.preview,
+            }),
+          });
+          reply({ type: "axiom-save-order-result", ok: true, id: res.id });
+        } catch (e: any) {
+          reply({ type: "axiom-save-order-result", ok: false, error: e.message });
+        }
+      }
+      if (m.type === "axiom-publish") {
+        if (!token) { reply({ type: "axiom-publish-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนขายในตลาด" }); return; }
+        try {
+          const p = m.payload || {};
+          const res = await apiFetch<{ id: string }>("/templates", {
+            method: "POST",
+            token,
+            body: JSON.stringify({
+              name: p.name,
+              price: p.price ?? 0,
+              category: p.category || undefined,
+              description: p.description || undefined,
+              previewUrl: p.preview,
+              stateJson: p.doc,
+              status: "published",
+              agreedTerms: true,
+            }),
+          });
+          reply({ type: "axiom-publish-result", ok: true, id: res.id });
+        } catch (e: any) {
+          reply({ type: "axiom-publish-result", ok: false, error: e.message });
+        }
+      }
+      if (m.type === "axiom-quote") {
+        try {
+          const p = m.payload || {};
+          await apiFetch("/quotes", {
+            method: "POST",
+            token: token || undefined,
+            body: JSON.stringify({ name: p.name, email: p.email, phone: p.phone, message: p.message }),
+          });
+          reply({ type: "axiom-quote-result", ok: true });
+        } catch (e: any) {
+          reply({ type: "axiom-quote-result", ok: false, error: e.message });
+        }
+      }
+    }
+
+    window.addEventListener("message", onMessage);
+    // proactively (re)send auth whenever it changes, in case the iframe loaded first
+    reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
+    return () => window.removeEventListener("message", onMessage);
+  }, [user, token, designId, templateId]);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#eef1f7" }}>
+      <iframe
+        ref={iframeRef}
+        src="/designer/index.html"
+        title="Axiom Siam Designer"
+        style={{ border: 0, width: "100%", height: "100%", display: "block" }}
+      />
+      <Link
+        href="/"
+        title="กลับหน้าหลัก"
+        style={{ position: "fixed", left: 16, bottom: 16, zIndex: 50, display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,.9)", color: "#2563eb", textDecoration: "none", fontSize: 12.5, fontWeight: 700, padding: "9px 16px 9px 12px", borderRadius: 30, border: "1px solid rgba(37,99,235,.22)", boxShadow: "0 6px 22px rgba(15,23,42,.14)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+      >
+        <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>←</span> Axiom Siam
+      </Link>
+    </div>
+  );
+}
+
+export default function DesignPage() {
+  return (
+    <Suspense fallback={<div style={{ position: "fixed", inset: 0, background: "#eef1f7" }} />}>
+      <DesignerBridge />
+    </Suspense>
+  );
+}

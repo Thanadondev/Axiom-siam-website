@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Axiom Siam — Vector Designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Oswald:wght@400;600;700&family=Teko:wght@500;700&family=Montserrat:wght@600;800&family=Kanit:wght@400;600;700&family=Prompt:wght@400;600;700&family=Sarabun:wght@400;700&family=Pridi:wght@600;700&family=Chakra+Petch:wght@600;700&family=Sora:wght@400;600;700;800&family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* light theme — matches landing (Theme 1: white + blue #2563eb) */
+    --bg:#eef1f7; --panel:#ffffff; --panel2:#f2f5fa; --line:#e5e9f0; --line2:#d6deea;
+    --txt:#1f2937; --muted:#6b7280; --accent:#2563eb; --accent2:#3b82f6; --danger:#ef4444;
+    --tool:#eef2f8; --toolon:#2563eb; --radius:8px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--txt);font-family:"Sora","Noto Sans Thai",sans-serif;
+    font-size:13px;overflow:hidden;user-select:none;-webkit-user-select:none}
+  button{font-family:inherit;color:inherit;cursor:pointer}
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* top bar */
+  .topbar{height:46px;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
+  .topbar .brand{display:flex;align-items:center;gap:9px;margin-right:4px;padding:4px 11px 4px 5px;border-radius:10px;text-decoration:none;color:inherit;transition:.15s}
+  .topbar .brand:hover{background:var(--tool)}
+  .topbar .brand img{height:27px;display:block}
+  .topbar .brandtxt{display:flex;flex-direction:column;line-height:1.02}
+  .topbar .brandtxt b{font-weight:800;font-size:13px;letter-spacing:.2px}
+  .topbar .brandtxt i{font-style:normal;font-size:9.5px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:1px}
+  .tb{background:var(--tool);border:1px solid var(--line2);border-radius:7px;padding:7px 11px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:.15s}
+  .tb:hover{background:#e3eaf5}
+  .tb.solid{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tb.solid:hover{background:var(--accent2)}
+  .tb.icon{padding:7px 9px}
+  .sep{width:1px;height:24px;background:var(--line2);margin:0 4px}
+  .spacer{flex:1}
+  .viewtoggle{display:flex;align-items:center;gap:6px}
+  .vgl{font-size:11px;color:var(--muted);font-weight:700;margin-left:2px}
+  .vseg{display:flex;background:var(--tool);border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+  .vseg button{background:transparent;border:0;padding:7px 12px;font-size:12.5px;font-weight:700;color:var(--muted);cursor:pointer}
+  .vseg button.on{background:var(--accent);color:#fff}
+  .zoomctl{display:flex;align-items:center;gap:4px;background:var(--tool);border:1px solid var(--line2);border-radius:7px;padding:2px}
+  .zoomctl button{background:transparent;border:0;padding:5px 9px;font-size:14px;border-radius:5px}
+  .zoomctl button:hover{background:#e3eaf5}
+  .zoomctl span{min-width:44px;text-align:center;font-size:12px;color:var(--muted)}
+
+  /* main body */
+  .body{flex:1;display:flex;min-height:0}
+
+  /* left tool rail */
+  .rail{width:50px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;flex-shrink:0}
+  .tool{width:36px;height:36px;border:0;background:transparent;border-radius:8px;color:var(--txt);font-size:16px;display:flex;align-items:center;justify-content:center;position:relative}
+  .tool:hover{background:var(--tool)}
+  .tool.on{background:var(--accent);color:#fff}
+  .tool small{position:absolute;right:2px;bottom:0;font-size:8px;color:var(--muted)}
+  .tool.on small{color:#cfe0ff}
+  .railsep{width:26px;height:1px;background:var(--line2);margin:4px 0}
+
+  /* canvas center */
+  .stage{flex:1;position:relative;overflow:hidden;background:
+    repeating-conic-gradient(#e9edf3 0% 25%, #f4f6fb 0% 50%) 50%/22px 22px}
+  #c{position:absolute;top:0;left:0}
+  .hint{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;background:rgba(255,255,255,.92);border:1px solid var(--line2);border-radius:20px;padding:6px 14px;font-size:11.5px;color:var(--muted);pointer-events:none;max-width:60%;box-shadow:0 2px 8px rgba(15,23,42,.08)}
+
+  /* right panels */
+  .right{width:270px;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+  .panel{border-bottom:1px solid var(--line)}
+  .phead{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:11px 13px 7px}
+  .pbody{padding:0 13px 13px}
+  .row{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .row label{font-size:11.5px;color:var(--muted);min-width:52px}
+  .fillbox{display:flex;gap:8px}
+  .swbtn{flex:1;height:34px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);display:flex;align-items:center;gap:7px;padding:0 9px;font-size:11.5px;color:var(--muted)}
+  .swbtn .chip{width:18px;height:18px;border-radius:4px;border:1px solid var(--line2);background:#fff}
+  .swbtn.on{border-color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number],input[type=text]{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:6px 8px;color:var(--txt);font-size:12px;font-family:inherit;width:100%}
+  .num{display:flex;align-items:center;gap:6px}
+  .num span{font-size:11px;color:var(--muted);min-width:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap}
+  .mini{background:var(--tool);border:1px solid var(--line2);border-radius:6px;padding:7px;font-size:13px;flex:1;display:flex;align-items:center;justify-content:center;min-width:34px}
+  .mini:hover{background:#e3eaf5}
+  .mini.danger:hover{background:var(--danger);border-color:var(--danger)}
+
+  /* swatches */
+  .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;max-height:150px;overflow-y:auto;padding-right:2px}
+  .sw{aspect-ratio:1;border-radius:3px;border:1px solid rgba(15,23,42,.12);cursor:pointer}
+  .sw:hover{outline:2px solid var(--accent);outline-offset:-1px}
+  .sw.none{background:linear-gradient(45deg,transparent 45%,var(--danger) 46% 54%,transparent 55%),var(--panel2)}
+  .swtarget{display:flex;gap:6px;margin-bottom:8px}
+  .swtarget button{flex:1;background:var(--tool);border:1px solid var(--line2);border-radius:6px;padding:6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+  .swtarget button.on{border-color:var(--accent);color:var(--txt)}
+  .swcode{font-size:10.5px;color:var(--accent2);margin-top:6px;min-height:13px}
+
+  /* layers */
+  .layers{display:flex;flex-direction:column;gap:2px;max-height:230px;overflow-y:auto}
+  .layer{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:var(--panel2);font-size:12px}
+  .layer.sel{outline:1px solid var(--accent);background:#dbe6fb}
+  .layer .lname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .layer .lbtn{background:transparent;border:0;color:var(--muted);font-size:13px;padding:2px;line-height:1}
+  .layer .lbtn:hover{color:var(--txt)}
+  .empty{color:var(--muted);font-size:11.5px;padding:8px 0;text-align:center}
+
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal.on{display:flex}
+  .mcard{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:22px;width:min(420px,92vw)}
+  .mcard h3{font-size:16px;margin-bottom:6px}
+  .mcard p{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  .mrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  input[type=file]{display:none}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;border:1px solid #1f2937;border-radius:8px;padding:10px 18px;font-size:13px;z-index:200;opacity:0;transition:.25s;pointer-events:none;box-shadow:0 6px 20px rgba(15,23,42,.25)}
+  .toast.on{opacity:1}
+  .tbsel{background:var(--tool);border:1px solid var(--line2);border-radius:7px;padding:7px 9px;color:var(--txt);font-size:12px;font-family:inherit;cursor:pointer;font-weight:600}
+  .tbsel:hover{background:#e3eaf5}
+  .patgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px}
+  .patthumb{width:100%;aspect-ratio:5/6;border-radius:6px;border:1px solid var(--line2);cursor:pointer;display:block}
+  .patthumb:hover{outline:2px solid var(--accent);outline-offset:-1px}
+  .irow{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+  .irow span{color:var(--muted)}
+  .irow b{color:var(--txt);font-weight:600;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <a class="brand" href="/" title="กลับหน้าหลัก"><img src="/logo-mark-blue.png" alt="Axiom" /><span class="brandtxt"><b>Axiom Siam</b><i>Designer</i></span></a>
+    <span class="sep"></span>
+    <button class="tb icon" id="btnNew" title="ใหม่">📄</button>
+    <button class="tb icon" id="btnOpen" title="เปิดไฟล์ (.axiom)">📂</button>
+    <button class="tb icon" id="btnSave" title="เซฟไฟล์">💾</button>
+    <select class="tbsel" id="importTarget" title="เลือกด้านที่จะนำลายเข้า">
+      <option value="front">ลายเข้า: ตัวหน้า</option>
+      <option value="back">ลายเข้า: ตัวหลัง</option>
+    </select>
+    <button class="tb" id="btnImport" title="นำลาย/รูป/โลโก้เข้าเสื้อด้านที่เลือก — clip ในทรง ไม่ล้นออกนอก">🖼 นำลายเข้า</button>
+    <span class="sep"></span>
+    <button class="tb icon" id="btnUndo" title="ย้อนกลับ (Ctrl+Z)">↶</button>
+    <button class="tb icon" id="btnRedo" title="ทำซ้ำ (Ctrl+Y)">↷</button>
+    <span class="spacer"></span>
+    <div class="viewtoggle" id="viewToggle">
+      <button data-side="front" class="on">หน้า</button>
+      <button data-side="back">หลัง</button>
+    </div>
+    <span class="sep"></span>
+    <select class="tbsel" id="styleSel" title="เลือกแบบเสื้อ">
+      <option value="1">แบบ 1 · ธรรมดา (หน้า·หลัง)</option>
+      <option value="2">แบบ 2 · สองด้าน (หน้า·หลัง·นอก·ใน)</option>
+    </select>
+    <select class="tbsel" id="sizeSel" title="เลือกไซซ์">
+      <option>S</option><option selected>M</option><option>L</option><option>XL</option>
+    </select>
+    <select class="tbsel" id="fabricSel" title="ชนิดผ้า">
+      <option value="mesh">ผ้า mesh</option>
+      <option value="B1">ผ้า B1</option>
+      <option value="C1">ผ้า C1</option>
+    </select>
+    <select class="tbsel" id="trimSel" title="ขลิบ — ไม่มีขลิบ export แนวนอน · มีขลิบ export แนวตั้ง">
+      <option value="none">ไม่มีขลิบ</option>
+      <option value="neck">ขลิบคอ</option>
+      <option value="neckarm">ขลิบคอ+แขน</option>
+      <option value="full" selected>ขลิบคอ+แขน+ชาย</option>
+    </select>
+    <span id="dimLbl" style="font-size:11px;color:var(--muted);min-width:70px"></span>
+    <span class="sep"></span>
+    <div class="zoomctl">
+      <button id="zoomOut">−</button><span id="zoomLbl">100%</span><button id="zoomIn">＋</button>
+      <button id="zoomFit" title="พอดีจอ">⤢</button>
+    </div>
+    <span class="sep"></span>
+    <button class="tb" id="btnClip" title="ตัดเลข/โลโก้ให้อยู่ในทรงเสื้อ">✂ ตัดในทรง</button>
+    <button class="tb" id="btnPng">PNG</button>
+    <button class="tb" id="btnSvg">SVG</button>
+    <button class="tb" id="btnPublish" title="เผยแพร่ดีไซน์นี้ขายในตลาดลาย">🛍️ ขายในตลาด</button>
+    <button class="tb solid" id="btnQuote">ขอราคา</button>
+  </div>
+
+  <div class="body">
+    <div class="rail" id="rail">
+      <button class="tool on" data-tool="select" title="เลือก (V)">▲<small>V</small></button>
+      <button class="tool" data-tool="node" title="แก้ไข node (A)">◇<small>A</small></button>
+      <div class="railsep"></div>
+      <button class="tool" data-tool="pen" title="ปากกา Bézier (P)">✎<small>P</small></button>
+      <button class="tool" data-tool="rect" title="สี่เหลี่ยม (M)">▭<small>M</small></button>
+      <button class="tool" data-tool="ellipse" title="วงกลม (L)">◯<small>L</small></button>
+      <button class="tool" data-tool="poly" title="หลายเหลี่ยม (Y)">⬠<small>Y</small></button>
+      <button class="tool" data-tool="line" title="เส้น (\\)">╱<small>\\</small></button>
+      <button class="tool" data-tool="text" title="ข้อความ (T)">T<small>T</small></button>
+      <div class="railsep"></div>
+      <button class="tool" data-tool="image" title="นำเข้ารูป/SVG">🖼<small></small></button>
+      <button class="tool" data-tool="hand" title="เลื่อนมือ (H / Space)">✋<small>H</small></button>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="c"></canvas>
+      <div class="hint" id="hint"></div>
+    </div>
+
+    <div class="right" id="right"></div>
+  </div>
+</div>
+
+<div class="modal" id="quoteModal">
+  <div class="mcard">
+    <h3>ขอใบเสนอราคา</h3>
+    <p>กรอกข้อมูลเพื่อให้ทีมงานติดต่อกลับพร้อมใบเสนอราคา</p>
+    <div class="row"><input type="text" id="qName" placeholder="ชื่อ / ทีม" /></div>
+    <div class="grid2"><input type="text" id="qPhone" placeholder="เบอร์โทร" /><input type="text" id="qEmail" placeholder="อีเมล" /></div>
+    <div class="row" style="margin-top:8px"><input type="text" id="qNote" placeholder="จำนวน / หมายเหตุ" /></div>
+    <div class="mrow">
+      <button class="tb" data-close>ยกเลิก</button>
+      <button class="tb solid" id="qSend">ส่งคำขอ</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="pubModal">
+  <div class="mcard">
+    <h3>🛍️ ขายเทมเพลตในตลาดลาย</h3>
+    <p>เผยแพร่ดีไซน์นี้ให้คนอื่นซื้อไปใช้/สั่งผลิต — คุณได้ส่วนแบ่งเมื่อมีคนซื้อ</p>
+    <div class="row"><input type="text" id="pubName" placeholder="ชื่อเทมเพลต เช่น เสื้อบาสคาโม่แดง" /></div>
+    <div class="grid2"><input type="number" id="pubPrice" placeholder="ราคา (บาท) — 0 = ฟรี" min="0" /><input type="text" id="pubCat" placeholder="หมวด/กีฬา เช่น ฟุตบอล" /></div>
+    <div class="row" style="margin-top:8px"><input type="text" id="pubDesc" placeholder="คำอธิบายสั้นๆ (ไม่บังคับ)" /></div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:10px 12px;margin-top:12px">
+      ⚠️ <b style="color:var(--txt)">ข้อตกลงการเผยแพร่ &amp; ลิขสิทธิ์</b><br>
+      เทมเพลตต้องเป็น<b>ผลงานที่คุณออกแบบเอง</b> หรือมีสิทธิ์ใช้งานถูกต้องตามกฎหมายเท่านั้น — <b style="color:var(--danger)">ห้าม</b>นำรูปภาพ ลวดลาย โลโก้ ตราสัญลักษณ์ ตัวการ์ตูน หรือผลงานที่มีลิขสิทธิ์/เครื่องหมายการค้าของผู้อื่นมาขายโดยไม่ได้รับอนุญาต<br><br>
+      หากตรวจพบการละเมิดลิขสิทธิ์ (แม้จะมีการซื้อขายไปแล้ว) <b>ทางเว็บไซต์ไม่มีส่วนรับผิดชอบ</b>ต่อความเสียหาย ค่าปรับ หรือคดีความใดๆ ทั้งสิ้น ความรับผิดชอบทั้งหมดเป็นของผู้เผยแพร่แต่เพียงผู้เดียว และทางเว็บไซต์ขอสงวนสิทธิ์<b>ถอดเทมเพลตออก ระงับบัญชี และยึด/อายัดรายได้ทั้งหมด</b>ที่เกิดจากการขายที่ผิดกฎหมาย โดยไม่ต้องแจ้งล่วงหน้า
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--txt);margin-top:10px;cursor:pointer"><input type="checkbox" id="pubAgree" style="margin-top:2px"> ฉันยืนยันว่าเป็นผลงานของฉันเอง/มีสิทธิ์ใช้ถูกต้องตามกฎหมาย และยอมรับข้อตกลงข้างต้น (<a href="/terms" target="_blank" style="color:#2563eb">อ่านเงื่อนไขเต็ม</a>)</label>
+    <div id="pubMsg" style="font-size:11.5px;color:var(--muted);margin-top:8px"></div>
+    <div class="mrow">
+      <button class="tb" data-pubclose>ยกเลิก</button>
+      <button class="tb solid" id="pubSend">เผยแพร่ขาย</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="wizModal">
+  <div class="mcard" style="width:min(580px,95vw);max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0">🧾 สร้างออเดอร์ทีม</h3>
+      <button class="tb" data-wizclose style="padding:5px 10px">✕</button>
+    </div>
+    <div id="wizSteps" style="display:flex;gap:5px;margin-bottom:16px"></div>
+    <div id="wizBody"></div>
+    <div class="mrow" style="justify-content:space-between;margin-top:18px">
+      <button class="tb" id="wizBack">← ย้อนกลับ</button>
+      <button class="tb solid" id="wizNext">ถัดไป →</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileImg" accept="image/*,.svg" />
+<input type="file" id="filePat" accept="image/*" />
+<input type="file" id="fileOpen" accept=".axiom,.json" />
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="palette.js"></script>
+<script src="sizes.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>
