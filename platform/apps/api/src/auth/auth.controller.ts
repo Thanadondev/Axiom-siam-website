@@ -11,6 +11,10 @@ import {
   UpdateProfileSchema,
   AddressSchema,
   AddressUpdateSchema,
+  TotpCodeSchema,
+  TotpDisableSchema,
+  type TotpCodeDto,
+  type TotpDisableDto,
   type RegisterDto,
   type LoginDto,
   type VerifyEmailDto,
@@ -21,6 +25,7 @@ import {
   type AddressUpdateDto,
 } from "./auth.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { RateLimitGuard, RateLimit } from "../common/rate-limit.guard";
 import { Public, CurrentUser, type AuthUser } from "./decorators";
 
 const REFRESH_COOKIE = "axiom_rt";
@@ -32,11 +37,13 @@ const cookieOpts = {
   maxAge: 30 * 86400 * 1000,
 };
 
+@UseGuards(RateLimitGuard) // only bites on routes carrying @RateLimit
 @Controller("auth")
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @RateLimit({ limit: 5, windowMs: 60 * 60_000 }) // 5 signups / hour / IP
   @Post("register")
   register(@Body(new ZodValidationPipe(RegisterSchema)) dto: RegisterDto) {
     return this.auth.register(dto);
@@ -49,6 +56,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 10, windowMs: 5 * 60_000 }) // slows credential stuffing
   @Post("login")
   async login(
     @Body(new ZodValidationPipe(LoginSchema)) dto: LoginDto,
@@ -76,13 +84,42 @@ export class AuthController {
     return result;
   }
 
+  // ---------- two-factor auth ----------
+  @UseGuards(JwtAuthGuard)
+  @Get("2fa")
+  totpStatus(@CurrentUser() user: AuthUser) {
+    return this.auth.totpStatus(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("2fa/setup")
+  totpSetup(@CurrentUser() user: AuthUser) {
+    return this.auth.totpSetup(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ limit: 10, windowMs: 10 * 60_000 }) // stops brute-forcing the 6-digit code
+  @Post("2fa/enable")
+  totpEnable(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(TotpCodeSchema)) dto: TotpCodeDto) {
+    return this.auth.totpEnable(user.id, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ limit: 10, windowMs: 10 * 60_000 })
+  @Post("2fa/disable")
+  totpDisable(@CurrentUser() user: AuthUser, @Body(new ZodValidationPipe(TotpDisableSchema)) dto: TotpDisableDto) {
+    return this.auth.totpDisable(user.id, dto.password, dto.code);
+  }
+
   @Public()
+  @RateLimit({ limit: 5, windowMs: 15 * 60_000 }) // stops reset-email bombing
   @Post("request-reset")
   requestReset(@Body(new ZodValidationPipe(RequestResetSchema)) dto: RequestResetDto) {
     return this.auth.requestReset(dto.email);
   }
 
   @Public()
+  @RateLimit({ limit: 10, windowMs: 15 * 60_000 })
   @Post("reset-password")
   resetPassword(@Body(new ZodValidationPipe(ResetPasswordSchema)) dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.token, dto.password);

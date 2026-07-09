@@ -10,7 +10,9 @@ loadEnv({ path: resolve(process.cwd(), ".env") }); // when run from repo root
 loadEnv({ path: resolve(__dirname, "../../../.env") }); // when run from apps/api (dist)
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: Stripe signs the exact bytes it sent. Re-serialising the JSON
+  // breaks signature verification, so the webhook route reads `req.rawBody`.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.setGlobalPrefix("api/v1");
   app.use(cookieParser());
   app.enableCors({

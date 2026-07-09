@@ -2,12 +2,15 @@
 
 import { Suspense, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
+import UserMenu from "../../components/UserMenu";
+import "../app.css"; // user-menu styles
 
 function DesignerBridge() {
   const { user, token } = useAuth();
+  const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const sp = useSearchParams();
   const designId = sp.get("design");
@@ -73,6 +76,22 @@ function DesignerBridge() {
             }),
           });
           reply({ type: "axiom-save-order-result", ok: true, id: res.id });
+
+          // "สั่งผลิตเลย": hand the roster + spec to the checkout page.
+          // sessionStorage rather than the URL — a 40-player roster blows past
+          // the practical query-string limit.
+          if (p.goOrder) {
+            try {
+              sessionStorage.setItem("axiom-order-draft", JSON.stringify({
+                designId: res.id,
+                fabric: p.fabric,
+                trim: p.trim,
+                reversible: !!p.reversible,
+                roster: Array.isArray(p.roster) ? p.roster : [],
+              }));
+            } catch { /* private mode / quota — the page still works, just unprefilled */ }
+            router.push(`/order/new?design=${res.id}`);
+          }
         } catch (e: any) {
           reply({ type: "axiom-save-order-result", ok: false, error: e.message });
         }
@@ -119,7 +138,7 @@ function DesignerBridge() {
     // proactively (re)send auth whenever it changes, in case the iframe loaded first
     reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
     return () => window.removeEventListener("message", onMessage);
-  }, [user, token, designId, templateId]);
+  }, [user, token, designId, templateId, router]);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#eef1f7" }}>
@@ -136,6 +155,11 @@ function DesignerBridge() {
       >
         <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>←</span> Axiom Siam
       </Link>
+
+      {/* account + logout, opens upward so it stays on screen */}
+      <div className="floatmenu">
+        <UserMenu loginClass="floatlogin" dropUp />
+      </div>
     </div>
   );
 }

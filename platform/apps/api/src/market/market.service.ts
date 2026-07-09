@@ -1,11 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { CreateTemplateDto, UpdateTemplateDto, BrowseQueryDto } from "./market.dto";
-
-// platform commission (%). Rest goes to the designer. Configurable via env.
-const COMMISSION_PCT = Math.min(100, Math.max(0, Number(process.env.MARKET_COMMISSION_PCT ?? 30)));
-// bump this string when the seller terms change (recorded per acceptance)
-export const TERMS_VERSION = process.env.MARKET_TERMS_VERSION ?? "1.0 (2026-07-08)";
+import { SettingsService } from "../settings/settings.service";
+import { NotifyService } from "../notify/notify.service";
+import { splitPrice, previewFingerprint } from "./commission";
+import type { CreateTemplateDto, UpdateTemplateDto, BrowseQueryDto, ReportTemplateDto } from "./market.dto";
 
 const CARD_SELECT = {
   id: true, name: true, description: true, category: true, tags: true, price: true,
@@ -15,7 +13,7 @@ const CARD_SELECT = {
 
 @Injectable()
 export class MarketService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private settings: SettingsService, private notify: NotifyService) {}
 
   // ---------- public browse ----------
   async browse(query: BrowseQueryDto) {
@@ -26,16 +24,17 @@ export class MarketService {
       { description: { contains: query.q, mode: "insensitive" } },
       { tags: { has: query.q } },
     ];
-    const orderBy =
+    const sortBy =
       query.sort === "popular" ? { salesCount: "desc" as const } :
       query.sort === "price_asc" ? { price: "asc" as const } :
       query.sort === "price_desc" ? { price: "desc" as const } :
       { createdAt: "desc" as const };
+    const orderBy = [{ featured: "desc" as const }, sortBy]; // featured templates first
     const [items, total] = await this.prisma.$transaction([
       this.prisma.marketTemplate.findMany({ where, orderBy, take: query.take ?? 24, skip: query.skip ?? 0, select: CARD_SELECT }),
       this.prisma.marketTemplate.count({ where }),
     ]);
-    return { items, total, commissionPct: COMMISSION_PCT };
+    return { items, total, commissionPct: (await this.settings.market()).commissionPct };
   }
 
   async categories() {
@@ -57,24 +56,65 @@ export class MarketService {
     return { ...t, owned };
   }
 
+  /** public designer profile: bio + their published templates + totals */
+  async designerProfile(id: string) {
+    const d = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null, suspendedAt: null },
+      select: { id: true, fullName: true, companyName: true, bio: true, createdAt: true },
+    });
+    if (!d) throw new NotFoundException("ไม่พบดีไซเนอร์");
+    const items = await this.prisma.marketTemplate.findMany({
+      where: { designerId: id, status: "published", deletedAt: null, takedownAt: null },
+      orderBy: [{ featured: "desc" }, { salesCount: "desc" }],
+      select: CARD_SELECT,
+    });
+    const totalSales = items.reduce((s, t) => s + t.salesCount, 0);
+    return { ...d, items, stats: { templates: items.length, totalSales } };
+  }
+
   // ---------- designer side ----------
   async create(designerId: string, dto: CreateTemplateDto, meta?: { ip?: string; userAgent?: string }) {
     const status = dto.status ?? "draft";
     // publishing to the marketplace requires accepting the seller terms (copyright/IP)
     if (status === "published" && !dto.agreedTerms)
       throw new BadRequestException("กรุณายอมรับข้อตกลง & เงื่อนไขลิขสิทธิ์ก่อนเผยแพร่ขาย");
+    // fingerprint the artwork so an identical re-upload can be spotted
+    const previewHash = previewFingerprint(dto.previewUrl);
+
     const tpl = await this.prisma.marketTemplate.create({
       data: {
         designerId, name: dto.name, description: dto.description, category: dto.category,
         tags: dto.tags ?? [], price: dto.price, previewUrl: dto.previewUrl,
-        stateJson: dto.stateJson, status,
+        stateJson: dto.stateJson, status, previewHash,
       },
       select: { id: true, name: true, status: true, price: true },
     });
+
+    // same image already on the marketplace under a different designer? flag it.
+    if (previewHash) {
+      const clash = await this.prisma.marketTemplate.findFirst({
+        where: { previewHash, id: { not: tpl.id }, deletedAt: null, designerId: { not: designerId } },
+        select: { id: true, name: true, designer: { select: { email: true } } },
+      });
+      if (clash) {
+        await this.prisma.templateReport.create({
+          data: {
+            templateId: tpl.id, reporterId: null, reason: "copyright",
+            detail: `ตรวจพบอัตโนมัติ: ภาพเหมือนกันทุกไบต์กับลาย "${clash.name}" ของ ${clash.designer.email}`,
+          },
+        }).catch(() => undefined);
+        await this.notify.pushAdmins(
+          `⚠ ตรวจพบลายซ้ำ: "${tpl.name}"`,
+          `ภาพเหมือน "${clash.name}" ของ ${clash.designer.email} ทุกไบต์`,
+          "/admin",
+        );
+      }
+    }
     if (dto.agreedTerms) {
       // audit log — proof the seller accepted the terms at publish time
+      const { termsVersion } = await this.settings.market();
       await this.prisma.termsAcceptance.create({
-        data: { userId: designerId, kind: "seller_publish", version: TERMS_VERSION, ref: tpl.id, ip: meta?.ip, userAgent: meta?.userAgent },
+        data: { userId: designerId, kind: "seller_publish", version: termsVersion, ref: tpl.id, ip: meta?.ip, userAgent: meta?.userAgent },
       }).catch(() => undefined);
     }
     return tpl;
@@ -109,7 +149,8 @@ export class MarketService {
       where: { template: { designerId }, status: "paid" },
       _sum: { designerEarning: true }, _count: true,
     });
-    return { items, earnings: { total: agg._sum.designerEarning ?? 0, sales: agg._count, commissionPct: COMMISSION_PCT } };
+    const { commissionPct } = await this.settings.market();
+    return { items, earnings: { total: agg._sum.designerEarning ?? 0, sales: agg._count, commissionPct } };
   }
 
   // ---------- purchase (MVP: stubbed payment) ----------
@@ -122,15 +163,25 @@ export class MarketService {
     if (existing) return { message: "คุณมีเทมเพลตนี้อยู่แล้ว", purchaseId: existing.id, alreadyOwned: true };
 
     // TODO: verify real payment via gateway before this point. MVP = mark paid.
-    const platformFee = Math.round((t.price * COMMISSION_PCT) / 100);
-    const designerEarning = t.price - platformFee;
+    // the commission rate in force *right now* is frozen onto the purchase row
+    const { commissionPct } = await this.settings.market();
+    const { platformFee, designerEarning } = splitPrice(t.price, commissionPct);
     const [purchase] = await this.prisma.$transaction([
       this.prisma.templatePurchase.create({
-        data: { templateId: id, buyerId, price: t.price, platformFee, designerEarning, commissionPct: COMMISSION_PCT, status: "paid" },
+        data: { templateId: id, buyerId, price: t.price, platformFee, designerEarning, commissionPct, status: "paid" },
         select: { id: true },
       }),
       this.prisma.marketTemplate.update({ where: { id }, data: { salesCount: { increment: 1 } } }),
     ]);
+    // tell the designer they made a sale
+    await this.notify.push({
+      userId: t.designerId,
+      title: `ขายลายได้! "${t.name}"`,
+      body: `คุณได้รับ ฿${designerEarning.toLocaleString()} (หักค่าบริการ ${commissionPct}%)`,
+      link: "/account",
+      email: true,
+    });
+
     return { message: "ซื้อสำเร็จ", purchaseId: purchase.id, price: t.price, designerEarning, platformFee };
   }
 
@@ -140,6 +191,17 @@ export class MarketService {
       select: { id: true, price: true, createdAt: true, template: { select: { id: true, name: true, previewUrl: true, category: true, designer: { select: { fullName: true } } } } },
     });
     return rows.map(r => ({ purchaseId: r.id, price: r.price, boughtAt: r.createdAt, ...r.template }));
+  }
+
+  // ---------- abuse report (any visitor) ----------
+  async report(id: string, dto: ReportTemplateDto, reporterId?: string) {
+    const t = await this.prisma.marketTemplate.findFirst({ where: { id, deletedAt: null }, select: { id: true, name: true } });
+    if (!t) throw new NotFoundException("ไม่พบเทมเพลต");
+    await this.prisma.templateReport.create({
+      data: { templateId: id, reporterId: reporterId ?? null, reason: dto.reason, detail: dto.detail },
+    });
+    await this.notify.pushAdmins(`🚩 รายงานละเมิด: "${t.name}"`, `เหตุผล: ${dto.reason}`, "/admin");
+    return { message: "ส่งรายงานแล้ว ทีมงานจะตรวจสอบโดยเร็ว" };
   }
 
   // load the design into the editor — only owner (buyer) or the designer

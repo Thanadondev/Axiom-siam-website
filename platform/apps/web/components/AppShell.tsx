@@ -2,14 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useAuth } from "../lib/auth-context";
+import UserMenu from "./UserMenu";
+import NotifyBell from "./NotifyBell";
 import "../app/app.css";
 
 type Theme = "light" | "dark";
 
-export default function AppShell({ children, narrow = false }: { children: ReactNode; narrow?: boolean }) {
+export default function AppShell({ children, narrow = false, wide = false }: { children: ReactNode; narrow?: boolean; wide?: boolean }) {
   const [theme, setTheme] = useState<Theme>("light");
-  const { user } = useAuth();
   const logo = theme === "light" ? "/logo-mark-blue.png" : "/logo-mark.png";
 
   return (
@@ -23,14 +23,15 @@ export default function AppShell({ children, narrow = false }: { children: React
           <Link href="/">หน้าแรก</Link>
           <Link href="/templates">ตลาดลาย</Link>
           <Link href="/design">ออกแบบเสื้อ</Link>
-          {user ? <Link href="/account">บัญชีของฉัน</Link> : <Link href="/login">เข้าสู่ระบบ</Link>}
+          <NotifyBell />
+          <UserMenu />
           <div className="pill" title="ธีมสี">
             <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} aria-label="ธีมขาว-น้ำเงิน">☀</button>
             <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} aria-label="ธีมดำ-มิ้นต์">🌙</button>
           </div>
         </nav>
       </header>
-      <main className={`app-main${narrow ? " app-narrow" : ""}`}>{children}</main>
+      <main className={`app-main${narrow ? " app-narrow" : ""}${wide ? " app-wide" : ""}`}>{children}</main>
       <footer style={{ textAlign: "center", padding: "24px 22px 40px", fontSize: 12.5, color: "var(--muted)" }}>
         © {new Date().getFullYear()} Axiom Siam Co.,Ltd. ·{" "}
         <Link href="/terms" style={{ color: "var(--muted)", textDecoration: "underline" }}>ข้อตกลง & เงื่อนไข</Link>

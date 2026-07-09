@@ -13,10 +13,19 @@
     "dev": "concurrently -n web,api -c cyan,green \"npm run dev:web\" \"npm run dev:api\"",
     "dev:web": "npm run dev --workspace apps/web",
     "dev:api": "npm run dev --workspace apps/api",
+    "test": "npm run test --workspace apps/api && npm run test --workspace apps/web",
+    "test:api": "npm run test --workspace apps/api",
+    "test:web": "npm run test --workspace apps/web",
+    "test:watch": "npm run test:watch --workspace apps/api",
+    "test:coverage": "npm run test:coverage --workspace apps/api",
+    "test:e2e": "node scripts/e2e-order.mjs",
+    "test:e2e:purge": "dotenv -e .env -- node scripts/purge-e2e.mjs",
+    "typecheck": "npm run typecheck --workspace apps/api",
     "db:generate": "npm run generate --workspace packages/db",
     "db:migrate": "npm run migrate --workspace packages/db",
     "db:studio": "npm run studio --workspace packages/db",
-    "db:seed": "npm run seed --workspace packages/db"
+    "db:seed": "npm run seed --workspace packages/db",
+    "db:seed:demo": "npm run seed:demo --workspace packages/db"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

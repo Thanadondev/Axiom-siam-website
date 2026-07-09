@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
 import LandingScene from "../components/LandingScene";
+import UserMenu from "../components/UserMenu";
 import "./landing.css";
 
 type Theme = "light" | "dark";
@@ -49,15 +50,7 @@ export default function Home() {
           <Link className="solid" href={designHref}>
             🎨 {th ? "ออกแบบเสื้อเอง" : "Design Your Own"}
           </Link>
-          {user ? (
-            <Link className="ghost" href="/account">
-              {th ? "บัญชีของฉัน" : "My Account"}
-            </Link>
-          ) : (
-            <Link className="ghost" href="/login">
-              {th ? "เข้าสู่ระบบ" : "Sign in"}
-            </Link>
-          )}
+          <UserMenu loginClass="ghost" />
           <div className="pill" title="ธีมสี">
             <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} aria-label="ธีมขาว-น้ำเงิน">☀</button>
             <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} aria-label="ธีมดำ-มิ้นต์">🌙</button>

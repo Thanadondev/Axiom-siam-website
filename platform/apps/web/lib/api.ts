@@ -4,6 +4,12 @@ export interface ApiOptions extends RequestInit {
   token?: string | null;
 }
 
+/** Error carrying the API's response body, so callers can read flags like `twoFactorRequired`. */
+export interface ApiError extends Error {
+  status?: number;
+  body?: Record<string, any>;
+}
+
 /** Fetch wrapper for the Axiom API. Sends cookies (for refresh token) + optional Bearer. */
 export async function apiFetch<T = any>(path: string, opts: ApiOptions = {}): Promise<T> {
   const { token, headers, ...rest } = opts;
@@ -18,7 +24,10 @@ export async function apiFetch<T = any>(path: string, opts: ApiOptions = {}): Pr
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error((data && (data.message as string)) || `เกิดข้อผิดพลาด (${res.status})`);
+    const err = new Error((data && (data.message as string)) || `เกิดข้อผิดพลาด (${res.status})`) as ApiError;
+    err.status = res.status;
+    err.body = data; // callers read flags like `twoFactorRequired`
+    throw err;
   }
   return data as T;
 }

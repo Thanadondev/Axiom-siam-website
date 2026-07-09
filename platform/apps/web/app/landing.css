@@ -64,6 +64,30 @@
 .landing .nav .ghost:hover { border-color: var(--brand); color: var(--brand); }
 .landing .nav .solid { background: var(--brand); color: var(--on-brand); }
 .landing .nav .solid:hover { background: var(--brand-glow); transform: translateY(-2px); }
+/* ---- header user menu (shared component, scoped for the landing nav) ---- */
+.landing .usermenu { position: relative; }
+.landing .nav .userbtn { display: flex; align-items: center; gap: 8px; background: var(--soft); border: 1px solid var(--border); border-radius: 30px; padding: 4px 10px 4px 4px; }
+.landing .nav .userbtn:hover { border-color: var(--brand); }
+.landing .useravi { width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: var(--on-brand); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12.5px; flex: none; }
+.landing .username { font-size: 13px; font-weight: 600; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.landing .caret { font-size: 10px; color: var(--muted); transition: transform 0.15s; }
+.landing .caret.up { transform: rotate(180deg); }
+.landing .usermenu-pop { position: absolute; top: calc(100% + 8px); right: 0; min-width: 220px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14); padding: 6px; z-index: 60; display: flex; flex-direction: column; backdrop-filter: blur(14px); }
+.landing.theme-light .usermenu-pop { background: #fff; }
+.landing.theme-dark .usermenu-pop { background: #0e1614; }
+.landing .usermenu-head { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.landing .usermenu-head b { font-size: 13.5px; color: var(--ink); }
+.landing .usermenu-head .dim { font-size: 12px; color: var(--muted); }
+.landing .nav .usermenu-pop a, .landing .nav .usermenu-pop .logoutitem {
+  display: block; width: 100%; text-align: left; padding: 9px 12px; border-radius: 9px;
+  font-size: 13.5px; font-weight: 600; color: var(--ink); background: transparent; border: 0; box-sizing: border-box;
+}
+.landing .nav .usermenu-pop a:hover, .landing .nav .usermenu-pop .logoutitem:hover { background: var(--soft); color: var(--brand); border-color: transparent; transform: none; }
+.landing .usermenu-pop hr { border: 0; border-top: 1px solid var(--border); margin: 5px 0; }
+.landing .nav .usermenu-pop .logoutitem { color: #dc2626; }
+.landing .nav .usermenu-pop .logoutitem:hover { background: #fee2e2; color: #b91c1c; }
+@media (max-width: 620px) { .landing .username { display: none; } }
+
 .landing .pill { display: flex; border: 1px solid var(--border); border-radius: 30px; overflow: hidden; }
 .landing .pill button { border: 0; color: var(--muted); padding: 7px 11px; font-size: 12px; font-weight: 700; letter-spacing: 1px; border-radius: 0; background: transparent; cursor: pointer; }
 .landing .pill button.on { background: var(--brand); color: var(--on-brand); }

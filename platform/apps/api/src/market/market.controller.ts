@@ -3,11 +3,12 @@ import type { Request } from "express";
 import { JwtService } from "@nestjs/jwt";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RateLimitGuard, RateLimit } from "../common/rate-limit.guard";
 import { CurrentUser, type AuthUser } from "../auth/decorators";
 import { MarketService } from "./market.service";
 import {
-  CreateTemplateSchema, UpdateTemplateSchema, BrowseQuerySchema,
-  type CreateTemplateDto, type UpdateTemplateDto, type BrowseQueryDto,
+  CreateTemplateSchema, UpdateTemplateSchema, BrowseQuerySchema, ReportTemplateSchema,
+  type CreateTemplateDto, type UpdateTemplateDto, type BrowseQueryDto, type ReportTemplateDto,
 } from "./market.dto";
 
 @Controller("templates")
@@ -34,6 +35,11 @@ export class MarketController {
   @Get("categories")
   categories() {
     return this.market.categories();
+  }
+
+  @Get("designer/:id")
+  designerProfile(@Param("id") id: string) {
+    return this.market.designerProfile(id);
   }
 
   // ---------- authed (specific routes before ":id") ----------
@@ -78,6 +84,14 @@ export class MarketController {
   @Delete(":id")
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.market.remove(user.id, id);
+  }
+
+  // anyone (logged-in or guest) can report a template for copyright/abuse
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60 * 60_000 }) // stops report-spam brigading
+  @Post(":id/report")
+  async report(@Req() req: Request, @Param("id") id: string, @Body(new ZodValidationPipe(ReportTemplateSchema)) dto: ReportTemplateDto) {
+    return this.market.report(id, dto, await this.optionalUserId(req));
   }
 
   // public detail last (uses optional auth to flag ownership)

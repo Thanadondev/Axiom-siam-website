@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useAuth, type User } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import AppShell from "../../components/AppShell";
+import TwoFactorCard from "../../components/TwoFactorCard";
+
+const ORDER_STATUS_TH: Record<string, string> = {
+  pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
+  shipped: "จัดส่งแล้ว", delivered: "ได้รับแล้ว", completed: "เสร็จสิ้น", cancelled: "ยกเลิก", refunded: "คืนเงินแล้ว",
+};
 
 interface Address {
   id: string;
@@ -28,9 +34,9 @@ const emptyAddr = {
 };
 
 export default function AccountPage() {
-  const { user, token, loading, logout, setUser } = useAuth();
+  const { user, token, loading, setUser } = useAuth(); // logout lives in the header user menu
 
-  const [pf, setPf] = useState({ fullName: "", phone: "", companyName: "", locale: "th" });
+  const [pf, setPf] = useState({ fullName: "", phone: "", companyName: "", bio: "", locale: "th" });
   const [pmsg, setPmsg] = useState("");
   const [perr, setPerr] = useState("");
   const [psaving, setPsaving] = useState(false);
@@ -42,7 +48,7 @@ export default function AccountPage() {
   const [designs, setDesigns] = useState<DesignItem[]>([]);
 
   useEffect(() => {
-    if (user) setPf({ fullName: user.fullName || "", phone: user.phone || "", companyName: user.companyName || "", locale: user.locale || "th" });
+    if (user) setPf({ fullName: user.fullName || "", phone: user.phone || "", companyName: user.companyName || "", bio: user.bio || "", locale: user.locale || "th" });
   }, [user]);
 
   async function loadAddrs() {
@@ -60,6 +66,13 @@ export default function AccountPage() {
     if (!confirm("ลบดีไซน์นี้?")) return;
     try { await apiFetch(`/designs/${id}`, { method: "DELETE", token }); loadDesigns(); } catch { /* ignore */ }
   }
+
+  // ---------- production orders ----------
+  const [orders, setOrders] = useState<any[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<any[]>("/orders", { token }).then(setOrders).catch(() => { /* orders API may not be running yet */ });
+  }, [token]);
 
   // ---------- marketplace ----------
   const [purchases, setPurchases] = useState<any[]>([]);
@@ -185,6 +198,7 @@ export default function AccountPage() {
                   <div className="asub" style={{ fontSize: 11 }}>{d.mode === "reversible" ? "สองด้าน" : "ธรรมดา"} · {new Date(d.updatedAt).toLocaleDateString("th-TH")}</div>
                   <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                     <Link href={`/design?design=${d.id}`} className="linkbtn">เปิด</Link>
+                    <Link href={`/order/new?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>🧵 สั่งผลิต</Link>
                     <button onClick={() => publishDesign(d)} className="linkbtn" style={{ color: "var(--brand)" }}>ขายในตลาด</button>
                     <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "#ef4444" }}>ลบ</button>
                   </div>
@@ -194,6 +208,31 @@ export default function AccountPage() {
           </div>
         )}
       </div>
+
+      <TwoFactorCard />
+
+      {/* production orders */}
+      {orders.length > 0 && (
+        <div className="acard">
+          <div className="eyebrow">ออเดอร์สั่งผลิต</div>
+          <div className="tablewrap">
+            <table className="atable" style={{ minWidth: 480 }}>
+              <thead><tr><th>เลขออเดอร์</th><th>สเปก</th><th>ยอดรวม</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id}>
+                    <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString("th-TH")}</div></td>
+                    <td className="dim">{o.fabricSummary}</td>
+                    <td><b>฿{o.total.toLocaleString("th-TH")}</b></td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span></td>
+                    <td><Link className="minibtn" href={`/orders/${o.id}`}>ดูรายละเอียด</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* purchased templates (owned assets) */}
       {purchases.length > 0 && (
@@ -260,6 +299,9 @@ export default function AccountPage() {
         </div>
         <label className="flabel">ชื่อบริษัท / ทีม</label>
         <input className="ainput" value={pf.companyName} onChange={(e) => setPf({ ...pf, companyName: e.target.value })} />
+        <label className="flabel">แนะนำตัว (แสดงบนหน้าโปรไฟล์ดีไซเนอร์ของคุณ)</label>
+        <textarea className="ainput" rows={3} maxLength={500} placeholder="เช่น ออกแบบชุดกีฬาสไตล์มินิมอล ประสบการณ์ 5 ปี"
+          value={pf.bio} onChange={(e) => setPf({ ...pf, bio: e.target.value })} />
         {perr && <div className="err">{perr}</div>}
         {pmsg && <div className="ok">{pmsg}</div>}
         <button className="abtn solid" style={{ marginTop: 18 }} disabled={psaving}>{psaving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}</button>
@@ -345,7 +387,6 @@ export default function AccountPage() {
         )}
       </div>
 
-      <button className="abtn ghost block" style={{ marginTop: 18 }} onClick={() => logout()}>ออกจากระบบ</button>
     </AppShell>
   );
 }

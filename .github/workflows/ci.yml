@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit tests (api + web) + typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # the Prisma client must exist before tsc can typecheck the API
+      - name: Generate Prisma client
+        run: npx prisma generate --schema packages/db/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db?schema=public
+
+      # runs apps/api (pricing, status, commission, totp, csv, rate-limit, ...)
+      # then apps/web (designer → checkout hand-off)
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+        continue-on-error: true

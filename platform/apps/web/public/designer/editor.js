@@ -65,6 +65,7 @@ $("#right").innerHTML = `
         <button class="mini" id="rosterReset" title="คืนค่าเทมเพลตเดิม">↺ คืนค่า</button>
       </div>
       <button class="mini" id="rosterGen" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#2563eb;color:#fff;border-color:transparent;height:34px;font-weight:700">⚙ สร้างทั้งทีม → ZIP</button>
+      <button class="mini" id="rosterOrder" style="width:100%;box-sizing:border-box;margin-bottom:6px;height:36px;background:#16a34a;color:#fff;border-color:transparent;font-weight:700">🧵 สั่งผลิตเลย →</button>
       <button class="mini" id="rosterSave" style="width:100%;box-sizing:border-box;height:32px">💾 บันทึกออเดอร์เข้าบัญชี</button>
       <div id="rosterProg" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
       </div>
@@ -73,7 +74,35 @@ $("#right").innerHTML = `
   <div class="panel">
     <div class="phead">Appearance</div>
     <div class="pbody">
-      <div class="row" id="fontRow" style="display:none;margin-bottom:10px"><label>ฟอนต์</label><select id="fontSel" style="flex:1;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:6px 8px;color:var(--txt);font-size:12px;font-family:inherit"></select></div>
+      <div class="row" id="fontRow" style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+        <label style="min-width:38px">ฟอนต์</label>
+        <select id="fontSel" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:6px 8px;color:var(--txt);font-size:12px;font-family:inherit"></select>
+        <button class="mini" id="btnFontImport" title="นำเข้าฟอนต์จากเครื่อง (.ttf .otf .woff)" style="min-width:30px;padding:6px 8px;font-size:14px;line-height:1;flex:none">＋</button>
+        <input type="file" id="fileFont" accept=".ttf,.otf,.woff,font/ttf,font/otf,font/woff" style="display:none">
+      </div>
+      <div id="textRow" style="display:none;margin-bottom:10px">
+        <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ขนาด</label>
+          <input type="number" id="txSize" min="4" max="400" step="1" style="width:64px">
+          <button class="mini" id="txBold" title="ตัวหนา" style="min-width:34px;font-weight:800">B</button>
+          <button class="mini" id="txItal" title="ตัวเอียง" style="min-width:34px;font-style:italic">I</button>
+        </div>
+        <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ระยะตัวอักษร</label>
+          <input type="range" id="txSpace" min="-100" max="800" step="10" value="0" style="flex:1">
+          <span id="txSpaceV" style="min-width:34px;font-size:11px;color:var(--muted)">0</span>
+        </div>
+        <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">โค้ง</label>
+          <input type="range" id="txArc" min="-100" max="100" step="1" value="0" style="flex:1">
+          <span id="txArcV" style="min-width:34px;font-size:11px;color:var(--muted)">0</span>
+        </div>
+        <div class="row" id="txEditRow" style="display:none;align-items:center;gap:8px;margin-bottom:4px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ข้อความ</label>
+          <input type="text" id="txText" placeholder="แก้ข้อความโค้ง" style="flex:1">
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5">โค้งขึ้น = ค่าบวก (ชื่อทีมเหนืออก) · โค้งลง = ค่าลบ · ตั้งเป็น 0 เพื่อกลับเป็นข้อความปกติ</div>
+      </div>
       <div class="fillbox" style="margin-bottom:10px">
         <button class="swbtn on" id="fillBtn"><span class="chip" id="fillChip"></span>Fill</button>
         <button class="swbtn" id="strokeBtn"><span class="chip" id="strokeChip"></span>Stroke</button>
@@ -441,9 +470,75 @@ $("#zoomOut").onclick = () => applyZoom(zoom / 1.2, { x: canvas.getWidth() / 2, 
 $("#zoomFit").onclick = zoomFit;
 
 /* ---------- helpers ---------- */
-function toast(msg) {
-  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
-  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("on"), 1800);
+/* ---------- notifications ----------
+   A warning that the factory file will be wrong must not disappear as fast as
+   "saved ✓". Warnings and errors stay on screen until dismissed; successes
+   fade. Repeats stack a counter instead of flooding the corner.            */
+const TOAST_STYLE = {
+  ok:   { icon: "✓", ms: 2200 },
+  info: { icon: "•", ms: 2800 },
+  warn: { icon: "⚠", ms: 0 },   // 0 = stays until closed
+  err:  { icon: "✕", ms: 0 },
+};
+const MAX_TOASTS = 4;
+
+/** toast("saved") · toast("bad thing", "warn") · toast("x", "info", 5000) */
+function toast(msg, type, ms) {
+  const box = document.getElementById("toasts");
+  if (!box) return;
+  const kind = TOAST_STYLE[type] ? type : "ok";
+  const conf = TOAST_STYLE[kind];
+  const text = String(msg ?? "");
+
+  // same message again → bump the counter, don't stack duplicates
+  const twin = [...box.children].find(el => el._msg === text && el._kind === kind);
+  if (twin) {
+    twin._count = (twin._count || 1) + 1;
+    let n = twin.querySelector(".n");
+    if (!n) { n = document.createElement("span"); n.className = "n"; twin.insertBefore(n, twin.querySelector(".x")); }
+    n.textContent = "×" + twin._count;
+    restartToastTimer(twin, ms ?? conf.ms);
+    return twin;
+  }
+
+  const el = document.createElement("div");
+  el.className = `tst ${kind}`;
+  el._msg = text; el._kind = kind; el._count = 1;
+  el.innerHTML = `<span class="ic">${conf.icon}</span><span class="msg"></span><button class="x" title="ปิด">×</button>`;
+  el.querySelector(".msg").textContent = text;      // textContent: never inject markup
+  el.querySelector(".x").onclick = () => dismissToast(el);
+
+  box.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("on"));
+
+  // keep the stack short — drop the oldest dismissible one
+  while (box.children.length > MAX_TOASTS) {
+    const victim = [...box.children].find(c => c._kind === "ok" || c._kind === "info") || box.firstElementChild;
+    dismissToast(victim);
+  }
+
+  restartToastTimer(el, ms ?? conf.ms);
+  return el;
+}
+
+function restartToastTimer(el, ms) {
+  clearTimeout(el._t);
+  if (ms > 0) el._t = setTimeout(() => dismissToast(el), ms);
+}
+
+function dismissToast(el) {
+  if (!el || el._gone) return;
+  el._gone = true;
+  clearTimeout(el._t);
+  el.classList.remove("on");
+  setTimeout(() => el.remove(), 220);
+}
+
+/** clear every warning of a given prefix — used before re-running an export */
+function clearToasts(kind) {
+  const box = document.getElementById("toasts");
+  if (!box) return;
+  [...box.children].filter(c => !kind || c._kind === kind).forEach(dismissToast);
 }
 function userObjects() { return canvas.getObjects().filter(o => !o._bg && !o._temp); }
 function hint(msg) { $("#hint").textContent = msg || ""; }
@@ -816,9 +911,34 @@ $("#tR").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; o
 
 function syncProps() {
   const o = canvas.getActiveObject();
-  const fr = document.getElementById("fontRow"), fs = document.getElementById("fontSel");
-  if (o && String(o.type).includes("text")) { if (fr) fr.style.display = ""; if (fs) { const m = /^"?([^",]+)/.exec(o.fontFamily || ""); fs.value = (m && FONTS.includes(m[1])) ? m[1] : curFont; } }
-  else if (fr) fr.style.display = "none";
+  const fs = document.getElementById("fontSel");
+  const textish = o && isTextish(o);
+  // the font row stays visible even with nothing selected: it also sets the
+  // font used for the NEXT text you create, and it holds the import button
+  if (textish && fs) {
+    const fam = isArc(o) ? o.arcMeta.fontFamily : o.fontFamily;
+    const m = /^"?([^",]+)/.exec(fam || "");
+    fs.value = (m && FONTS.includes(m[1])) ? m[1] : curFont;
+  } else if (fs) {
+    fs.value = curFont;
+  }
+
+  // text panel (size / bold / spacing / curve)
+  const tr = document.getElementById("textRow");
+  if (tr) {
+    tr.style.display = textish ? "" : "none";
+    if (textish) {
+      const m = arcMetaOf(o);
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      const lbl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      set("txSize", Math.round(m.fontSize));
+      set("txSpace", m.charSpacing || 0); lbl("txSpaceV", m.charSpacing || 0);
+      set("txArc", m.curve || 0); lbl("txArcV", m.curve || 0);
+      set("txText", m.text);
+      const er = document.getElementById("txEditRow");
+      if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
+    }
+  }
   if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
   $("#fillChip").style.background = first.fill || "transparent";
@@ -930,7 +1050,15 @@ $("#btnNew").onclick = () => {
 };
 function download(name, url) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
 let isLoggedIn = false;
-function getDoc() { return { app: "axiom-designer", version: 4, art: ART, style: curStyle, size: TPL_SIZE, fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc, objects: userObjects().map(o => o.toObject(["name", "rosterTag"])) }; }
+function getDoc() {
+  return {
+    app: "axiom-designer", version: 5, art: ART, style: curStyle, size: TPL_SIZE,
+    fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc,
+    // names only — never the font bytes (licence), so the reader can warn if missing
+    importedFonts: [...importedFonts.keys()],
+    objects: userObjects().map(o => o.toObject(ARC_PROPS)),
+  };
+}
 function inFrame() { return window.parent && window.parent !== window; }
 function localSave() { const blob = new Blob([JSON.stringify(getDoc())], { type: "application/json" }); download("axiom-design.axiom", URL.createObjectURL(blob)); toast("ดาวน์โหลดไฟล์แล้ว"); }
 $("#btnSave").onclick = () => {
@@ -938,7 +1066,7 @@ $("#btnSave").onclick = () => {
     window.parent.postMessage({ type: "axiom-save", payload: { name: "ดีไซน์ " + new Date().toLocaleDateString("th-TH"), doc: getDoc(), preview: exportPNG(0.5), style: curStyle } }, "*");
     toast("กำลังบันทึกเข้าบัญชี...");
   } else if (inFrame()) {
-    toast("ยังไม่เข้าสู่ระบบ — ดาวน์โหลดไฟล์แทน"); localSave();
+    toast("ยังไม่เข้าสู่ระบบ — ดาวน์โหลดไฟล์แทน", "warn"); localSave();
   } else { localSave(); }
 };
 function openDoc(doc) {
@@ -967,14 +1095,20 @@ function openDoc(doc) {
     buildTemplate();
     fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
     zoomFit(); updateDim(); toast("เปิดดีไซน์แล้ว");
-  } catch (e) { toast("เปิดดีไซน์ไม่สำเร็จ"); }
+    // imported fonts live in memory, not in the file — say so instead of
+    // silently rendering the design in a substitute face
+    const missing = (doc.importedFonts || []).filter(f => !isImported(f));
+    if (missing.length) {
+      toast(`ดีไซน์นี้ใช้ฟอนต์ที่นำเข้าเอง: ${missing.join(", ")}\nกดปุ่ม ＋ นำเข้าอีกครั้ง ไม่งั้นตัวอักษรจะแสดงเป็นฟอนต์สำรอง`, "warn");
+    }
+  } catch (e) { toast("เปิดดีไซน์ไม่สำเร็จ — ไฟล์อาจเสียหายหรือเป็นเวอร์ชันที่ไม่รองรับ", "err"); }
 }
 window.addEventListener("message", ev => {
   const m = ev.data || {};
   if (m.type === "axiom-auth") isLoggedIn = !!m.user;
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-quote-result") toast(m.ok ? "ส่งคำขอราคาแล้ว ✓ ทีมงานจะติดต่อกลับ" : ("ส่งไม่สำเร็จ: " + (m.error || "")));
-  else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ"); } }
+  else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }
   else if (m.type === "axiom-open" && m.doc) openDoc(m.doc);
 });
@@ -985,7 +1119,7 @@ $("#fileOpen").addEventListener("change", ev => {
   const r = new FileReader();
   r.onload = () => {
     try { openDoc(JSON.parse(r.result)); }
-    catch (e) { toast("ไฟล์ไม่ถูกต้อง"); }
+    catch (e) { toast("ไฟล์ไม่ถูกต้อง — ต้องเป็นไฟล์ .axiom ที่เซฟจากโปรแกรมนี้", "err"); }
   };
   r.readAsText(f); ev.target.value = "";
 });
@@ -1041,9 +1175,145 @@ function buildSVGString() {
   });
   return svg;
 }
-$("#btnSvg").onclick = () => runExport(() => {
-  download("axiom-design.svg", URL.createObjectURL(new Blob([buildSVGString()], { type: "image/svg+xml" })));
-  toast("ดาวน์โหลด SVG (เวกเตอร์) แล้ว");
+/* ---------- text → outlines ----------
+   An SVG that says font-family="Anton" only renders correctly on a machine
+   that HAS Anton. The factory's laser/RIP software usually doesn't, and it
+   silently substitutes another face — wrong widths, wrong cut lines.
+
+   So before the file leaves us, every <text> becomes a <path>. We reuse the
+   exact baseline coordinates Fabric already wrote into each <tspan>, which
+   means the outline lands pixel-identical to what the user saw. No guessing
+   at Fabric's internal text metrics.                                        */
+
+const fontCache = new Map();   // "Family|700" -> opentype.Font
+const fontFails = new Set();
+
+function firstFamily(css) {
+  return String(css || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+}
+function normWeight(w) {
+  const s = String(w || "400");
+  if (s === "bold") return "700";
+  return /^\d{3}$/.test(s) ? s : "400";
+}
+
+async function loadOutlineFont(family, weight) {
+  const key = `${family}|${weight}`;
+  if (fontCache.has(key)) return fontCache.get(key);
+  if (fontFails.has(key)) return null;
+  if (typeof opentype === "undefined") { fontFails.add(key); return null; }
+  try {
+    const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const font = opentype.parse(await res.arrayBuffer());
+    fontCache.set(key, font);
+    return font;
+  } catch (e) {
+    fontFails.add(key);
+    return null;
+  }
+}
+
+/** every <text> in the doc, with the family/weight it needs */
+function textNeeds(doc) {
+  const need = new Map();
+  doc.querySelectorAll("text").forEach(t => {
+    const fam = firstFamily(t.getAttribute("font-family") || t.style.fontFamily);
+    const w = normWeight(t.getAttribute("font-weight") || t.style.fontWeight);
+    if (fam) need.set(`${fam}|${w}`, { family: fam, weight: w });
+  });
+  return [...need.values()];
+}
+
+/** convert one <text> element into a <path>, in place */
+function textToPath(t, font) {
+  const size = parseFloat(t.getAttribute("font-size") || t.style.fontSize || "40");
+  const spacing = parseFloat(t.style.letterSpacing || "0") || 0;
+
+  // Fabric writes one <tspan> per line (or per char), each carrying the
+  // absolute x/y of its baseline. That is precisely what opentype wants.
+  const spans = t.querySelectorAll("tspan");
+  const runs = spans.length
+    ? [...spans].map(s => ({ x: parseFloat(s.getAttribute("x") || "0"), y: parseFloat(s.getAttribute("y") || "0"), text: s.textContent || "" }))
+    : [{ x: parseFloat(t.getAttribute("x") || "0"), y: parseFloat(t.getAttribute("y") || "0"), text: t.textContent || "" }];
+
+  const anchor = t.getAttribute("text-anchor") || "start";
+
+  let d = "";
+  for (const run of runs) {
+    if (!run.text) continue;
+    let x = run.x;
+    if (anchor !== "start") {
+      const w = font.getAdvanceWidth(run.text, size) + spacing * Math.max(0, [...run.text].length - 1);
+      x -= anchor === "middle" ? w / 2 : w;
+    }
+    if (spacing) {
+      // advance glyph by glyph so letter-spacing survives
+      for (const ch of run.text) {
+        d += font.getPath(ch, x, run.y, size).toPathData(3) + " ";
+        x += font.getAdvanceWidth(ch, size) + spacing;
+      }
+    } else {
+      d += font.getPath(run.text, x, run.y, size).toPathData(3) + " ";
+    }
+  }
+  if (!d.trim()) { t.remove(); return; }
+
+  const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", d.trim());
+  // carry over every paint attribute the text had
+  for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform"]) {
+    const v = t.getAttribute(a);
+    if (v) p.setAttribute(a, v);
+  }
+  if (!p.getAttribute("fill")) p.setAttribute("fill", t.style.fill || "#000");
+  t.parentNode.replaceChild(p, t);
+}
+
+/** returns { svg, converted, skipped[] } */
+async function outlineSVG(svgStr) {
+  const doc = new DOMParser().parseFromString(svgStr, "image/svg+xml");
+  if (doc.querySelector("parsererror")) return { svg: svgStr, converted: 0, skipped: ["ไฟล์ SVG อ่านไม่ได้"] };
+
+  const needs = textNeeds(doc);
+  if (!needs.length) return { svg: svgStr, converted: 0, skipped: [] };
+
+  const fonts = new Map();
+  await Promise.all(needs.map(async n => {
+    const f = await loadOutlineFont(n.family, n.weight);
+    if (f) fonts.set(`${n.family}|${n.weight}`, f);
+  }));
+
+  let converted = 0;
+  const skipped = new Set();
+  doc.querySelectorAll("text").forEach(t => {
+    const fam = firstFamily(t.getAttribute("font-family") || t.style.fontFamily);
+    const w = normWeight(t.getAttribute("font-weight") || t.style.fontWeight);
+    const font = fonts.get(`${fam}|${w}`);
+    if (!font) { skipped.add(fam || "?"); return; }   // leave as <text>, warn below
+    textToPath(t, font);
+    converted++;
+  });
+
+  return { svg: new XMLSerializer().serializeToString(doc), converted, skipped: [...skipped] };
+}
+
+/** production SVG: vector shapes only, no font dependency.
+ *  `quiet` suppresses the warning toast — the batch loop calls this 40 times. */
+let warnedFonts = "";
+async function buildOutlinedSVG(quiet) {
+  const r = await outlineSVG(buildSVGString());
+  if (r.skipped.length) {
+    const msg = `แปลงตัวหนังสือเป็นเส้นไม่ได้: ${r.skipped.join(", ")}\nไฟล์นี้ยังต้องใช้ฟอนต์ดังกล่าว — ถ้าเครื่องโรงงานไม่มี ตัวอักษรจะเพี้ยน`;
+    if (!quiet && msg !== warnedFonts) { toast(msg, "warn"); warnedFonts = msg; }
+  }
+  return r.svg;
+}
+
+$("#btnSvg").onclick = () => runExport(async () => {
+  const svg = await buildOutlinedSVG();
+  download("axiom-design.svg", URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })));
+  toast("ดาวน์โหลด SVG (ตัวหนังสือเป็นเส้นแล้ว) ✓");
 });
 
 /* ---------- quote modal ---------- */
@@ -1060,7 +1330,15 @@ $("#qSend").onclick = () => {
 {
   const pb = document.getElementById("btnPublish");
   if (pb) pb.onclick = () => {
-    if (!inFrame() || !isLoggedIn) { toast("ต้องเข้าสู่ระบบก่อนขายในตลาด"); return; }
+    if (!inFrame() || !isLoggedIn) { toast("ต้องเข้าสู่ระบบก่อนขายในตลาด", "warn"); return; }
+    // the buyer will not have the seller's font file — refuse rather than
+    // sell a template that renders in the wrong face on their screen
+    const impUse = objectsUsingImportedFonts();
+    if (impUse.length) {
+      const fams = [...new Set(impUse.map(o => (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily).split(",")[0].replace(/["']/g, "").trim()))];
+      toast(`เผยแพร่ขายไม่ได้: ดีไซน์ใช้ฟอนต์ที่นำเข้าเอง (${fams.join(", ")})\nคนซื้อไม่มีไฟล์ฟอนต์นี้ — เปลี่ยนเป็นฟอนต์ในระบบก่อน`, "err");
+      return;
+    }
     const nm = document.getElementById("pubName"); if (nm && !nm.value) nm.value = "เทมเพลต " + new Date().toLocaleDateString("th-TH");
     const pm = document.getElementById("pubMsg"); if (pm) pm.textContent = "";
     const ag = document.getElementById("pubAgree"); if (ag) ag.checked = false;
@@ -1168,13 +1446,121 @@ const patBrandEl = document.getElementById("patBrand"); if (patBrandEl) patBrand
 
 /* ---------- fonts + clip-to-garment ---------- */
 let curFont = "Sora", clipOn = false;
-const FONTS = ["Sora", "Kanit", "Prompt", "Sarabun", "Pridi", "Chakra Petch", "Anton", "Bebas Neue", "Oswald", "Teko", "Montserrat", "Noto Sans Thai"];
+/* Every family below ships under the SIL Open Font License via Google Fonts —
+   free to use commercially, including printed on garments we sell.          */
+const FONT_GROUPS = [
+  { label: "ไทย", fonts: ["Kanit", "Prompt", "Mitr", "Bai Jamjuree", "K2D", "Athiti", "Krub", "Chakra Petch", "Sarabun", "Pridi", "Noto Sans Thai"] },
+  { label: "กีฬา / ตัวหนา", fonts: ["Anton", "Bebas Neue", "Graduate", "Black Ops One", "Russo One", "Staatliches", "Squada One", "Archivo Black", "Bungee", "Teko", "Big Shoulders Display"] },
+  { label: "แคบ / คอนเดนส์", fonts: ["Oswald", "Fjalla One", "Saira Condensed", "Barlow Condensed"] },
+  { label: "ทั่วไป", fonts: ["Sora", "Montserrat"] },
+];
+/* fonts the user brought themselves. Held in memory ONLY — never uploaded,
+   never saved into a design, never published to the marketplace. Redistributing
+   a font file is what most commercial font licences forbid, and exports don't
+   need it anyway: text is converted to outlines on the way out.             */
+const IMPORTED_GROUP = { label: "นำเข้าเอง (ในเครื่องนี้)", fonts: [] };
+const importedFonts = new Map(); // family -> opentype.Font
+
+let FONTS = FONT_GROUPS.flatMap(g => g.fonts);
+function refreshFontList() {
+  const groups = importedFonts.size ? [IMPORTED_GROUP, ...FONT_GROUPS] : FONT_GROUPS;
+  FONTS = groups.flatMap(g => g.fonts);
+  return groups;
+}
+function isImported(family) { return importedFonts.has(family); }
 function fontStack(f) { return '"' + f + '", "Noto Sans Thai", sans-serif'; }
+/** friendly name for the face inside the file, falling back to the filename */
+function familyNameOf(font, file) {
+  const n = font.names || {};
+  const pick = o => o && (o.en || Object.values(o)[0]);
+  return (pick(n.preferredFamily) || pick(n.fontFamily) || file.name.replace(/\.[^.]+$/, "")).trim();
+}
+
+async function importFontFile(file) {
+  if (typeof opentype === "undefined") { toast("ตัวแปลงฟอนต์ยังโหลดไม่เสร็จ ลองใหม่อีกครั้ง", "warn"); return; }
+  if (file.size > 8 * 1024 * 1024) { toast("ไฟล์ฟอนต์ใหญ่เกิน 8MB", "err"); return; }
+
+  const buf = await file.arrayBuffer();
+  const tag = new TextDecoder().decode(new Uint8Array(buf, 0, 4));
+  if (tag === "wOF2") { toast("ไม่รองรับไฟล์ .woff2\n(บีบอัดด้วย Brotli อ่านไม่ได้) — ใช้ .ttf .otf หรือ .woff แทน", "err"); return; }
+
+  let font;
+  try { font = opentype.parse(buf); }
+  catch (e) { toast("อ่านไฟล์ฟอนต์ไม่ได้: " + (e.message || "ไฟล์เสียหาย"), "err"); return; }
+
+  const family = familyNameOf(font, file);
+  if (FONTS.includes(family) && !isImported(family)) { toast(`มีฟอนต์ชื่อ "${family}" อยู่แล้วในระบบ`, "warn"); return; }
+
+  // 1) let the canvas render it
+  try {
+    const face = new FontFace(family, buf);
+    await face.load();
+    document.fonts.add(face);
+  } catch (e) { toast("เบราว์เซอร์ใช้ฟอนต์นี้ไม่ได้: " + (e.message || ""), "err"); return; }
+
+  // 2) let the exporter outline it — this is why the factory file stays correct
+  importedFonts.set(family, font);
+  for (const w of ["400", "700"]) fontCache.set(`${family}|${w}`, font);
+  if (!IMPORTED_GROUP.fonts.includes(family)) IMPORTED_GROUP.fonts.push(family);
+
+  refreshFontList();
+  buildFontSelect();
+  const sel = document.getElementById("fontSel");
+  if (sel) { sel.value = family; sel.onchange(); }
+  toast(`นำเข้า "${family}" แล้ว — ใช้ได้เฉพาะเบราว์เซอร์นี้`, "ok");
+}
+
+function bindFontImport() {
+  const btn = document.getElementById("btnFontImport");
+  const inp = document.getElementById("fileFont");
+  if (!btn || !inp) return;
+  btn.onclick = () => {
+    if (!confirm(
+      "นำเข้าฟอนต์\n\n" +
+      "• คุณต้องมีสิทธิ์ใช้ฟอนต์นี้ตามกฎหมาย (ฟอนต์เชิงพาณิชย์ส่วนใหญ่ห้ามแจกจ่ายไฟล์)\n" +
+      "• ฟอนต์เก็บไว้ในเบราว์เซอร์นี้เท่านั้น ไม่ถูกอัปโหลดขึ้นเซิร์ฟเวอร์\n" +
+      "• เปิดดีไซน์นี้ในเครื่องอื่น หรือรีเฟรชหน้า จะต้องนำเข้าใหม่\n" +
+      "• เผยแพร่ขายในตลาดลายไม่ได้\n\n" +
+      "ไฟล์ที่ export ไปโรงงานจะถูกแปลงเป็นเส้น จึงไม่เพี้ยนแน่นอน\n\nดำเนินการต่อ?"
+    )) return;
+    inp.click();
+  };
+  inp.onchange = async ev => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (f) await importFontFile(f);
+  };
+}
+
+/** any object on the canvas using a font the user imported */
+function objectsUsingImportedFonts() {
+  return userObjects().filter(o => {
+    if (!isTextish(o)) return false;
+    const fam = (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily) || "";
+    return isImported(fam.split(",")[0].trim().replace(/^["']|["']$/g, ""));
+  });
+}
+
 function buildFontSelect() {
   const el = document.getElementById("fontSel"); if (!el) return;
-  el.innerHTML = FONTS.map(f => `<option value="${f}">${f}</option>`).join("");
+  // grouped, and each option previews itself in its own face
+  el.innerHTML = refreshFontList().map(g =>
+    `<optgroup label="${g.label}">` +
+    g.fonts.map(f => `<option value="${f}" style="font-family:'${f}',sans-serif">${f}</option>`).join("") +
+    `</optgroup>`,
+  ).join("");
   el.value = curFont;
-  el.onchange = () => { curFont = el.value; const o = canvas.getActiveObject(); if (o && String(o.type).includes("text")) { o.set("fontFamily", fontStack(curFont)); canvas.requestRenderAll(); pushHistory(); } };
+  el.onchange = async () => {
+    curFont = el.value;
+    const o = canvas.getActiveObject();
+    if (!o || !isTextish(o)) return;
+    const stack = fontStack(curFont);
+    // wait for the face, otherwise an arc measures the fallback font
+    await ensureFont(stack, arcMetaOf(o).fontSize, arcMetaOf(o).fontWeight);
+    if (isArc(o)) rebuildArc(o, { fontFamily: stack });
+    else o.set("fontFamily", stack);
+    canvas.requestRenderAll(); pushHistory();
+  };
 }
 function panelOf(obj) {
   const c = obj.getCenterPoint();
@@ -1201,7 +1587,7 @@ function garmentDims(p) {
 // xFrac/yFrac are fractions of the garment size from its centre; centerXOnly keeps current Y.
 function placeOnGarment(xFrac, yFrac, centerXOnly) {
   const objs = canvas.getActiveObjects();
-  if (!objs.length) { toast("เลือกข้อความ/วัตถุก่อน"); return; }
+  if (!objs.length) { toast("เลือกข้อความ/วัตถุก่อน", "info"); return; }
   objs.forEach(o => {
     const p = panels[panelOf(o)]; if (!p) return;
     const { gw, gh } = garmentDims(p);
@@ -1218,9 +1604,174 @@ function nudgeHist() { clearTimeout(nudgeT); nudgeT = setTimeout(pushHistory, 40
 
 /* ---------- roster / batch new-order ---------- */
 let rosterOrig = null;
+/* ---------- curved (arched) text ----------
+   Fabric has no built-in text-on-path that survives our SVG export, so an arc
+   is a Group of single characters rotated along a circle. `arcMeta` keeps
+   everything needed to re-render it, so it round-trips through save/open and
+   can be flattened back to a plain IText when the curve returns to 0.        */
+const ARC_PROPS = ["name", "rosterTag", "arcMeta"];
+
+function isArc(o) { return !!(o && o.arcMeta); }
+
+/** a real editable text object. Arc groups are deliberately excluded: the
+ *  batch generator swaps `.text` on these in a loop, and rebuilding an arc
+ *  replaces the canvas object, which would invalidate its own iteration. */
 function isText(o) { return o && String(o.type).includes("text"); }
+
+/** anything the text panel can style (plain text OR an arc group) */
+function isTextish(o) { return isText(o) || isArc(o); }
+
 function taggedObjs(tag) { return userObjects().filter(o => o.rosterTag === tag && isText(o)); }
-function sanitizeName(s) { return String(s == null ? "" : s).replace(/[\\/:*?"<>|\r\n\t]+/g, "_").replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 48) || "x"; }
+
+/** widest angle the whole string may span, at |curve| = 100 */
+const ARC_MAX_ANGLE = 150 * Math.PI / 180;
+
+/** curve (-100..100) → signed radius in px. 0 means "straight".
+ *  Derived from the angle the text should span, not the other way round:
+ *  picking a radius directly makes small curves invisible and large ones wrap. */
+function arcRadius(curve, width) {
+  const c = Math.min(100, Math.max(-100, curve));
+  if (c === 0 || width <= 0) return 0;
+  const angle = (Math.abs(c) / 100) * ARC_MAX_ANGLE; // radians spanned
+  const r = width / angle;
+  return c > 0 ? r : -r;
+}
+
+function buildArcGroup(meta, at) {
+  const { text, curve, fontSize, fontFamily, fontWeight, fontStyle, charSpacing, fill, stroke, strokeWidth } = meta;
+  const chars = [...String(text || " ")];
+  const common = { fontSize, fontFamily, fontWeight, fontStyle, fill, stroke, strokeWidth, strokeUniform: true, originX: "center", originY: "center", objectCaching: false };
+
+  // measure each glyph so proportional fonts don't bunch up
+  const probes = chars.map(ch => new fabric.Text(ch === " " ? " " : ch, common));
+  const gaps = probes.map(p => p.width + (charSpacing || 0) / 1000 * fontSize);
+  const total = gaps.reduce((a, b) => a + b, 0);
+  const R = arcRadius(curve, total);
+
+  if (!R) {
+    // straight: a plain IText is nicer to edit
+    const t = new fabric.IText(text, { ...common, charSpacing, left: at.left, top: at.top, originX: "center", originY: "center" });
+    return t;
+  }
+
+  const dir = R > 0 ? -1 : 1;      // positive curve arcs upward
+  const r = Math.abs(R);
+  const totalAngle = total / r;     // radians spanned by the whole string
+  let a = -totalAngle / 2;
+
+  const objs = [];
+  chars.forEach((ch, i) => {
+    const step = gaps[i] / r;
+    const mid = a + step / 2;
+    const t = new fabric.Text(ch === " " ? " " : ch, {
+      ...common, charSpacing: 0,
+      left: r * Math.sin(mid),
+      top: dir * (r * Math.cos(mid) - r), // keep the middle of the arc at y=0
+      angle: (mid * 180 / Math.PI) * -dir,
+    });
+    objs.push(t);
+    a += step;
+  });
+
+  const g = new fabric.Group(objs, { left: at.left, top: at.top, originX: "center", originY: "center", objectCaching: false });
+  g.arcMeta = { ...meta };
+  return g;
+}
+
+/** Webfonts load asynchronously. An arc measures every glyph, so building one
+ *  before its face is ready gives fallback-font widths and a lopsided curve. */
+function ensureFont(stack, size, weight) {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  try { return document.fonts.load(`${weight || 400} ${Math.max(12, size || 40)}px ${stack}`); }
+  catch { return Promise.resolve(); }
+}
+
+/** re-measure every arc on the canvas (after fonts finish loading) */
+function reflowArcs() {
+  const arcs = userObjects().filter(isArc);
+  if (!arcs.length) return;
+  const hadActive = canvas.getActiveObject();
+  arcs.forEach(o => rebuildArc(o, {}));
+  if (!hadActive) canvas.discardActiveObject();
+  canvas.requestRenderAll();
+}
+
+/** metadata snapshot of any text-ish object */
+function arcMetaOf(o) {
+  if (isArc(o)) return { ...o.arcMeta };
+  return {
+    text: o.text || "",
+    curve: 0,
+    fontSize: o.fontSize || 40,
+    fontFamily: o.fontFamily || fontStack(curFont),
+    fontWeight: o.fontWeight || "normal",
+    fontStyle: o.fontStyle || "normal",
+    charSpacing: o.charSpacing || 0,
+    fill: o.fill || "#111111",
+    stroke: o.stroke || "",
+    strokeWidth: o.strokeWidth || 0,
+  };
+}
+
+/** replace `o` in-place with a re-rendered version carrying `patch` */
+function rebuildArc(o, patch) {
+  const meta = { ...arcMetaOf(o), ...patch };
+  // the rebuilt object always has a centre origin; anchor it on the old centre
+  // so straight ⇄ curved never makes the text jump half its width
+  const c = o.getCenterPoint();
+  const at = { left: c.x, top: c.y };
+  const keep = { angle: o.angle || 0, opacity: o.opacity ?? 1, name: o.name, rosterTag: o.rosterTag };
+
+  const next = buildArcGroup(meta, at);
+  next.set(keep);
+  if (meta.curve) next.arcMeta = meta;
+
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o);
+  canvas.add(next);
+  if (idx >= 0) next.moveTo(idx);        // keep its place in the layer stack
+  if (clipOn) applyClip(next);           // stay inside the garment shape
+  canvas.setActiveObject(next);
+  fixBackOrder();
+  canvas.requestRenderAll();
+  return next;
+}
+
+function bindTextPanel() {
+  const g = id => document.getElementById(id);
+  const active = () => canvas.getActiveObject();
+
+  const apply = patch => {
+    const o = active(); if (!o || !isTextish(o)) return;
+
+    // curving a roster field would break the batch generator (rebuilding the
+    // arc replaces the object mid-loop), so drop the tag and say why
+    const curving = patch.curve !== undefined ? patch.curve !== 0 : isArc(o);
+    if (curving && o.rosterTag) {
+      o.rosterTag = null;
+      toast("ข้อความโค้งใช้เป็นช่องชื่อ/เบอร์ roster ไม่ได้\nยกเลิกแท็กให้แล้ว — ชื่อทีมโค้งไม่ต้องเปลี่ยนรายคนอยู่แล้ว", "warn");
+      updateTagInfo && updateTagInfo();
+    }
+
+    // an arc must be rebuilt; a plain text can be mutated in place
+    if (isArc(o) || (patch.curve !== undefined && patch.curve !== 0)) rebuildArc(o, patch);
+    else { o.set(patch); canvas.requestRenderAll(); }
+    pushHistory(); syncProps();
+  };
+
+  const weightOf = o => (isArc(o) ? o.arcMeta.fontWeight : o.fontWeight);
+  const styleOf = o => (isArc(o) ? o.arcMeta.fontStyle : o.fontStyle);
+
+  if (g("txSize")) g("txSize").onchange = e => apply({ fontSize: Math.max(4, +e.target.value || 40) });
+  if (g("txBold")) g("txBold").onclick = () => { const o = active(); if (!o || !isTextish(o)) return; const w = weightOf(o); apply({ fontWeight: (w === "bold" || w === "700" || w === 700) ? "normal" : "bold" }); };
+  if (g("txItal")) g("txItal").onclick = () => { const o = active(); if (!o || !isTextish(o)) return; apply({ fontStyle: styleOf(o) === "italic" ? "normal" : "italic" }); };
+  if (g("txSpace")) g("txSpace").oninput = e => { const v = +e.target.value; const l = g("txSpaceV"); if (l) l.textContent = v; };
+  if (g("txSpace")) g("txSpace").onchange = e => apply({ charSpacing: +e.target.value });
+  if (g("txArc")) g("txArc").oninput = e => { const v = +e.target.value; const l = g("txArcV"); if (l) l.textContent = v; };
+  if (g("txArc")) g("txArc").onchange = e => apply({ curve: +e.target.value });
+  if (g("txText")) g("txText").onchange = e => apply({ text: e.target.value });
+}
+
 function updateTagInfo() {
   const el = document.getElementById("tagInfo"); if (!el) return;
   const n = taggedObjs("name").length, num = taggedObjs("number").length;
@@ -1259,7 +1810,7 @@ function applyRow(nameObjs, numObjs, r) {
   canvas.requestRenderAll();
 }
 function rosterPreviewFirst() {
-  const rows = parseRoster(); if (!rows.length) { toast("ยังไม่มีรายชื่อ"); return; }
+  const rows = parseRoster(); if (!rows.length) { toast("ยังไม่มีรายชื่อ", "warn"); return; }
   const nameObjs = taggedObjs("name"), numObjs = taggedObjs("number");
   if (!nameObjs.length && !numObjs.length) { toast("ยังไม่ได้แท็กช่องชื่อ/เบอร์"); return; }
   if (!rosterOrig) rosterOrig = { n: nameObjs.map(o => o.text), m: numObjs.map(o => o.text) };
@@ -1294,7 +1845,7 @@ async function generateBatch() {
       let base = `${r.size || TPL_SIZE}_${String(i + 1).padStart(2, "0")}_${sanitizeName(r.name || r.number)}`;
       used[base] = (used[base] || 0) + 1; if (used[base] > 1) base += "_" + used[base];
       folder.file(base + ".png", exportPNG(2).split(",")[1], { base64: true });
-      folder.file(base + ".svg", buildSVGString());
+      folder.file(base + ".svg", await buildOutlinedSVG(i > 0));
       if (prog) prog.textContent = `กำลังสร้าง ${i + 1}/${rows.length} — ${r.name || r.number}`;
     }
     // add a roster.csv manifest
@@ -1311,17 +1862,25 @@ async function generateBatch() {
   if (prog) prog.textContent = `เสร็จ ✓ ${rows.length} ตัว (PNG + SVG ต่อคน)`;
   toast("ดาวน์โหลด ZIP แล้ว ✓");
 }
-function saveOrder() {
+function saveOrder(goOrder) {
   const rows = parseRoster();
-  if (!taggedObjs("name").length && !taggedObjs("number").length) { toast("แท็กช่องชื่อ/เบอร์ก่อนบันทึก"); return; }
-  if (!rows.length) { toast("ยังไม่มีรายชื่อ"); return; }
+  if (!taggedObjs("name").length && !taggedObjs("number").length) { toast("แท็กช่องชื่อ/เบอร์ก่อนบันทึก", "warn"); return; }
+  if (!rows.length) { toast("ยังไม่มีรายชื่อ", "warn"); return; }
   const orderDoc = { app: "axiom-roster", version: 1, name: orderName(), style: curStyle, size: TPL_SIZE, roster: rows, template: getDoc(), savedAt: new Date().toISOString() };
   const preview = exportPNG(0.5);
   const prog = document.getElementById("rosterProg");
   if (inFrame() && isLoggedIn) {
-    window.parent.postMessage({ type: "axiom-save-order", payload: { name: orderName(), style: curStyle, size: TPL_SIZE, count: rows.length, doc: orderDoc, preview } }, "*");
-    if (prog) prog.textContent = "กำลังบันทึกออเดอร์...";
-    toast("กำลังบันทึกออเดอร์...");
+    window.parent.postMessage({
+      type: "axiom-save-order",
+      payload: {
+        name: orderName(), style: curStyle, size: TPL_SIZE, count: rows.length, doc: orderDoc, preview,
+        goOrder: !!goOrder,
+        fabric: curFabric, trim: curTrim, reversible: curStyle === 2,
+        roster: rows.map(r => ({ playerName: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase() })),
+      },
+    }, "*");
+    if (prog) prog.textContent = goOrder ? "กำลังไปหน้าสั่งผลิต..." : "กำลังบันทึกออเดอร์...";
+    toast(goOrder ? "กำลังไปหน้าสั่งผลิต..." : "กำลังบันทึกออเดอร์...", "info");
   } else if (inFrame()) {
     toast("ยังไม่เข้าสู่ระบบ — ดาวน์โหลดไฟล์ออเดอร์แทน");
     download(sanitizeName(orderName()) + ".order.axiom", URL.createObjectURL(new Blob([JSON.stringify(orderDoc)], { type: "application/json" })));
@@ -1425,10 +1984,12 @@ function renderWizard() {
     body.innerHTML = `<p style="font-size:14px;margin-bottom:6px"><b>${wizEsc(wizName) || "ออเดอร์ทีม"}</b> — ${n} คน</p>
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px">พร้อมสร้างไฟล์ต่อคน (หน้า+หลัง) หรือบันทึกออเดอร์เข้าบัญชี</p>
       <button class="mini" id="wizGen" style="width:100%;box-sizing:border-box;height:40px;margin-bottom:8px;background:#2563eb;color:#fff;border-color:transparent;font-weight:700">⚙ สร้างทั้งทีม → ดาวน์โหลด ZIP</button>
-      <button class="mini" id="wizSave" style="width:100%;box-sizing:border-box;height:36px">💾 บันทึกออเดอร์เข้าบัญชี</button>
+      <button class="mini" id="wizOrder" style="width:100%;box-sizing:border-box;height:44px;margin-bottom:8px;background:#16a34a;color:#fff;border-color:transparent;font-weight:700;font-size:13.5px">🧵 สั่งผลิตเลย → ดูราคา</button>
+      <button class="mini" id="wizSave" style="width:100%;box-sizing:border-box;height:34px">💾 บันทึกไว้ก่อน (ยังไม่สั่ง)</button>
       <div id="wizProg" style="font-size:11.5px;color:var(--muted);margin-top:10px"></div>`;
     const g = document.getElementById("wizGen"); if (g) g.onclick = async () => { const pr = document.getElementById("wizProg"); if (pr) pr.textContent = "กำลังสร้าง..."; await generateBatch(); const rp = document.getElementById("rosterProg"); if (pr) pr.textContent = rp ? rp.textContent : "เสร็จ ✓"; };
-    const s = document.getElementById("wizSave"); if (s) s.onclick = () => { const pr = document.getElementById("wizProg"); if (pr) pr.textContent = "กำลังบันทึก..."; saveOrder(); };
+    const s = document.getElementById("wizSave"); if (s) s.onclick = () => { const pr = document.getElementById("wizProg"); if (pr) pr.textContent = "กำลังบันทึก..."; saveOrder(false); };
+    const od = document.getElementById("wizOrder"); if (od) od.onclick = () => { const pr = document.getElementById("wizProg"); if (pr) pr.textContent = "กำลังไปหน้าสั่งผลิต..."; saveOrder(true); };
   }
   const back = document.getElementById("wizBack"); if (back) back.style.visibility = wizStep > 1 ? "visible" : "hidden";
   const nx = document.getElementById("wizNext"); if (nx) nx.textContent = wizStep < 4 ? "ถัดไป →" : "ปิด";
@@ -1447,7 +2008,8 @@ function bindRoster() {
   if (g("rosterPreview")) g("rosterPreview").onclick = rosterPreviewFirst;
   if (g("rosterReset")) g("rosterReset").onclick = rosterReset;
   if (g("rosterGen")) g("rosterGen").onclick = () => generateBatch();
-  if (g("rosterSave")) g("rosterSave").onclick = saveOrder;
+  if (g("rosterSave")) g("rosterSave").onclick = () => saveOrder(false);
+  if (g("rosterOrder")) g("rosterOrder").onclick = () => saveOrder(true);
   const P = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; };
   P("wizOpen", openWizard);
   P("wizNext", wizNextStep);
@@ -1478,6 +2040,10 @@ buildGarmentGrid("bodyGrid", setBodyColor);
 buildGarmentGrid("trimGrid", setTrimColor);
 buildPatternGallery();
 buildFontSelect();
+bindFontImport();
+bindTextPanel();
+// a saved design may open before its webfonts arrive — re-measure the curves then
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { reflowArcs(); canvas.requestRenderAll(); });
 bindRoster();
 bindCut();
 const btnClipEl = document.getElementById("btnClip");

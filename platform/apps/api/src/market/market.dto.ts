@@ -35,3 +35,9 @@ export const BrowseQuerySchema = z.object({
   skip: z.coerce.number().int().min(0).optional(),
 });
 export type BrowseQueryDto = z.infer<typeof BrowseQuerySchema>;
+
+export const ReportTemplateSchema = z.object({
+  reason: z.enum(["copyright", "trademark", "illegal", "other"]),
+  detail: z.preprocess(emptyToUndef, z.string().max(1000).optional()),
+});
+export type ReportTemplateDto = z.infer<typeof ReportTemplateSchema>;

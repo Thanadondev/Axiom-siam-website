@@ -96,12 +96,20 @@ model User {
   fullName      String?   @map("full_name")
   phone         String?
   companyName   String?   @map("company_name")
+  bio           String? // short public blurb shown on the designer profile page
   role          Role      @default(customer)
   isVerified    Boolean   @default(false) @map("is_verified")
   locale        Locale    @default(th)
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
+  suspendedAt   DateTime? @map("suspended_at") // set by admin — blocks login
+  suspendReason String?   @map("suspend_reason")
+
+  // two-factor auth (TOTP). Required for admins once enrolled.
+  totpSecret    String?   @map("totp_secret") // base32, only set while/after enrolling
+  totpEnabled   Boolean   @default(false) @map("totp_enabled")
+  recoveryCodes String[]  @default([]) @map("recovery_codes") // sha256 hashes, single-use
 
   addresses         Address[]
   designs           Design[]
@@ -113,9 +121,47 @@ model User {
   marketTemplates   MarketTemplate[]
   templatePurchases TemplatePurchase[]
   termsAcceptances  TermsAcceptance[]
+  templateReports   TemplateReport[]   @relation("Reporter")
+  payouts           DesignerPayout[]
+  adminAudits       AdminAudit[]       @relation("AuditActor")
 
   @@index([role])
   @@map("users")
+}
+
+// every state-changing action an admin performs — tamper-evidence & forensics
+model AdminAudit {
+  id        String   @id @default(uuid())
+  actorId   String?  @map("actor_id") // admin user (null if the account was deleted)
+  actorEmail String? @map("actor_email") // denormalised: survives user deletion
+  method    String // POST / PATCH / DELETE
+  path      String // /api/v1/admin/users/:id
+  action    String // users.update / templates.takedown / settings.pricing ...
+  targetId  String?  @map("target_id")
+  payload   Json? // request body, secrets stripped
+  ok        Boolean  @default(true)
+  status    Int? // http status
+  ip        String?
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_audits")
+}
+
+// editable platform configuration (pricing, commission, ...) — admin-managed,
+// falls back to env vars / code defaults when a key is absent
+model Setting {
+  key       String   @id
+  valueJson Json     @map("value_json")
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
 }
 
 // audit log — proof a user accepted the terms (e.g. when publishing a template)
@@ -284,17 +330,61 @@ model MarketTemplate {
   stateJson   Json           @map("state_json") // full designer state to load into the editor
   status      TemplateStatus @default(draft)
   salesCount  Int            @default(0) @map("sales_count")
+  featured    Boolean        @default(false) // shown first in the marketplace
+  previewHash String?        @map("preview_hash") // sha256 of the preview image — exact-duplicate detection
+  takedownAt     DateTime? @map("takedown_at") // admin removed it (copyright etc.)
+  takedownReason String?   @map("takedown_reason")
+  earningsFrozen Boolean   @default(false) @map("earnings_frozen") // seller earnings withheld
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
   deletedAt   DateTime?      @map("deleted_at")
 
   designer  User               @relation(fields: [designerId], references: [id], onDelete: Cascade)
   purchases TemplatePurchase[]
+  reports   TemplateReport[]
 
   @@index([status])
   @@index([designerId])
   @@index([category])
+  @@index([previewHash])
   @@map("market_templates")
+}
+
+// a user reports a template for copyright / prohibited content
+model TemplateReport {
+  id         String    @id @default(uuid())
+  templateId String    @map("template_id")
+  reporterId String?   @map("reporter_id") // null = anonymous
+  reason     String // copyright / trademark / illegal / other
+  detail     String?
+  status     String    @default("open") // open / reviewing / actioned / dismissed
+  adminNote  String?   @map("admin_note")
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  template MarketTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  reporter User?          @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([templateId])
+  @@map("template_reports")
+}
+
+// a payout batch: money actually sent to a designer
+model DesignerPayout {
+  id         String    @id @default(uuid())
+  designerId String    @map("designer_id")
+  amount     Int // baht
+  salesCount Int       @default(0) @map("sales_count")
+  note       String?
+  paidAt     DateTime  @default(now()) @map("paid_at")
+  createdBy  String?   @map("created_by") // admin user id
+
+  designer  User               @relation(fields: [designerId], references: [id], onDelete: Cascade)
+  purchases TemplatePurchase[]
+
+  @@index([designerId])
+  @@map("designer_payouts")
 }
 
 model TemplatePurchase {
@@ -306,14 +396,18 @@ model TemplatePurchase {
   designerEarning Int      @map("designer_earning") // seller earning, frozen
   commissionPct   Int      @map("commission_pct") // % used at sale time
   status          String   @default("paid") // paid / refunded (MVP: paid)
+  paidOut         Boolean  @default(false) @map("paid_out") // designer earning already paid
+  payoutId        String?  @map("payout_id")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  template MarketTemplate @relation(fields: [templateId], references: [id])
-  buyer    User           @relation(fields: [buyerId], references: [id])
+  template MarketTemplate  @relation(fields: [templateId], references: [id])
+  buyer    User            @relation(fields: [buyerId], references: [id])
+  payout   DesignerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   @@unique([templateId, buyerId]) // a user owns a given template once
   @@index([buyerId])
   @@index([templateId])
+  @@index([paidOut])
   @@map("template_purchases")
 }
 
@@ -502,6 +596,7 @@ model QuoteRequest {
   message   String?
   designId  String?  @map("design_id")
   status    String   @default("new") // new / contacted / closed
+  adminNote String?  @map("admin_note") // internal follow-up note
   createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)

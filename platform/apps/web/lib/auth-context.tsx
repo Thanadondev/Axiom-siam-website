@@ -9,6 +9,7 @@ export interface User {
   fullName: string | null;
   phone: string | null;
   companyName: string | null;
+  bio: string | null;
   role: string;
   isVerified: boolean;
   locale: string;
@@ -26,7 +27,7 @@ interface AuthState {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, totpCode?: string) => Promise<void>;
   register: (data: RegisterData) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   setUser: (u: User | null) => void;
@@ -55,10 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  async function login(email: string, password: string) {
+  /** totpCode is only needed once the account has 2FA enrolled */
+  async function login(email: string, password: string, totpCode?: string) {
     const res = await apiFetch<{ accessToken: string; user: User }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, totpCode }),
     });
     setToken(res.accessToken);
     setUser(res.user);

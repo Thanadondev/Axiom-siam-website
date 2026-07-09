@@ -14,8 +14,21 @@ export type RegisterDto = z.infer<typeof RegisterSchema>;
 export const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  // 6-digit TOTP or a XXXXX-XXXXX recovery code; only needed when 2FA is on
+  totpCode: z.preprocess(emptyToUndef, z.string().max(20).optional()),
 });
 export type LoginDto = z.infer<typeof LoginSchema>;
+
+export const TotpCodeSchema = z.object({
+  code: z.string().min(6, "กรอกรหัส 6 หลัก").max(20),
+});
+export type TotpCodeDto = z.infer<typeof TotpCodeSchema>;
+
+export const TotpDisableSchema = z.object({
+  password: z.string().min(1, "กรุณากรอกรหัสผ่าน"),
+  code: z.string().min(6).max(20),
+});
+export type TotpDisableDto = z.infer<typeof TotpDisableSchema>;
 
 export const VerifyEmailSchema = z.object({ token: z.string().min(10) });
 export type VerifyEmailDto = z.infer<typeof VerifyEmailSchema>;
@@ -33,6 +46,7 @@ export const UpdateProfileSchema = z.object({
   fullName: z.string().max(120).optional(),
   phone: z.string().max(40).optional(),
   companyName: z.string().max(160).optional(),
+  bio: z.string().max(500).optional(), // public blurb on the designer profile
   locale: z.enum(["th", "en"]).optional(),
 });
 export type UpdateProfileDto = z.infer<typeof UpdateProfileSchema>;

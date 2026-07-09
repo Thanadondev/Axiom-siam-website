@@ -36,7 +36,7 @@ export default function TemplatesPage() {
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   return (
-    <AppShell>
+    <AppShell wide>
       <div className="acard" style={{ marginBottom: 18 }}>
         <div className="eyebrow">MARKETPLACE</div>
         <h1 className="atitle">ตลาดลาย & เทมเพลต</h1>
