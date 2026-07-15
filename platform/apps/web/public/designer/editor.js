@@ -1107,7 +1107,6 @@ window.addEventListener("message", ev => {
   const m = ev.data || {};
   if (m.type === "axiom-auth") isLoggedIn = !!m.user;
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
-  else if (m.type === "axiom-quote-result") toast(m.ok ? "ส่งคำขอราคาแล้ว ✓ ทีมงานจะติดต่อกลับ" : ("ส่งไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }
   else if (m.type === "axiom-open" && m.doc) openDoc(m.doc);
@@ -1315,16 +1314,6 @@ $("#btnSvg").onclick = () => runExport(async () => {
   download("axiom-design.svg", URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })));
   toast("ดาวน์โหลด SVG (ตัวหนังสือเป็นเส้นแล้ว) ✓");
 });
-
-/* ---------- quote modal ---------- */
-$("#btnQuote").onclick = () => $("#quoteModal").classList.add("on");
-document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => $("#quoteModal").classList.remove("on"));
-$("#qSend").onclick = () => {
-  const payload = { name: $("#qName").value.trim() || "ลูกค้า", phone: $("#qPhone").value.trim(), email: $("#qEmail").value.trim(), message: $("#qNote").value.trim() };
-  if (inFrame()) { window.parent.postMessage({ type: "axiom-quote", payload }, "*"); toast("กำลังส่งคำขอ..."); }
-  else toast("ส่งคำขอ (เดโม)");
-  $("#quoteModal").classList.remove("on");
-};
 
 /* ---------- publish to marketplace ---------- */
 {

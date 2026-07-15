@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
+import SlipReview from "../../components/SlipReview";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
 
-type Tab = "dash" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "settings";
+type Tab = "dash" | "payments" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "settings";
 const TABS: { id: Tab; label: string }[] = [
   { id: "dash", label: "📊 ภาพรวม" },
+  { id: "payments", label: "🧾 ตรวจสลิป" },
   { id: "orders", label: "🧵 ออเดอร์ผลิต" },
   { id: "market", label: "🛍️ ตลาดลาย" },
   { id: "reports", label: "🚩 รายงานละเมิด" },
@@ -293,6 +295,13 @@ export default function AdminPage() {
     if (r) { setCfg((c: any) => ({ ...c, market: r })); setSaved("บันทึกตลาดลายแล้ว ✓"); }
     setBusy(false);
   }
+  async function saveBank() {
+    setBusy(true); setSaved("");
+    const r = await call<any>("/admin/settings/bank", { method: "PATCH", body: JSON.stringify(cfg.bank) });
+    if (r) { setCfg((c: any) => ({ ...c, bank: r })); setSaved("บันทึกบัญชีรับเงินแล้ว ✓"); }
+    setBusy(false);
+  }
+  const setB = (k: string, v: any) => setCfg((c: any) => ({ ...c, bank: { ...c.bank, [k]: v } }));
   const setP = (k: string, v: any) => setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [k]: v } }));
   const setTier = (i: number, k: "minQty" | "price", v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, tiers: c.pricing.tiers.map((t: any, j: number) => j === i ? { ...t, [k]: v } : t) } }));
@@ -445,6 +454,10 @@ export default function AdminPage() {
       )}
 
       {/* ---------------- ORDERS ---------------- */}
+      {/* ---------------- SLIP REVIEW ---------------- */}
+      {/* approving a slip changes revenue, so refresh the dashboard's numbers too */}
+      {tab === "payments" && token && <SlipReview token={token} onChange={() => loadTab("dash")} />}
+
       {tab === "orders" && (
         <div className="acard">
           <h2 className="ah2">ออเดอร์สั่งผลิต ({orders.length})</h2>
@@ -908,6 +921,59 @@ export default function AdminPage() {
             <p className="dim" style={{ marginTop: 8 }}>ดีไซเนอร์ได้ {100 - (cfg.market.commissionPct || 0)}% · เปลี่ยนเวอร์ชันข้อตกลงเมื่อแก้เนื้อหาหน้า /terms เพื่อให้ log แยกเวอร์ชันได้</p>
             <button className="abtn solid" style={{ marginTop: 16 }} disabled={busy} onClick={saveMarket}>บันทึกตลาดลาย</button>
           </div>
+
+          {/* ---------------- BANK / PAYMENTS ---------------- */}
+          {cfg.bank && (
+            <div className="acard">
+              <h2 className="ah2">บัญชีรับเงิน</h2>
+              <p className="asub">
+                ลูกค้าจะเห็นข้อมูลนี้ในหน้าออเดอร์ และ QR จะถูกสร้างจากพร้อมเพย์ที่ใส่ไว้ —
+                ตรวจให้แน่ใจก่อนบันทึก เพราะเงินจะวิ่งเข้าบัญชีนี้จริง
+              </p>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 14 }}>
+                <input type="checkbox" checked={!!cfg.bank.enabled} onChange={e => setB("enabled", e.target.checked)} />
+                เปิดรับชำระเงิน (ถ้าปิด ลูกค้าจะเห็นข้อความให้ติดต่อทีมงานแทน)
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14, marginTop: 14 }}>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ธนาคาร</label>
+                  <input className="ainput" placeholder="เช่น กสิกรไทย" value={cfg.bank.bankName ?? ""} onChange={e => setB("bankName", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>เลขบัญชี</label>
+                  <input className="ainput" placeholder="xxx-x-xxxxx-x" value={cfg.bank.accountNo ?? ""} onChange={e => setB("accountNo", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ชื่อบัญชี</label>
+                  <input className="ainput" placeholder="บจก. แอกซิออม สยาม" value={cfg.bank.accountName ?? ""} onChange={e => setB("accountName", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>พร้อมเพย์ (สร้าง QR)</label>
+                  <input className="ainput" placeholder="เบอร์ / เลขบัตร / e-wallet" value={cfg.bank.promptpayId ?? ""} onChange={e => setB("promptpayId", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ประเภทพร้อมเพย์</label>
+                  <select className="ainput" value={cfg.bank.promptpayType ?? "phone"} onChange={e => setB("promptpayType", e.target.value)}>
+                    <option value="phone">เบอร์โทร</option>
+                    <option value="natid">เลขบัตรประชาชน</option>
+                    <option value="ewallet">e-wallet (15 หลัก)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label className="flabel" style={{ margin: "0 0 6px" }}>ข้อความใต้ QR</label>
+                <input className="ainput" value={cfg.bank.note ?? ""} onChange={e => setB("note", e.target.value)} />
+              </div>
+
+              <p className="dim" style={{ marginTop: 10 }}>
+                เว้นพร้อมเพย์ว่างได้ ถ้าไม่อยากให้มี QR — ลูกค้าจะโอนเข้าเลขบัญชีแทน
+              </p>
+              <button className="abtn solid" style={{ marginTop: 16 }} disabled={busy} onClick={saveBank}>บันทึกบัญชีรับเงิน</button>
+            </div>
+          )}
 
           {saved && <div className="acard" style={{ color: "#16a34a", fontWeight: 600 }}>{saved}</div>}
         </>

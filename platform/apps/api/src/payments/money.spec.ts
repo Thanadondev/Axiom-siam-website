@@ -1,89 +1,69 @@
 import { describe, it, expect } from "vitest";
-import { bahtToSatang, satangToBaht, verifyPaidAmount, SATANG_PER_BAHT } from "./money";
+import { bahtToSatang, satangToBaht, parseSlipAmount, formatBaht, MIN_CHARGE_BAHT } from "./money";
 
 describe("bahtToSatang", () => {
   it("multiplies by 100", () => {
-    expect(bahtToSatang(1730)).toBe(173_000);
-    expect(bahtToSatang(1)).toBe(100);
+    expect(bahtToSatang(1730)).toBe(173000);
     expect(bahtToSatang(0)).toBe(0);
-    expect(SATANG_PER_BAHT).toBe(100);
   });
 
-  it("refuses fractional baht — our prices are always whole", () => {
-    expect(() => bahtToSatang(10.5)).toThrow(/whole/);
-  });
-
-  it("refuses negative amounts", () => {
-    expect(() => bahtToSatang(-1)).toThrow(/negative/);
-  });
-
-  it("refuses NaN / Infinity rather than sending garbage to Stripe", () => {
+  it("refuses anything that isn't a whole, non-negative number", () => {
     expect(() => bahtToSatang(NaN)).toThrow();
     expect(() => bahtToSatang(Infinity)).toThrow();
-  });
-
-  it("round-trips", () => {
-    for (const b of [0, 1, 99, 1730, 42_000]) expect(satangToBaht(bahtToSatang(b))).toBe(b);
+    expect(() => bahtToSatang(-1)).toThrow();
+    expect(() => bahtToSatang(10.5)).toThrow();
   });
 });
 
 describe("satangToBaht", () => {
-  it("refuses amounts that are not whole baht", () => {
-    expect(() => satangToBaht(150)).toThrow(/whole number of baht/);
+  it("round-trips with bahtToSatang", () => {
+    for (const b of [1, 10, 999, 12345]) expect(satangToBaht(bahtToSatang(b))).toBe(b);
+  });
+
+  it("refuses a fractional baht amount", () => {
+    expect(() => satangToBaht(150)).toThrow();
+    expect(() => satangToBaht(NaN)).toThrow();
   });
 });
 
-describe("verifyPaidAmount — the last gate before an order is marked paid", () => {
-  const good = { amount_total: 173_000, currency: "thb", payment_status: "paid" as const };
-
-  it("accepts a correct payment", () => {
-    expect(verifyPaidAmount(good, 1730)).toEqual({ ok: true });
+describe("parseSlipAmount", () => {
+  it("reads the shapes a Thai slip prints", () => {
+    expect(parseSlipAmount("1,234.00")).toBe(1234);
+    expect(parseSlipAmount("฿1,234")).toBe(1234);
+    expect(parseSlipAmount("1234.50")).toBe(1234.5);
+    expect(parseSlipAmount("4,500.00 บาท")).toBe(4500);
+    expect(parseSlipAmount(" 900 ")).toBe(900);
   });
 
-  it("accepts uppercase currency from Stripe", () => {
-    expect(verifyPaidAmount({ ...good, currency: "THB" }, 1730).ok).toBe(true);
+  it("passes a plain number through", () => {
+    expect(parseSlipAmount(4500)).toBe(4500);
   });
 
-  it("REJECTS an underpayment", () => {
-    const r = verifyPaidAmount({ ...good, amount_total: 100 }, 1730);
-    expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/paid 100 satang, order is 173000 satang/);
+  it("returns null rather than guessing", () => {
+    // anything ambiguous must reach a human, not become a payment
+    expect(parseSlipAmount("")).toBeNull();
+    expect(parseSlipAmount(null)).toBeNull();
+    expect(parseSlipAmount(undefined)).toBeNull();
+    expect(parseSlipAmount("abc")).toBeNull();
+    expect(parseSlipAmount("12.345")).toBeNull(); // 3 decimals isn't money
+    expect(parseSlipAmount("1.2.3")).toBeNull();
+    expect(parseSlipAmount("-500")).toBeNull();
+    expect(parseSlipAmount(0)).toBeNull();
+    expect(parseSlipAmount(NaN)).toBeNull();
   });
+});
 
-  it("REJECTS an overpayment (needs a human to look)", () => {
-    expect(verifyPaidAmount({ ...good, amount_total: 999_999 }, 1730).ok).toBe(false);
+describe("formatBaht", () => {
+  it("adds the symbol and thousands separators", () => {
+    expect(formatBaht(1234)).toBe("฿1,234");
+    expect(formatBaht(0)).toBe("฿0");
+    expect(formatBaht(1234.6)).toBe("฿1,235"); // rounds — display only
   });
+});
 
-  it("REJECTS a different currency — ฿1730 is not $1730", () => {
-    const r = verifyPaidAmount({ ...good, currency: "usd" }, 1730);
-    expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/expected thb/);
-  });
-
-  it("REJECTS a session that has not actually been paid", () => {
-    for (const s of ["unpaid", "no_payment_required", null, undefined]) {
-      expect(verifyPaidAmount({ ...good, payment_status: s as any }, 1730).ok).toBe(false);
-    }
-  });
-
-  it("REJECTS a missing amount", () => {
-    expect(verifyPaidAmount({ ...good, amount_total: null }, 1730).ok).toBe(false);
-    expect(verifyPaidAmount({ currency: "thb", payment_status: "paid" }, 1730).ok).toBe(false);
-  });
-
-  it("REJECTS a missing currency", () => {
-    expect(verifyPaidAmount({ amount_total: 173_000, payment_status: "paid" }, 1730).ok).toBe(false);
-  });
-
-  it("is not fooled by a zero-baht order paid with zero", () => {
-    // a ฿0 order should never reach checkout (MIN_CHARGE_BAHT guards it),
-    // but if it did, the amounts still have to agree
-    expect(verifyPaidAmount({ amount_total: 0, currency: "thb", payment_status: "paid" }, 0).ok).toBe(true);
-    expect(verifyPaidAmount({ amount_total: 0, currency: "thb", payment_status: "paid" }, 100).ok).toBe(false);
-  });
-
-  it("never throws on a hostile session object", () => {
-    expect(() => verifyPaidAmount({} as any, 1730)).not.toThrow();
-    expect(verifyPaidAmount({} as any, 1730).ok).toBe(false);
+describe("MIN_CHARGE_BAHT", () => {
+  it("is a sane floor", () => {
+    expect(MIN_CHARGE_BAHT).toBeGreaterThan(0);
+    expect(MIN_CHARGE_BAHT).toBeLessThan(100);
   });
 });

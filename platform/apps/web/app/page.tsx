@@ -82,7 +82,7 @@ export default function Home() {
             </p>
             <div className="btnrow" style={{ justifyContent: "center" }}>
               <Link className="btn solid" href={designHref}>{th ? "เริ่มออกแบบเสื้อ" : "Start Designing"}</Link>
-              <a className="btn ghost" href="#contact">{th ? "ขอใบเสนอราคา" : "Get a Quote"}</a>
+              <a className="btn ghost" href="#contact">{th ? "ติดต่อเรา" : "Contact Us"}</a>
             </div>
           </div>
           <div className="scrollhint">
@@ -106,8 +106,8 @@ export default function Home() {
               <li>{th ? "ควบคุมคุณภาพทุกขั้นตอน (QC)" : "Full quality control at every step"}</li>
             </ul>
             <div className="stats">
-              <div className="stat"><b>15+</b><span>{th ? "ปีประสบการณ์" : "Years"}</span></div>
-              <div className="stat"><b>20+</b><span>{th ? "ประเทศส่งออก" : "Countries"}</span></div>
+              <div className="stat"><b>5+</b><span>{th ? "ปีประสบการณ์" : "Years"}</span></div>
+              <div className="stat"><b>10+</b><span>{th ? "ประเทศส่งออก" : "Countries"}</span></div>
               <div className="stat"><b>50K+</b><span>{th ? "ตัว/เดือน" : "Units/mo"}</span></div>
             </div>
           </div>
@@ -215,7 +215,6 @@ export default function Home() {
             <div className="cinfo" style={{ maxWidth: 420, margin: "14px auto 18px" }}>
               <div>📧 techkairos241@gmail.com</div>
               <div>💬 LINE: @axiomsiam</div>
-              <div>📞 0XX-XXX-XXXX</div>
             </div>
             <div className="btnrow" style={{ justifyContent: "center" }}>
               <Link className="btn solid" href={designHref}>🎨 {th ? "ออกแบบเสื้อเอง" : "Design Your Own"}</Link>
@@ -245,7 +244,6 @@ export default function Home() {
             <h4>{th ? "ติดต่อ" : "Contact"}</h4>
             <a href="mailto:techkairos241@gmail.com">techkairos241@gmail.com</a>
             <p>LINE: @axiomsiam</p>
-            <p>0XX-XXX-XXXX</p>
           </div>
         </div>
         <div className="copyr">© 2026 Axiom Siam Co.,Ltd. · All rights reserved.</div>

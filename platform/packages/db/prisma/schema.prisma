@@ -49,10 +49,12 @@ enum OrderStatus {
   refunded
 }
 
+// We take money by Thai bank transfer only: the customer scans a PromptPay QR
+// (or transfers to the company account), uploads the slip, and an admin checks it.
 enum PaymentProvider {
-  stripe
-  omise
-  manual // bank transfer / offline
+  promptpay // scanned our generated QR
+  bank_transfer // manual transfer to the company account
+  manual // recorded by an admin (cash, cheque, legacy)
 }
 
 enum PaymentType {
@@ -63,8 +65,10 @@ enum PaymentType {
 }
 
 enum PaymentStatus {
-  pending
-  paid
+  pending // waiting for the customer to transfer
+  submitted // slip uploaded, waiting for an admin to check it
+  paid // slip approved — money confirmed in the account
+  rejected // slip was wrong (bad amount / unreadable / duplicate) — customer may retry
   failed
   refunded
 }
@@ -524,19 +528,36 @@ model Payment {
   id          String          @id @default(uuid())
   orderId     String          @map("order_id")
   provider    PaymentProvider
-  providerRef String?         @map("provider_ref") // charge/intent id
-  amount      Int
+  providerRef String?         @map("provider_ref") // bank transaction ref, when we can read one
+  amount      Int // what we expect, in baht
   currency    Currency        @default(THB)
   type        PaymentType     @default(full)
   status      PaymentStatus   @default(pending)
-  rawPayload  Json?           @map("raw_payload")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  rawPayload  Json?           @map("raw_payload") // verifier response / reject details
+
+  // ---- slip the customer uploaded ----
+  slipUrl        String?   @map("slip_url")
+  slipUploadedAt DateTime? @map("slip_uploaded_at")
+  slipAmount     Int? @map("slip_amount") // baht read off the slip (by admin or API)
+  slipRef        String?   @map("slip_ref") // bank ref on the slip — unique, blocks slip reuse
+  slipTransferredAt DateTime? @map("slip_transferred_at") // timestamp printed on the slip
+  slipHash       String?   @map("slip_hash") // sha256 of the image — catches re-uploads of the same file
+
+  // ---- admin decision ----
+  reviewedBy   String?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at")
+  rejectReason String?   @map("reject_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@unique([slipRef]) // the same bank slip can never pay two orders
   @@index([orderId])
   @@index([providerRef])
+  @@index([status]) // admin review queue reads this
+  @@index([slipHash])
   @@map("payments")
 }
 

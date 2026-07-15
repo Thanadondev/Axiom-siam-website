@@ -5,6 +5,7 @@ import { DEFAULT_PRICING, type PricingConfig } from "../orders/pricing";
 /** DB keys */
 export const KEY_PRICING = "pricing";
 export const KEY_MARKET = "market";
+export const KEY_BANK = "payments.bank";
 
 export interface MarketConfig {
   commissionPct: number;
@@ -14,6 +15,35 @@ export interface MarketConfig {
 export const DEFAULT_MARKET: MarketConfig = {
   commissionPct: Math.min(100, Math.max(0, Number(process.env.MARKET_COMMISSION_PCT ?? 30))),
   termsVersion: process.env.MARKET_TERMS_VERSION ?? "1.0 (2026-07-08)",
+};
+
+/**
+ * Where customers send money. Editable in /admin — changing a bank account
+ * must never need a deploy, and env vars are only the first-run seed.
+ */
+export interface BankConfig {
+  /** shown on the order page */
+  bankName: string;
+  accountNo: string;
+  accountName: string;
+  /** PromptPay target the QR is generated from — blank disables the QR */
+  promptpayId: string;
+  promptpayType: "phone" | "natid" | "ewallet";
+  /** free-text instructions under the QR */
+  note: string;
+  /** false = ordering still works, but the pay panel says "ยังไม่เปิดรับชำระ" */
+  enabled: boolean;
+}
+
+export const DEFAULT_BANK: BankConfig = {
+  bankName: process.env.BANK_NAME ?? "",
+  accountNo: process.env.BANK_ACCOUNT_NO ?? "",
+  accountName: process.env.BANK_ACCOUNT_NAME ?? "",
+  promptpayId: process.env.PROMPTPAY_ID ?? "",
+  promptpayType: (process.env.PROMPTPAY_TYPE as BankConfig["promptpayType"]) ?? "phone",
+  note: process.env.BANK_NOTE ?? "โอนแล้วแนบสลิปในหน้านี้ ทีมงานตรวจสอบภายใน 1 วันทำการ",
+  // only "on" once someone has actually filled in an account
+  enabled: Boolean(process.env.PROMPTPAY_ID || process.env.BANK_ACCOUNT_NO),
 };
 
 /**
@@ -70,9 +100,17 @@ export class SettingsService {
     return this.write<MarketConfig>(KEY_MARKET, patch, DEFAULT_MARKET, adminId);
   }
 
+  // ---------- bank / payments ----------
+  bank() {
+    return this.read<BankConfig>(KEY_BANK, DEFAULT_BANK);
+  }
+  saveBank(patch: Partial<BankConfig>, adminId?: string) {
+    return this.write<BankConfig>(KEY_BANK, patch, DEFAULT_BANK, adminId);
+  }
+
   async all() {
-    const [pricing, market] = await Promise.all([this.pricing(), this.market()]);
-    return { pricing, market };
+    const [pricing, market, bank] = await Promise.all([this.pricing(), this.market(), this.bank()]);
+    return { pricing, market, bank };
   }
 
   /** call after a write from elsewhere */

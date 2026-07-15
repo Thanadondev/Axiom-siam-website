@@ -1,201 +1,295 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
-import type Stripe from "stripe";
+import { createHash } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotifyService } from "../notify/notify.service";
-import { StripeService } from "./stripe.service";
-import { bahtToSatang, verifyPaidAmount, MIN_CHARGE_BAHT } from "./money";
+import { SettingsService } from "../settings/settings.service";
+import { StorageService } from "./storage.service";
+import { buildPromptPayPayload } from "./promptpay";
+import { judgeSlip, ManualSlipReader, type SlipReader, type SlipFacts } from "./slip-policy";
+import { MIN_CHARGE_BAHT } from "./money";
 
-const SITE = () => (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-
+/**
+ * Money by Thai bank transfer.
+ *
+ * The flow, and where trust lives:
+ *   1. customer opens the order      -> we show a PromptPay QR + account number
+ *   2. customer transfers, uploads a slip -> Payment(status=submitted). NOT paid.
+ *   3. an admin looks at the slip    -> approve => order.paid, or reject with a reason
+ *
+ * An uploaded slip is a *claim*, never proof. Only step 3 moves an order to
+ * `paid`, and only `approveSlip` may do it.
+ */
 @Injectable()
 export class PaymentsService {
   private readonly log = new Logger("Payments");
+  /** swap for a SlipOK/EasySlip reader later — judgeSlip stays the same */
+  private readonly reader: SlipReader = new ManualSlipReader();
 
   constructor(
     private prisma: PrismaService,
-    private stripe: StripeService,
     private notify: NotifyService,
+    private settings: SettingsService,
+    private storage: StorageService,
   ) {}
 
-  status() {
-    return { enabled: this.stripe.enabled, livemode: this.stripe.enabled && this.stripe.livemode };
+  async status() {
+    const bank = await this.settings.bank();
+    return {
+      enabled: bank.enabled && Boolean(bank.promptpayId || bank.accountNo),
+      method: "bank_transfer" as const,
+      autoVerify: this.reader.enabled,
+    };
   }
 
-  // ---------- 1. customer starts a payment ----------
-  async createCheckout(userId: string, orderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true, orderNo: true, userId: true, status: true, total: true, fabricSummary: true,
-        user: { select: { email: true } },
-        items: { select: { size: true, qty: true } },
-      },
-    });
-    if (!order) throw new NotFoundException("ไม่พบออเดอร์");
-    if (order.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
+  // ---------- 1. how to pay ----------
+  /** account details + a QR encoding the exact amount owed */
+  async payMethods(userId: string, orderId: string) {
+    const order = await this.mineOrThrow(userId, orderId);
+    const bank = await this.settings.bank();
+
+    if (!bank.enabled) throw new BadRequestException("ยังไม่เปิดรับชำระเงิน กรุณาติดต่อทีมงาน");
     if (order.status !== "pending") throw new BadRequestException("ออเดอร์นี้ชำระเงินแล้ว หรือถูกยกเลิกไปแล้ว");
     if (order.total < MIN_CHARGE_BAHT) throw new BadRequestException(`ยอดขั้นต่ำในการชำระเงินคือ ฿${MIN_CHARGE_BAHT}`);
 
-    const qty = order.items.reduce((s, i) => s + i.qty, 0);
+    // a bad PromptPay id must not take the whole page down — the account
+    // number below is enough to pay us
+    let qr: string | null = null;
+    if (bank.promptpayId) {
+      try {
+        qr = buildPromptPayPayload({ target: bank.promptpayId, type: bank.promptpayType, amount: order.total });
+      } catch (e: any) {
+        this.log.error(`PromptPay id ตั้งค่าไว้ไม่ถูกต้อง (${bank.promptpayId}): ${e.message}`);
+      }
+    }
 
-    const session = await this.stripe.stripe.checkout.sessions.create(
-      {
-        mode: "payment",
-        // cards for everyone, PromptPay QR for Thai customers
-        payment_method_types: ["card", "promptpay"],
-        customer_email: order.user.email,
-        client_reference_id: order.id,
-        // the webhook trusts THIS, not the query string on the return URL
-        metadata: { orderId: order.id, orderNo: order.orderNo },
-        payment_intent_data: { metadata: { orderId: order.id, orderNo: order.orderNo } },
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: "thb",
-              // Stripe wants satang; our DB stores whole baht
-              unit_amount: bahtToSatang(order.total),
-              product_data: {
-                name: `เสื้อกีฬาสั่งผลิต ${qty} ตัว · ${order.orderNo}`,
-                description: order.fabricSummary ?? undefined,
-              },
-            },
-          },
-        ],
-        success_url: `${SITE()}/orders/${order.id}?paid=1`,
-        cancel_url: `${SITE()}/orders/${order.id}?canceled=1`,
-        expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 นาที
-      },
-      // safe to retry: the same order never creates two sessions in one minute
-      { idempotencyKey: `order-${order.id}-${Math.floor(Date.now() / 60_000)}` },
-    );
+    return {
+      amount: order.total,
+      orderNo: order.orderNo,
+      qrPayload: qr,
+      bank: { bankName: bank.bankName, accountNo: bank.accountNo, accountName: bank.accountName, note: bank.note },
+    };
+  }
 
-    await this.prisma.payment.create({
+  // ---------- 2. customer uploads a slip ----------
+  async submitSlip(userId: string, orderId: string, file: { buffer: Buffer; mimetype: string; size: number }) {
+    const order = await this.mineOrThrow(userId, orderId);
+    if (order.status !== "pending") throw new BadRequestException("ออเดอร์นี้ชำระเงินแล้ว หรือถูกยกเลิกไปแล้ว");
+
+    // one slip in review at a time — otherwise a customer can spam the queue
+    const inReview = await this.prisma.payment.findFirst({
+      where: { orderId, status: "submitted" },
+      select: { id: true },
+    });
+    if (inReview) throw new BadRequestException("มีสลิปที่รอตรวจสอบอยู่แล้ว กรุณารอทีมงานตรวจสอบ");
+
+    const hash = createHash("sha256").update(file.buffer).digest("hex");
+
+    // the same image paying two orders is the cheapest fraud there is
+    const dupe = await this.prisma.payment.findFirst({
+      where: { slipHash: hash, status: { in: ["submitted", "paid"] } },
+      select: { orderId: true },
+    });
+    if (dupe) {
+      this.log.warn(`slip hash ${hash.slice(0, 12)} re-used: order ${orderId} vs ${dupe.orderId}`);
+      throw new BadRequestException("รูปสลิปนี้เคยถูกใช้ไปแล้ว กรุณาแนบสลิปการโอนจริงของออเดอร์นี้");
+    }
+
+    const slipUrl = await this.storage.saveSlip(orderId, file.buffer, file.mimetype);
+
+    // ManualSlipReader reads nothing today; a real reader would fill these in.
+    // The annotation matters: without it the catch widens the type to
+    // `SlipFacts | {}` and every field access below stops compiling.
+    const facts: SlipFacts = await this.reader
+      .read(file.buffer, { expected: order.total })
+      .catch((e): SlipFacts => {
+        this.log.warn(`slip reader failed, falling back to manual review: ${e.message}`);
+        return {};
+      });
+
+    const payment = await this.prisma.payment.create({
       data: {
-        orderId: order.id,
-        provider: "stripe",
-        providerRef: session.id,
+        orderId,
+        provider: "bank_transfer",
         amount: order.total,
         type: "full",
-        status: "pending",
+        status: "submitted",
+        slipUrl,
+        slipHash: hash,
+        slipUploadedAt: new Date(),
+        slipAmount: facts.amount ?? null,
+        slipRef: facts.ref ?? null,
+        slipTransferredAt: facts.transferredAt ?? null,
+        rawPayload: { reader: this.reader.name, facts: facts as any },
       },
-    }).catch(e => this.log.warn(`could not record pending payment: ${e.message}`));
-
-    return { url: session.url, sessionId: session.id, amount: order.total };
-  }
-
-  // ---------- 2. Stripe tells us what happened ----------
-  async handleEvent(event: Stripe.Event) {
-    switch (event.type) {
-      case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded":
-        await this.fulfil(event.data.object as Stripe.Checkout.Session);
-        break;
-      case "checkout.session.async_payment_failed":
-      case "checkout.session.expired":
-        await this.markFailed(event.data.object as Stripe.Checkout.Session, event.type);
-        break;
-      default:
-        this.log.debug(`ignoring ${event.type}`);
-    }
-    return { received: true };
-  }
-
-  /** the only place an order becomes `paid` through Stripe */
-  private async fulfil(session: Stripe.Checkout.Session) {
-    const orderId = session.metadata?.orderId ?? session.client_reference_id ?? undefined;
-    if (!orderId) {
-      this.log.error(`session ${session.id} has no orderId — cannot fulfil`);
-      return;
-    }
-
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, orderNo: true, userId: true, status: true, total: true },
     });
-    if (!order) {
-      this.log.error(`session ${session.id} references unknown order ${orderId}`);
-      return;
-    }
 
-    // idempotent: Stripe retries webhooks, and `completed` + `async_payment_succeeded`
-    // can both arrive for a PromptPay payment
-    if (order.status !== "pending") {
-      this.log.log(`order ${order.orderNo} already ${order.status} — ignoring ${session.id}`);
-      return;
-    }
+    await this.notify.pushAdmins(
+      `🧾 สลิปใหม่รอตรวจ — ${order.orderNo}`,
+      `฿${order.total.toLocaleString()} · กดตรวจสอบในหน้าแอดมิน`,
+      `/admin?tab=payments`,
+    );
+    await this.notify.push({
+      userId: order.userId,
+      title: `ได้รับสลิปแล้ว — ${order.orderNo}`,
+      body: "ทีมงานกำลังตรวจสอบ ปกติไม่เกิน 1 วันทำการ",
+      link: `/orders/${orderId}`,
+    });
 
-    // A valid signature proves the event came from Stripe — NOT that the
-    // customer paid the right amount in the right currency. Check the money.
-    const money = verifyPaidAmount(session, order.total);
-    if (!money.ok) {
-      this.log.error(`REFUSING to fulfil ${order.orderNo}: ${money.reason}`);
-      await this.prisma.payment.updateMany({
-        where: { orderId: order.id, providerRef: session.id },
-        data: { status: "failed", rawPayload: { reason: money.reason } as any },
+    this.log.log(`slip submitted for ${order.orderNo} (payment ${payment.id})`);
+    return { id: payment.id, status: payment.status, slipUrl };
+  }
+
+  // ---------- 3. admin decides ----------
+  /** the ONLY path from unpaid to paid */
+  async approveSlip(adminId: string, paymentId: string, override?: { amount?: number; ref?: string; transferredAt?: Date }) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { order: { select: { id: true, orderNo: true, userId: true, status: true, total: true } } },
+    });
+    if (!payment) throw new NotFoundException("ไม่พบรายการชำระเงิน");
+    if (payment.status !== "submitted") throw new BadRequestException(`รายการนี้สถานะ ${payment.status} แล้ว`);
+    if (payment.order.status !== "pending") throw new BadRequestException("ออเดอร์นี้ชำระเงินแล้ว หรือถูกยกเลิกไปแล้ว");
+
+    // what the admin typed in wins over what the reader guessed
+    const ref = override?.ref ?? payment.slipRef ?? null;
+    const amount = override?.amount ?? payment.slipAmount ?? null;
+
+    // even a human approval goes through the rules — this catches the
+    // "approved a duplicate at 2am" mistake
+    if (ref) {
+      const used = await this.prisma.payment.findFirst({
+        where: { slipRef: ref, status: "paid", NOT: { id: paymentId } },
+        select: { order: { select: { orderNo: true } } },
       });
-      await this.notify.pushAdmins(
-        `⚠ ชำระเงินไม่ตรงยอด: ${order.orderNo}`,
-        `${money.reason} — ตรวจสอบใน Stripe Dashboard ก่อนดำเนินการ`,
-        `/orders/${order.id}`,
+      if (used) throw new BadRequestException(`เลขอ้างอิงสลิปนี้ถูกใช้กับออเดอร์ ${used.order.orderNo} ไปแล้ว`);
+    }
+    if (amount != null) {
+      const verdict = judgeSlip(
+        { amount, ref, transferredAt: override?.transferredAt ?? payment.slipTransferredAt },
+        { expected: payment.order.total },
       );
-      return;
+      if (verdict.decision === "reject") throw new BadRequestException(verdict.reason);
     }
 
-    const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
-
+    const order = payment.order;
     await this.prisma.$transaction([
+      this.prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          status: "paid",
+          slipRef: ref,
+          slipAmount: amount,
+          slipTransferredAt: override?.transferredAt ?? payment.slipTransferredAt,
+          providerRef: ref,
+          reviewedBy: adminId,
+          reviewedAt: new Date(),
+          rejectReason: null,
+        },
+      }),
       this.prisma.order.update({ where: { id: order.id }, data: { status: "paid" } }),
       this.prisma.orderStatusHistory.create({
-        data: { orderId: order.id, status: "paid", note: `ชำระผ่าน Stripe (${paymentIntentId ?? session.id})` },
-      }),
-      // PaymentStatus enum: pending | paid | failed | refunded
-      this.prisma.payment.updateMany({
-        where: { orderId: order.id, providerRef: session.id },
-        data: { status: "paid", providerRef: paymentIntentId ?? session.id, rawPayload: { sessionId: session.id } as any },
+        data: { orderId: order.id, status: "paid", note: `อนุมัติสลิปโอนเงิน${ref ? ` (ref ${ref})` : ""}` },
       }),
     ]);
 
-    // invoice, once
-    const existing = await this.prisma.invoice.findFirst({ where: { orderId: order.id } });
-    if (!existing) {
-      const d = new Date();
-      const invoiceNo = `INV-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-      await this.prisma.invoice.create({
-        data: { orderId: order.id, invoiceNo, amount: order.total, taxId: process.env.COMPANY_TAX_ID ?? null },
-      }).catch(() => undefined);
-    }
+    await this.issueInvoice(order.id, order.total);
 
     await this.notify.push({
       userId: order.userId,
-      title: `ชำระเงินสำเร็จ — ${order.orderNo}`,
+      title: `ยืนยันการชำระเงินแล้ว — ${order.orderNo}`,
       body: `฿${order.total.toLocaleString()} · เริ่มกระบวนการผลิตแล้ว`,
       link: `/orders/${order.id}`,
       email: true,
     });
-    await this.notify.pushAdmins(`💰 รับชำระเงิน ${order.orderNo}`, `฿${order.total.toLocaleString()}`, `/orders/${order.id}`);
 
-    this.log.log(`order ${order.orderNo} paid ฿${order.total}`);
+    this.log.log(`order ${order.orderNo} paid ฿${order.total} (approved by ${adminId})`);
+    return { ok: true };
   }
 
-  private async markFailed(session: Stripe.Checkout.Session, reason: string) {
-    const orderId = session.metadata?.orderId ?? session.client_reference_id;
-    if (!orderId) return;
-    await this.prisma.payment.updateMany({
-      where: { orderId, providerRef: session.id, status: "pending" },
-      data: { status: "failed", rawPayload: { reason } as any },
+  async rejectSlip(adminId: string, paymentId: string, reason: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { order: { select: { id: true, orderNo: true, userId: true } } },
     });
-    this.log.log(`payment for order ${orderId} ${reason}`);
+    if (!payment) throw new NotFoundException("ไม่พบรายการชำระเงิน");
+    if (payment.status !== "submitted") throw new BadRequestException(`รายการนี้สถานะ ${payment.status} แล้ว`);
+
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { status: "rejected", rejectReason: reason, reviewedBy: adminId, reviewedAt: new Date() },
+    });
+
+    // the order stays `pending`, so the customer can simply upload a better slip
+    await this.notify.push({
+      userId: payment.order.userId,
+      title: `สลิปไม่ผ่านการตรวจสอบ — ${payment.order.orderNo}`,
+      body: `${reason} — กรุณาแนบสลิปใหม่ในหน้าออเดอร์`,
+      link: `/orders/${payment.order.id}`,
+      email: true,
+    });
+
+    this.log.log(`slip ${paymentId} rejected by ${adminId}: ${reason}`);
+    return { ok: true };
   }
 
-  /** the return page polls this — the webhook may land a second later */
+  // ---------- review queue ----------
+  async pendingSlips(take = 50) {
+    return this.prisma.payment.findMany({
+      where: { status: "submitted" },
+      orderBy: { slipUploadedAt: "asc" }, // oldest first — nobody waits forever
+      take,
+      select: {
+        id: true, amount: true, slipUrl: true, slipAmount: true, slipRef: true,
+        slipUploadedAt: true, slipTransferredAt: true, rawPayload: true,
+        order: { select: { id: true, orderNo: true, total: true, user: { select: { email: true, fullName: true } } } },
+      },
+    });
+  }
+
+  // ---------- customer polling ----------
   async paymentState(userId: string, orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { id: true, userId: true, status: true, payments: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true, provider: true } } },
+      select: {
+        id: true, userId: true, status: true,
+        payments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { status: true, provider: true, rejectReason: true, slipUrl: true, slipUploadedAt: true },
+        },
+      },
     });
     if (!order) throw new NotFoundException("ไม่พบออเดอร์");
     if (order.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
-    return { orderStatus: order.status, paymentStatus: order.payments[0]?.status ?? "none" };
+
+    const p = order.payments[0];
+    return {
+      orderStatus: order.status,
+      paymentStatus: p?.status ?? "none",
+      rejectReason: p?.rejectReason ?? null,
+      slipUrl: p?.slipUrl ?? null,
+      slipUploadedAt: p?.slipUploadedAt ?? null,
+    };
+  }
+
+  // ---------- helpers ----------
+  private async mineOrThrow(userId: string, orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, orderNo: true, userId: true, status: true, total: true },
+    });
+    if (!order) throw new NotFoundException("ไม่พบออเดอร์");
+    if (order.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
+    return order;
+  }
+
+  private async issueInvoice(orderId: string, amount: number) {
+    const existing = await this.prisma.invoice.findFirst({ where: { orderId } });
+    if (existing) return;
+    const d = new Date();
+    const invoiceNo = `INV-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    await this.prisma.invoice
+      .create({ data: { orderId, invoiceNo, amount, taxId: process.env.COMPANY_TAX_ID ?? null } })
+      .catch(e => this.log.warn(`could not issue invoice for ${orderId}: ${e.message}`));
   }
 }

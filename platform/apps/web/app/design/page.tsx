@@ -119,19 +119,9 @@ function DesignerBridge() {
           reply({ type: "axiom-publish-result", ok: false, error: e.message });
         }
       }
-      if (m.type === "axiom-quote") {
-        try {
-          const p = m.payload || {};
-          await apiFetch("/quotes", {
-            method: "POST",
-            token: token || undefined,
-            body: JSON.stringify({ name: p.name, email: p.email, phone: p.phone, message: p.message }),
-          });
-          reply({ type: "axiom-quote-result", ok: true });
-        } catch (e: any) {
-          reply({ type: "axiom-quote-result", ok: false, error: e.message });
-        }
-      }
+      // "ขอราคา" was removed from the editor: asking for a quote mid-design
+      // competes with the real path (สั่งผลิต → เห็นราคาทันที). Quotes now come
+      // from the contact section on the landing page instead.
     }
 
     window.addEventListener("message", onMessage);

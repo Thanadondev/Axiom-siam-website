@@ -1,14 +1,14 @@
 /**
- * Money conversion for Stripe. Pure — unit-tested in money.spec.ts.
+ * Money helpers. Pure — unit-tested in money.spec.ts.
  *
- * Our database stores whole Thai baht (satang are never used in pricing).
- * Stripe wants the smallest currency unit, i.e. satang. THB is a 2-decimal
- * currency, so the factor is 100.
+ * Our database stores whole Thai baht; satang never appear in pricing. Slips,
+ * however, are printed with 2 decimals, so a number read off one can be
+ * fractional and has to be reconciled against a whole-baht order total.
  */
 
 export const SATANG_PER_BAHT = 100;
 
-/** ฿1,730 → 173000 satang */
+/** ฿1,730 → 173000 satang. Kept for anywhere that needs the minor unit. */
 export function bahtToSatang(baht: number): number {
   if (!Number.isFinite(baht)) throw new Error("amount is not a number");
   if (baht < 0) throw new Error("amount must not be negative");
@@ -23,38 +23,31 @@ export function satangToBaht(satang: number): number {
   return satang / SATANG_PER_BAHT;
 }
 
-/** Stripe rejects payments under ~฿10; be explicit rather than failing at the API. */
+/** Below this, a transfer costs more in admin review time than it collects. */
 export const MIN_CHARGE_BAHT = 10;
 
-export interface PaidCheck {
-  ok: boolean;
-  reason?: string;
+/**
+ * Turn the shapes an amount takes on a Thai slip — "1,234.00", "฿1,234",
+ * "1234.50 บาท" — into a number.
+ *
+ * Returns null when it isn't an amount at all, so callers fall back to manual
+ * review instead of guessing. Silently guessing here would be a way to mark an
+ * order paid for the wrong number.
+ */
+export function parseSlipAmount(raw: string | number | null | undefined): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 ? raw : null;
+  if (!raw) return null;
+
+  const cleaned = String(raw)
+    .replace(/บาท/g, "")
+    .replace(/[฿,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/**
- * Guards the money before we mark an order paid.
- *
- * A webhook is attacker-reachable (the signature proves it came from Stripe,
- * not that it is for the amount we expected). Confirm the currency and that
- * the customer actually paid what the order costs — never trust the session
- * blindly.
- */
-export function verifyPaidAmount(
-  session: { amount_total?: number | null; currency?: string | null; payment_status?: string | null },
-  expectedBaht: number,
-): PaidCheck {
-  if (session.payment_status !== "paid") {
-    return { ok: false, reason: `payment_status = ${session.payment_status ?? "unknown"}` };
-  }
-  if ((session.currency ?? "").toLowerCase() !== "thb") {
-    return { ok: false, reason: `currency = ${session.currency ?? "unknown"}, expected thb` };
-  }
-  const paid = session.amount_total;
-  if (typeof paid !== "number") return { ok: false, reason: "amount_total missing" };
-
-  const expected = bahtToSatang(expectedBaht);
-  if (paid !== expected) {
-    return { ok: false, reason: `paid ${paid} satang, order is ${expected} satang` };
-  }
-  return { ok: true };
+/** Baht formatted the way customers see it: ฿1,234 */
+export function formatBaht(baht: number): string {
+  return `฿${Math.round(baht).toLocaleString("en-US")}`;
 }

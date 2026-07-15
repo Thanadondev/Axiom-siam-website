@@ -25,12 +25,22 @@ export const TotpCodeSchema = z.object({
 export type TotpCodeDto = z.infer<typeof TotpCodeSchema>;
 
 export const TotpDisableSchema = z.object({
-  password: z.string().min(1, "กรุณากรอกรหัสผ่าน"),
+  // optional: Google-only accounts have no password, the code alone is proof
+  password: z.string().optional().default(""),
   code: z.string().min(6).max(20),
 });
 export type TotpDisableDto = z.infer<typeof TotpDisableSchema>;
 
+export const SetPasswordSchema = z.object({
+  current: z.string().optional(), // required by the service only when a password exists
+  newPassword: z.string().min(8, "รหัสผ่านอย่างน้อย 8 ตัวอักษร"),
+});
+export type SetPasswordDto = z.infer<typeof SetPasswordSchema>;
+
 export const VerifyEmailSchema = z.object({ token: z.string().min(10) });
+
+export const GoogleSignInSchema = z.object({ credential: z.string().min(20, "credential ไม่ถูกต้อง") });
+export type GoogleSignInDto = z.infer<typeof GoogleSignInSchema>;
 export type VerifyEmailDto = z.infer<typeof VerifyEmailSchema>;
 
 export const RequestResetSchema = z.object({ email: z.string().email() });

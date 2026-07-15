@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import AppShell from "../../components/AppShell";
+import AuthAlternatives from "../../components/AuthAlternatives";
 
 export default function RegisterPage() {
   const { register, login } = useAuth();
@@ -70,6 +71,8 @@ export default function RegisterPage() {
         <button className="abtn solid block" style={{ marginTop: 22 }} disabled={loading}>
           {loading ? "กำลังสมัคร..." : "สมัครสมาชิก"}
         </button>
+
+        <AuthAlternatives />
 
         <p className="asub center" style={{ marginTop: 18 }}>
           มีบัญชีแล้ว? <Link href="/login" style={{ color: "var(--brand)", fontWeight: 600 }}>เข้าสู่ระบบ</Link>

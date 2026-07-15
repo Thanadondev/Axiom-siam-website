@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import PayPanel from "../../../components/PayPanel";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 
@@ -16,15 +17,13 @@ const STATUS_TH: Record<string, string> = {
 };
 const FLOW = ["pending", "paid", "approved", "in_production", "shipped", "delivered", "completed"];
 
-function OrderDetailInner() {
+export default function OrderDetail() {
   const id = String(useParams().id);
   const { token, loading } = useAuth();
-  const sp = useSearchParams();
   const [o, setO] = useState<any>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [payEnabled, setPayEnabled] = useState(false);
-  const [awaitingPayment, setAwaitingPayment] = useState(sp.get("paid") === "1");
 
   const load = useCallback(() => {
     if (!token) return;
@@ -32,34 +31,10 @@ function OrderDetailInner() {
   }, [id, token]);
   useEffect(load, [load]);
 
-  // hide the pay button entirely when Stripe isn't configured
+  // hide the pay panel entirely until an admin has configured a bank account
   useEffect(() => {
     apiFetch<{ enabled: boolean }>("/payments/status").then(s => setPayEnabled(s.enabled)).catch(() => {});
   }, []);
-
-  // Back from Stripe. The webhook fulfils the order, and it may land a moment
-  // after the browser returns — so poll briefly rather than lie to the user.
-  useEffect(() => {
-    if (!awaitingPayment || !token) return;
-    let tries = 0;
-    const t = setInterval(async () => {
-      tries++;
-      try {
-        const s = await apiFetch<{ orderStatus: string }>(`/payments/orders/${id}/state`, { token });
-        if (s.orderStatus !== "pending") { setAwaitingPayment(false); load(); clearInterval(t); return; }
-      } catch { /* keep polling */ }
-      if (tries >= 15) { setAwaitingPayment(false); clearInterval(t); } // ~30s
-    }, 2000);
-    return () => clearInterval(t);
-  }, [awaitingPayment, token, id, load]);
-
-  async function pay() {
-    setBusy(true); setErr("");
-    try {
-      const r = await apiFetch<{ url: string }>(`/payments/orders/${id}/checkout`, { method: "POST", token });
-      window.location.href = r.url; // Stripe-hosted page
-    } catch (e: any) { setErr(e.message); setBusy(false); }
-  }
 
   async function cancel() {
     if (!confirm("ยกเลิกออเดอร์นี้?")) return;
@@ -107,29 +82,9 @@ function OrderDetailInner() {
           </div>
         )}
 
-        {awaitingPayment && (
-          <div style={{ background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e40af", borderRadius: 10, padding: "10px 13px", marginTop: 16, fontSize: 13.5 }}>
-            ⏳ กำลังยืนยันการชำระเงินกับธนาคาร… หน้านี้จะอัปเดตเองภายในไม่กี่วินาที
-          </div>
-        )}
-        {sp.get("canceled") === "1" && o.status === "pending" && (
-          <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#92400e", borderRadius: 10, padding: "10px 13px", marginTop: 16, fontSize: 13.5 }}>
-            ยกเลิกการชำระเงิน — ออเดอร์ยังอยู่ กดชำระใหม่ได้ทุกเมื่อ
-          </div>
-        )}
-
         <div style={{ display: "flex", gap: 8, marginTop: 20, flexWrap: "wrap", alignItems: "center" }}>
           {o.status === "pending" && (
-            <>
-              {payEnabled ? (
-                <button className="abtn solid" onClick={pay} disabled={busy || awaitingPayment}>
-                  {busy ? "กำลังเปิดหน้าชำระเงิน…" : `💳 ชำระเงิน ${baht(o.total)}`}
-                </button>
-              ) : (
-                <button className="abtn solid" disabled title="ยังไม่ได้ตั้งค่า STRIPE_SECRET_KEY">💳 ชำระเงิน (ยังไม่เปิดใช้)</button>
-              )}
-              <button className="minibtn danger" onClick={cancel} disabled={busy || awaitingPayment}>ยกเลิกออเดอร์</button>
-            </>
+            <button className="minibtn danger" onClick={cancel} disabled={busy}>ยกเลิกออเดอร์</button>
           )}
           {o.invoices?.length > 0 && (
             <Link className="minibtn" href={`/orders/${o.id}/invoice`} target="_blank">🧾 ใบแจ้งหนี้ {o.invoices[0].invoiceNo}</Link>
@@ -137,6 +92,19 @@ function OrderDetailInner() {
         </div>
         {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
+
+      {/* pay by transfer — the panel owns the QR, the account and the slip upload */}
+      {o.status === "pending" && token && (
+        payEnabled
+          ? <PayPanel orderId={id} token={token} onPaid={load} />
+          : (
+            <div className="acard">
+              <div className="eyebrow">ชำระเงิน</div>
+              <h2 className="ah2" style={{ marginTop: 4 }}>ยังไม่เปิดรับชำระเงิน</h2>
+              <p className="asub">ผู้ดูแลระบบยังไม่ได้ตั้งค่าบัญชีรับเงิน — กรุณาติดต่อทีมงานเพื่อชำระเงิน</p>
+            </div>
+          )
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
         <div>
@@ -236,11 +204,3 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-/** useSearchParams (?paid=1 / ?canceled=1) needs a Suspense boundary */
-export default function OrderDetail() {
-  return (
-    <Suspense fallback={<AppShell narrow><div className="acard"><p className="asub">กำลังโหลด…</p></div></AppShell>}>
-      <OrderDetailInner />
-    </Suspense>
-  );
-}

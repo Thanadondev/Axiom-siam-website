@@ -11,6 +11,7 @@ import { randomBytes, createHash } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "./mail.service";
 import { generateSecret, otpauthUrl, verifyTotp, generateRecoveryCodes, consumeRecoveryCode } from "./totp";
+import { canSetPassword, canDisableTotp } from "./password-policy";
 import type {
   RegisterDto,
   LoginDto,
@@ -34,13 +35,18 @@ export class AuthService {
 
   // ---------- register ----------
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    // Emails are case-insensitive in practice, and Google hands us a lowercase
+    // one. Storing "Bob@x.com" here would create a second account the Google
+    // path can never find — same person, two rows, admin on the wrong one.
+    const email = dto.email.trim().toLowerCase();
+
+    const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException("อีเมลนี้ถูกใช้แล้ว");
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         passwordHash,
         fullName: dto.fullName,
         phone: dto.phone,
@@ -73,9 +79,44 @@ export class AuthService {
     return { message: "ยืนยันอีเมลสำเร็จ" };
   }
 
+  // ---------- Google sign-in ----------
+
+  /** verifies a Google ID token (credential from Google Identity Services) and
+   *  signs the user in, creating the account on first use. */
+  async googleSignIn(credential: string) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw new BadRequestException("ยังไม่ได้ตั้งค่า Google Sign-In");
+
+    // Google's tokeninfo endpoint verifies the signature + expiry for us
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!res.ok) throw new UnauthorizedException("โทเคน Google ไม่ถูกต้อง");
+    const p = await res.json() as { aud?: string; email?: string; email_verified?: string | boolean; name?: string; sub?: string };
+
+    if (p.aud !== clientId) throw new UnauthorizedException("โทเคน Google ไม่ได้ออกให้แอปนี้");
+    if (!p.email || (p.email_verified !== true && p.email_verified !== "true"))
+      throw new UnauthorizedException("อีเมล Google ยังไม่ได้ยืนยัน");
+
+    const email = p.email.toLowerCase();
+    let user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // first Google sign-in → create a passwordless account, email pre-verified
+      user = await this.prisma.user.create({
+        data: { email, fullName: p.name || null, role: "customer", isVerified: true },
+      });
+    } else {
+      if (user.suspendedAt) throw new UnauthorizedException("บัญชีนี้ถูกระงับ — ติดต่อทีมงาน");
+      if (!user.isVerified) await this.prisma.user.update({ where: { id: user.id }, data: { isVerified: true } });
+    }
+
+    const tokens = await this.issueTokens(user.id, user.role);
+    return { ...tokens, user: this.publicUser({ ...user, isVerified: true }) };
+  }
+
   // ---------- login ----------
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    // must match how register/googleSignIn store it, or the row is never found
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
     if (!user || !user.passwordHash) throw new UnauthorizedException("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
@@ -138,11 +179,13 @@ export class AuthService {
       select: { passwordHash: true, totpSecret: true, totpEnabled: true, recoveryCodes: true },
     });
     if (!user?.totpEnabled || !user.totpSecret) throw new BadRequestException("ยังไม่ได้เปิด 2FA");
-    if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash)))
-      throw new UnauthorizedException("รหัสผ่านไม่ถูกต้อง");
 
-    const okCode = verifyTotp(user.totpSecret, code) || consumeRecoveryCode(code, user.recoveryCodes ?? []) !== null;
-    if (!okCode) throw new BadRequestException("รหัสยืนยันไม่ถูกต้อง");
+    // password-based accounts must re-enter their password; Google-only accounts
+    // have none, so a valid 2FA/recovery code is proof enough
+    const passwordMatches = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : true;
+    const codeValid = verifyTotp(user.totpSecret, code) || consumeRecoveryCode(code, user.recoveryCodes ?? []) !== null;
+    const gate = canDisableTotp(!!user.passwordHash, passwordMatches, codeValid);
+    if (!gate.ok) throw gate.reason.includes("รหัสผ่าน") ? new UnauthorizedException(gate.reason) : new BadRequestException(gate.reason);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -192,9 +235,21 @@ export class AuthService {
     if (!rec || rec.revokedAt || rec.expiresAt < new Date())
       throw new UnauthorizedException("session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
 
+    // Re-read the user. Carrying `payload.role` over from the old token would
+    // mean a role change never takes effect (promote someone to admin and they
+    // still get 403), and — far worse — a suspended account keeps working until
+    // its refresh token expires. The DB is the authority on who you are.
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, role: true, suspendedAt: true, suspendReason: true, deletedAt: true },
+    });
+    if (!user || user.deletedAt) throw new UnauthorizedException("ไม่พบบัญชีนี้ กรุณาเข้าสู่ระบบใหม่");
+    if (user.suspendedAt)
+      throw new UnauthorizedException(`บัญชีนี้ถูกระงับ${user.suspendReason ? ` (${user.suspendReason})` : ""} — ติดต่อทีมงาน`);
+
     // rotate: revoke old, issue new
     await this.prisma.authToken.update({ where: { id: rec.id }, data: { revokedAt: new Date() } });
-    return this.issueTokens(payload.sub, payload.role);
+    return this.issueTokens(user.id, user.role);
   }
 
   async logout(refreshToken?: string) {
@@ -207,7 +262,9 @@ export class AuthService {
   }
 
   // ---------- password reset ----------
-  async requestReset(email: string) {
+  async requestReset(rawEmail: string) {
+    // same normalisation as register/login, or a reset silently does nothing
+    const email = rawEmail.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (user) {
       const raw = randomToken();
@@ -312,6 +369,7 @@ export class AuthService {
     role: string;
     isVerified: boolean;
     locale: string;
+    passwordHash?: string | null;
   }) {
     return {
       id: u.id,
@@ -323,6 +381,27 @@ export class AuthService {
       role: u.role,
       isVerified: u.isVerified,
       locale: u.locale,
+      // the UI shows "set a password" vs "change password" from this, and
+      // whether the account can sign in with a password at all
+      hasPassword: !!u.passwordHash,
     };
+  }
+
+  // ---------- password: set (Google-only users) / change ----------
+
+  /** Set a password when the account has none (created via Google), or change
+   *  it when one exists. `current` is required only when a password is set. */
+  async setPassword(userId: string, newPassword: string, current?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+    if (!user) throw new NotFoundException("ไม่พบผู้ใช้");
+
+    const gate = canSetPassword(!!user.passwordHash, current, newPassword);
+    if (!gate.ok) throw new BadRequestException(gate.reason);
+    if (user.passwordHash && !(await bcrypt.compare(current!, user.passwordHash)))
+      throw new UnauthorizedException("รหัสผ่านปัจจุบันไม่ถูกต้อง");
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    return { message: user.passwordHash ? "เปลี่ยนรหัสผ่านแล้ว" : "ตั้งรหัสผ่านแล้ว — ตอนนี้เข้าสู่ระบบด้วยอีเมล+รหัสผ่านได้แล้ว" };
   }
 }

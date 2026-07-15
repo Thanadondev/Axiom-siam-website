@@ -6,6 +6,7 @@ import { useAuth, type User } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import AppShell from "../../components/AppShell";
 import TwoFactorCard from "../../components/TwoFactorCard";
+import SecurityCard from "../../components/SecurityCard";
 
 const ORDER_STATUS_TH: Record<string, string> = {
   pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
@@ -209,6 +210,7 @@ export default function AccountPage() {
         )}
       </div>
 
+      <SecurityCard />
       <TwoFactorCard />
 
       {/* production orders */}

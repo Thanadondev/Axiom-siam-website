@@ -6,6 +6,11 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles, CurrentUser, type AuthUser } from "../auth/decorators";
 import { AdminService } from "./admin.service";
 import { SettingsService } from "../settings/settings.service";
+import { PaymentsService } from "../payments/payments.service";
+import {
+  ApproveSlipSchema, RejectSlipSchema, BankConfigSchema,
+  type ApproveSlipDto, type RejectSlipDto, type BankConfigDto,
+} from "../payments/payments.dto";
 import {
   UpdatePricingSchema, UpdateMarketSchema, type UpdatePricingDto, type UpdateMarketDto,
 } from "../settings/settings.dto";
@@ -20,7 +25,11 @@ import {
 @Roles("admin")
 @Controller("admin")
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly settings: SettingsService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly settings: SettingsService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   // ---------- editable platform settings ----------
   @Get("settings")
@@ -36,6 +45,41 @@ export class AdminController {
   @Patch("settings/market")
   saveMarket(@CurrentUser() me: AuthUser, @Body(new ZodValidationPipe(UpdateMarketSchema)) dto: UpdateMarketDto) {
     return this.settings.saveMarket(dto, me.id);
+  }
+
+  /** the company bank account customers transfer to */
+  @Patch("settings/bank")
+  saveBank(@CurrentUser() me: AuthUser, @Body(new ZodValidationPipe(BankConfigSchema)) dto: BankConfigDto) {
+    return this.settings.saveBank(dto, me.id);
+  }
+
+  // ---------- slip review ----------
+  /** the queue: slips customers uploaded, oldest first */
+  @Get("payments")
+  pendingSlips() {
+    return this.payments.pendingSlips();
+  }
+
+  /**
+   * Approve a slip — this is what actually marks an order paid, so it is the
+   * single most consequential button in the admin. Audited app-wide.
+   */
+  @Post("payments/:id/approve")
+  approveSlip(
+    @CurrentUser() me: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(ApproveSlipSchema)) dto: ApproveSlipDto,
+  ) {
+    return this.payments.approveSlip(me.id, id, dto);
+  }
+
+  @Post("payments/:id/reject")
+  rejectSlip(
+    @CurrentUser() me: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(RejectSlipSchema)) dto: RejectSlipDto,
+  ) {
+    return this.payments.rejectSlip(me.id, id, dto.reason);
   }
 
   // ---------- dashboard ----------

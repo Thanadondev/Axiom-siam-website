@@ -43,9 +43,27 @@ platform/video/
 *.mov
 *.avi
 
+# ---------- customer uploads ----------
+# Payment slips contain real bank details and customer names. They are
+# financial records: back the folder up, but never put it in git.
+uploads/
+**/uploads/
+
 # ---------- scratch / test artifacts ----------
 _*.png
 _*.jpg
 bug/
+_vframes/
 **/vframes/
+**/_vframes/
 platform/portfolio/*_preview.png
+
+# ---------- generated deliverables (regenerate from the script, don't track) ----------
+axiom-platform-summary.pptx
+*.pdf
+
+# ---------- working assets, not source ----------
+# Raw art / renders live outside git — they bloat clones and are never imported
+# by the app. Anything the site actually serves belongs in apps/web/public.
+/img/
+/3D animation for web/

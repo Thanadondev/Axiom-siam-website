@@ -13,6 +13,7 @@ export interface User {
   role: string;
   isVerified: boolean;
   locale: string;
+  hasPassword: boolean;
 }
 
 export interface RegisterData {
@@ -31,6 +32,7 @@ interface AuthState {
   register: (data: RegisterData) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   setUser: (u: User | null) => void;
+  setToken: (t: string | null) => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -80,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, setUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, setUser, setToken }}>
       {children}
     </AuthContext.Provider>
   );

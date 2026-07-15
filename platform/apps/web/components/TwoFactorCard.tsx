@@ -9,7 +9,8 @@ interface Status { enabled: boolean; recoveryCodesLeft: number; recommended: boo
 /** free, no-dependency QR renderer via a public image endpoint is NOT used —
  *  we show the secret for manual entry plus a link the phone can open. */
 export default function TwoFactorCard() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const hasPassword = user?.hasPassword ?? true;
   const [st, setSt] = useState<Status | null>(null);
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
@@ -116,9 +117,12 @@ export default function TwoFactorCard() {
           <details>
             <summary style={{ cursor: "pointer", color: "#dc2626", fontSize: 13.5, fontWeight: 600, marginTop: 8 }}>ปิดใช้งาน 2FA</summary>
             <div style={{ display: "grid", gap: 8, maxWidth: 320, marginTop: 10 }}>
-              <input className="ainput" type="password" placeholder="รหัสผ่านปัจจุบัน" value={pw} onChange={e => setPw(e.target.value)} />
+              {/* Google-only accounts have no password — the code alone is enough */}
+              {hasPassword && (
+                <input className="ainput" type="password" placeholder="รหัสผ่านปัจจุบัน" value={pw} onChange={e => setPw(e.target.value)} />
+              )}
               <input className="ainput" placeholder="รหัส 6 หลัก หรือรหัสสำรอง" value={code} onChange={e => setCode(e.target.value)} />
-              <button className="minibtn danger" disabled={busy || !pw || !code} onClick={disable}>ยืนยันปิด 2FA</button>
+              <button className="minibtn danger" disabled={busy || (hasPassword && !pw) || !code} onClick={disable}>ยืนยันปิด 2FA</button>
             </div>
           </details>
         </div>
