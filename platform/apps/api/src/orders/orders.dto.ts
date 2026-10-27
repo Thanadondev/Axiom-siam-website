@@ -5,6 +5,7 @@ const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 export const SIZES = ["S", "M", "L", "XL"] as const;
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
+export const GARMENT_IDS = ["jersey", "hoodie", "shorts"] as const;
 
 /** one row of the size breakdown, e.g. { size: "L", qty: 12 } */
 export const SizeLineSchema = z.object({
@@ -25,6 +26,8 @@ export const PriceQuerySchema = z.object({
   fabric: z.enum(FABRICS),
   trim: z.enum(TRIMS),
   reversible: z.preprocess(v => v === "true" || v === true, z.boolean()).optional(),
+  // a preview only: an order's garment comes from its design
+  garment: z.preprocess(emptyToUndef, z.enum(GARMENT_IDS).optional()),
 });
 export type PriceQueryDto = z.infer<typeof PriceQuerySchema>;
 

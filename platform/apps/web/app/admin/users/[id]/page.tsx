@@ -77,7 +77,7 @@ export default function AdminUserDetail() {
             <Link className="minibtn" href={`/designers/${u.id}`} target="_blank">ดูโปรไฟล์สาธารณะ</Link>
           </div>
         </div>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
+        {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
 
       <div className="acard">

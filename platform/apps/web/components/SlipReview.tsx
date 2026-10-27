@@ -75,7 +75,7 @@ export default function SlipReview({ token, onChange }: { token: string; onChang
     <div className="acard">
       <h2 className="ah2">สลิปรอตรวจสอบ ({rows.length})</h2>
       <p className="asub">อนุมัติแล้วออเดอร์จะเปลี่ยนเป็น “ชำระแล้ว” และเข้าคิวผลิตทันที — ตรวจยอดให้ตรงก่อนกด</p>
-      {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+      {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
 
       {rows.length === 0 ? (
         <p className="asub" style={{ marginTop: 14 }}>ไม่มีสลิปรอตรวจ 🎉</p>

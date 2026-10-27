@@ -66,7 +66,7 @@ function ResetInner() {
 
 export default function ResetPasswordPage() {
   return (
-    <AppShell narrow>
+    <AppShell auth>
       <Suspense fallback={<div className="acard"><p className="asub">กำลังโหลด...</p></div>}>
         <ResetInner />
       </Suspense>

@@ -177,7 +177,7 @@ function Checkout() {
             <h1 className="atitle" style={{ marginBottom: 4 }}>{design?.name || "ออเดอร์ใหม่"}</h1>
             {!designId && <p className="asub">ยังไม่ได้เลือกดีไซน์ — สั่งผลิตแบบเปล่าได้ แต่แนะนำให้ <Link className="dlink" href="/design">ออกแบบก่อน</Link></p>}
             {prefilled > 0 && (
-              <div style={{ background: "#dcfce7", border: "1px solid #86efac", color: "#166534", borderRadius: 10, padding: "9px 12px", marginTop: 10, fontSize: 13 }}>
+              <div className="note-ok" style={{ marginTop: 10 }}>
                 ✓ ดึงรายชื่อ {prefilled} คน และสเปกจากดีไซเนอร์มาให้แล้ว — ตรวจจำนวนแต่ละไซส์ด้านล่างแล้วกดยืนยันได้เลย
               </div>
             )}
@@ -237,7 +237,7 @@ function Checkout() {
                 <input className="ainput" placeholder="เบอร์" value={r.number}
                   onChange={e => setRoster(rs => rs.map((x, j) => j === i ? { ...x, number: e.target.value } : x))} />
                 <select className="ainput" value={r.size}
-                  onChange={e => setRoster(rs => rs.map((x, j) => j === i ? { ...x, size: e.target.value } : x))}>
+                  onChange={e => setRoster(rs => rs.map((x, j) => j === i ? { ...x, size: e.target.value as RosterRow["size"] } : x))}>
                   {SIZES.map(z => <option key={z} value={z}>{z}</option>)}
                 </select>
                 <button className="minibtn danger" onClick={() => setRoster(rs => rs.filter((_, j) => j !== i))}>ลบ</button>
@@ -252,7 +252,7 @@ function Checkout() {
               )}
             </div>
             {rosterOver && (
-              <p style={{ color: "#dc2626", fontSize: 12.5, marginTop: 10 }}>
+              <p style={{ color: "var(--err, #dc2626)", fontSize: 12.5, marginTop: 10 }}>
                 ⚠ จำนวนรายชื่อเกินจำนวนเสื้อของบางไซส์ — กด "ปรับจำนวนไซส์ตามรายชื่อ" หรือแก้จำนวนด้านบน
               </p>
             )}
@@ -295,7 +295,7 @@ function Checkout() {
               <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "10px 0" }} />
               <Row k="ราคาต่อตัว" v={<b>{baht(bd.unitPrice)}</b>} />
               <Row k={`× ${bd.totalQty} ตัว`} v={baht(bd.subtotal)} />
-              <Row k="ค่าจัดส่ง" v={bd.shippingFee === 0 ? <span style={{ color: "#16a34a" }}>ฟรี</span> : baht(bd.shippingFee)} />
+              <Row k="ค่าจัดส่ง" v={bd.shippingFee === 0 ? <span style={{ color: "var(--okc, #16a34a)" }}>ฟรี</span> : baht(bd.shippingFee)} />
               {bd.shippingFee > 0 && <p className="dim">สั่งครบ {baht(bd.freeShippingOver)} ส่งฟรี</p>}
               <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "10px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -307,7 +307,7 @@ function Checkout() {
               </p>
             </>
           )}
-          {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
+          {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
           <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !addrId || rosterOver} onClick={submit}>
             {busy ? "กำลังสร้างออเดอร์…" : "ยืนยันสั่งผลิต"}
           </button>

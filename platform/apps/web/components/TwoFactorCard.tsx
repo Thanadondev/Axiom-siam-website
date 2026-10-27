@@ -78,7 +78,7 @@ export default function TwoFactorCard() {
           <p className="dim" style={{ marginTop: 4 }}>ใช้เข้าระบบได้เมื่อเข้าแอป Authenticator ไม่ได้ · ใช้ได้รหัสละครั้ง</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: 6, marginTop: 10 }}>
             {codes.map(c => (
-              <code key={c} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", fontSize: 12.5, userSelect: "all" }}>{c}</code>
+              <code key={c} style={{ background: "var(--field-bg, #fff)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", fontSize: 12.5, userSelect: "all" }}>{c}</code>
             ))}
           </div>
           <button className="minibtn" style={{ marginTop: 10 }} onClick={() => { navigator.clipboard?.writeText(codes.join("\n")); setMsg("คัดลอกรหัสสำรองแล้ว"); }}>คัดลอกทั้งหมด</button>
@@ -115,7 +115,7 @@ export default function TwoFactorCard() {
         <div style={{ marginTop: 14 }}>
           <p className="dim">รหัสสำรองเหลือ {st.recoveryCodesLeft} รหัส</p>
           <details>
-            <summary style={{ cursor: "pointer", color: "#dc2626", fontSize: 13.5, fontWeight: 600, marginTop: 8 }}>ปิดใช้งาน 2FA</summary>
+            <summary style={{ cursor: "pointer", color: "var(--err, #dc2626)", fontSize: 13.5, fontWeight: 600, marginTop: 8 }}>ปิดใช้งาน 2FA</summary>
             <div style={{ display: "grid", gap: 8, maxWidth: 320, marginTop: 10 }}>
               {/* Google-only accounts have no password — the code alone is enough */}
               {hasPassword && (
@@ -128,8 +128,8 @@ export default function TwoFactorCard() {
         </div>
       )}
 
-      {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
-      {msg && <p style={{ color: "#16a34a", fontSize: 13, marginTop: 10 }}>{msg}</p>}
+      {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+      {msg && <p style={{ color: "var(--okc, #16a34a)", fontSize: 13, marginTop: 10 }}>{msg}</p>}
     </div>
   );
 }

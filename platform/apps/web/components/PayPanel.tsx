@@ -119,7 +119,7 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
     finally { setBusy(false); }
   }
 
-  if (err && !m) return <div className="acard"><p style={{ color: "#dc2626", fontSize: 13 }}>⚠ {err}</p></div>;
+  if (err && !m) return <div className="acard"><p style={{ color: "var(--err, #dc2626)", fontSize: 13 }}>⚠ {err}</p></div>;
   if (!m) return <div className="acard"><p className="asub">กำลังโหลดข้อมูลการชำระเงิน…</p></div>;
 
   // ---- slip is with the admin ----
@@ -149,7 +149,7 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
       <p className="asub">โอนตามยอดนี้พอดี แล้วแนบสลิปด้านล่าง</p>
 
       {st?.paymentStatus === "rejected" && st.rejectReason && (
-        <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 10, padding: "10px 13px", margin: "14px 0", fontSize: 13.5 }}>
+        <div className="note-bad" style={{ margin: "14px 0" }}>
           ⚠ สลิปก่อนหน้าไม่ผ่าน: {st.rejectReason}
           <br />กรุณาตรวจสอบแล้วแนบสลิปใหม่อีกครั้ง
         </div>
@@ -200,7 +200,7 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
         )}
 
         <p className="dim" style={{ marginTop: 10 }}>รองรับ JPG / PNG / WEBP / HEIC · ไม่เกิน {MAX_MB}MB</p>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+        {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
       </div>
     </div>
   );

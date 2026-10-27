@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { priceOrder, priceTable, tierFor, DEFAULT_PRICING, type PricingConfig } from "./pricing";
+import { priceOrder, priceTable, tierFor, garmentOf, DEFAULT_PRICING, type PricingConfig } from "./pricing";
 
 /** the config the business actually agreed on */
 const cfg: PricingConfig = {
@@ -10,6 +10,7 @@ const cfg: PricingConfig = {
   ],
   fabric: { mesh: 0, B1: 20, C1: 40 },
   trim: { none: 0, neck: 10, neckarm: 20, full: 30 },
+  garment: { jersey: 0, hoodie: 250, shorts: -80 },
   reversible: 60,
   shippingFlat: 80,
   freeShippingOver: 3500,
@@ -160,5 +161,38 @@ describe("DEFAULT_PRICING", () => {
     expect(tierFor(100, DEFAULT_PRICING).price).toBe(290);
     expect(DEFAULT_PRICING.freeShippingOver).toBe(3500);
     expect(DEFAULT_PRICING.depositPct).toBe(100);
+  });
+});
+
+describe("priceOrder — garments", () => {
+  it("prices a jersey at the base, a hoodie above it and shorts below", () => {
+    const q = { totalQty: 10, fabric: "C1", trim: "full" };
+    expect(priceOrder(q, cfg).unitPrice).toBe(370);
+    expect(priceOrder({ ...q, garment: "hoodie" }, cfg).unitPrice).toBe(620);
+    expect(priceOrder({ ...q, garment: "shorts" }, cfg).unitPrice).toBe(290);
+    expect(priceOrder({ ...q, garment: "shorts" }, cfg).garmentSurcharge).toBe(-80);
+  });
+
+  it("never goes below zero", () => {
+    const cheap = { ...cfg, tiers: [{ minQty: 1, price: 50 }], garment: { shorts: -500 } };
+    expect(priceOrder({ totalQty: 1, fabric: "mesh", trim: "none", garment: "shorts" }, cheap).unitPrice).toBe(0);
+  });
+
+  it("uses the default garment prices when a saved config predates them", () => {
+    const old = { ...cfg } as Partial<PricingConfig>;
+    delete old.garment;
+    const p = priceOrder({ totalQty: 1, fabric: "mesh", trim: "none", garment: "hoodie" }, old as PricingConfig);
+    expect(p.garmentSurcharge).toBe(DEFAULT_PRICING.garment.hoodie);
+  });
+});
+
+describe("garmentOf", () => {
+  it("reads the garment from a kit-studio design, and treats everything else as a jersey", () => {
+    expect(garmentOf({ kind: "kit-studio", kit: "warmup" })).toBe("hoodie");
+    expect(garmentOf({ kind: "kit-studio", kit: "STRIDE" })).toBe("shorts");
+    expect(garmentOf({ kind: "kit-studio", kit: "striker" })).toBe("jersey");
+    expect(garmentOf({ kit: "warmup" })).toBe("jersey"); // not a kit-studio design
+    expect(garmentOf(null)).toBe("jersey");
+    expect(garmentOf("warmup")).toBe("jersey");
   });
 });

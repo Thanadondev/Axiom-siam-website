@@ -39,7 +39,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AppShell narrow>
+    <AppShell auth>
       <form className="acard" onSubmit={onSubmit}>
         <div className="eyebrow">AXIOM SIAM</div>
         <h1 className="atitle">สมัครสมาชิก</h1>

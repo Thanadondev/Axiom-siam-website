@@ -2,9 +2,10 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
-import { priceOrder, priceTable } from "./pricing";
+import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto } from "./orders.dto";
+import { kitLook } from "./kit-look";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -33,7 +34,7 @@ export class OrdersService {
   /** live price preview for the checkout page — no side effects */
   async quote(q: PriceQueryDto) {
     const cfg = await this.settings.pricing();
-    return priceOrder({ totalQty: q.totalQty, fabric: q.fabric, trim: q.trim, reversible: q.reversible }, cfg);
+    return priceOrder({ totalQty: q.totalQty, fabric: q.fabric, trim: q.trim, reversible: q.reversible, garment: q.garment }, cfg);
   }
 
   async table() {
@@ -60,8 +61,10 @@ export class OrdersService {
       snapshot = dto.designSnapshot ?? d.stateJson;
     }
 
-    const p = priceOrder({ totalQty, fabric: dto.fabric, trim: dto.trim, reversible: dto.reversible }, cfg);
-    const fabricSummary = `${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
+    // the garment is read from the design itself, never taken from the request
+    const garment = garmentOf(snapshot);
+    const p = priceOrder({ totalQty, fabric: dto.fabric, trim: dto.trim, reversible: dto.reversible, garment }, cfg);
+    const fabricSummary = `${garment !== "jersey" ? `${GARMENT_LABEL[garment]} · ` : ""}${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
 
     // prices are frozen into the order; later price changes never affect it
     const order = await this.prisma.order.create({
@@ -123,7 +126,8 @@ export class OrdersService {
         ...ORDER_SELECT, userId: true,
         user: { select: { id: true, email: true, fullName: true } },
         shippingAddress: true,
-        items: { select: { id: true, size: true, qty: true, unitPrice: true, designId: true, roster: true } },
+        // the frozen design is for the production board; customers see the preview
+        items: { select: { id: true, size: true, qty: true, unitPrice: true, designId: true, roster: true, designSnapshot: isAdmin } },
         statusHistory: { orderBy: { createdAt: "asc" } },
         payments: { select: { id: true, provider: true, amount: true, status: true, type: true, createdAt: true } },
         shipments: true,
@@ -167,7 +171,17 @@ export class OrdersService {
       }),
       this.prisma.order.count({ where }),
     ]);
-    return { items, total };
+    // a small look summary per order (kit, colours, pattern, number) so the
+    // production board can draw each shirt without loading full snapshots
+    const snaps = items.length
+      ? await this.prisma.orderItem.findMany({
+          where: { orderId: { in: items.map(o => o.id) } },
+          distinct: ["orderId"],
+          select: { orderId: true, designSnapshot: true },
+        })
+      : [];
+    const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
+    return { items: items.map(o => ({ ...o, look: look.get(o.id) ?? null })), total };
   }
 
   async adminSetStatus(id: string, adminId: string, dto: UpdateOrderStatusDto) {

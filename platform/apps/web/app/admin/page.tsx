@@ -305,7 +305,7 @@ export default function AdminPage() {
   const setP = (k: string, v: any) => setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [k]: v } }));
   const setTier = (i: number, k: "minQty" | "price", v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, tiers: c.pricing.tiers.map((t: any, j: number) => j === i ? { ...t, [k]: v } : t) } }));
-  const setMap = (group: "fabric" | "trim", k: string, v: number) =>
+  const setMap = (group: "fabric" | "trim" | "garment", k: string, v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [group]: { ...c.pricing[group], [k]: v } } }));
 
   async function setQuote(id: string, body: { status?: string; adminNote?: string }) {
@@ -360,8 +360,9 @@ export default function AdminPage() {
               {t.id === "reports" && stats?.queue?.openReports > 0 ? ` (${stats.queue.openReports})` : ""}
             </button>
           ))}
+          <Link className="chip" href="/admin/production" style={{ borderColor: "var(--brand)" }}>🏭 บอร์ดผลิต</Link>
         </div>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
+        {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
 
       {/* ---------------- DASHBOARD ---------------- */}
@@ -896,6 +897,16 @@ export default function AdminPage() {
               </div>
             </div>
 
+            <div style={{ marginTop: 20 }}>
+              <h3 className="flabel" style={{ margin: 0 }}>ราคาตามชนิดสินค้า เทียบกับเสื้อ (บาท/ตัว · ติดลบ = ถูกกว่าเสื้อ)</h3>
+              {[["hoodie", "เสื้อฮู้ด"], ["shorts", "กางเกงกีฬา"]].map(([k, label]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+                  <input className="ainput mini" type="number" style={{ width: 90 }} value={cfg.pricing.garment?.[k] ?? 0} onChange={e => setMap("garment", k, Number(e.target.value))} />
+                </div>
+              ))}
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginTop: 20 }}>
               <NumField label="เสื้อ 2 ด้าน +฿" value={cfg.pricing.reversible} onChange={v => setP("reversible", v)} />
               <NumField label="ค่าส่ง (บาท)" value={cfg.pricing.shippingFlat} onChange={v => setP("shippingFlat", v)} />
@@ -975,7 +986,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {saved && <div className="acard" style={{ color: "#16a34a", fontWeight: 600 }}>{saved}</div>}
+          {saved && <div className="acard" style={{ color: "var(--okc, #16a34a)", fontWeight: 600 }}>{saved}</div>}
         </>
       )}
     </AppShell>
@@ -995,7 +1006,7 @@ function Kpi({ label, value, sub, accent, danger }: { label: string; value: stri
   return (
     <div className="kpi">
       <div className="kpilabel">{label}</div>
-      <div className="kpivalue" style={danger ? { color: "#dc2626" } : accent ? { color: "var(--brand)" } : undefined}>{value}</div>
+      <div className="kpivalue" style={danger ? { color: "var(--err, #dc2626)" } : accent ? { color: "var(--brand)" } : undefined}>{value}</div>
       {sub && <div className="kpisub">{sub}</div>}
     </div>
   );

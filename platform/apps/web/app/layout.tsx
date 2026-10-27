@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Axiom Siam Co.,Ltd. — โรงงานผลิตเสื้อผ้ากีฬา OEM/ODM ส่งออกทั่วโลก",
   description:
     "Axiom Siam Co.,Ltd. โรงงานผลิตเสื้อผ้ากีฬาครบวงจร รับผลิต OEM/ODM คุณภาพส่งออก — ออกแบบเสื้อของคุณเองแบบ 3D พร้อมขอใบเสนอราคา",
-  icons: { icon: "/logo-mark-blue.png" },
+  icons: { icon: "/models/axiom-icon.png" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body style={{ margin: 0, fontFamily: "'Sora', 'Noto Sans Thai', system-ui, sans-serif", background: "#0a0e0d", color: "#e8f5f2" }}>
+      <body style={{ margin: 0, fontFamily: "'Sora', 'Noto Sans Thai', system-ui, sans-serif", background: "#0d0e10", color: "#f2f0eb" }}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

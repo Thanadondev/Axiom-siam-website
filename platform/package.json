@@ -19,6 +19,7 @@
     "test:watch": "npm run test:watch --workspace apps/api",
     "test:coverage": "npm run test:coverage --workspace apps/api",
     "test:e2e": "node scripts/e2e-order.mjs",
+    "test:e2e:kit": "node scripts/e2e-kit.mjs",
     "test:e2e:purge": "dotenv -e .env -- node scripts/purge-e2e.mjs",
     "typecheck": "npm run typecheck --workspace apps/api",
     "db:generate": "npm run generate --workspace packages/db",

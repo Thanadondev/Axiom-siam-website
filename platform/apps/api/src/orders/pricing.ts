@@ -16,6 +16,26 @@ const num = (v: string | undefined, fallback: number) => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 };
+/** like num(), but a garment can cost less than a jersey */
+const signed = (v: string | undefined, fallback: number) => {
+  const n = Number(v);
+  return v !== undefined && v !== "" && Number.isFinite(n) ? n : fallback;
+};
+
+/** what is being made: a jersey (the base price), a hoodie or a pair of shorts */
+export const GARMENTS = ["jersey", "hoodie", "shorts"] as const;
+export type Garment = (typeof GARMENTS)[number];
+export const GARMENT_LABEL: Record<Garment, string> = { jersey: "เสื้อ", hoodie: "เสื้อฮู้ด", shorts: "กางเกง" };
+
+/** the storefront kits that aren't jerseys (apps/web/lib/kits.ts) */
+const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts" };
+
+/** the garment a design snapshot is for: the kit it was made from, else a jersey */
+export function garmentOf(snap: unknown): Garment {
+  if (!snap || typeof snap !== "object") return "jersey";
+  const s = snap as Record<string, unknown>;
+  return s.kind === "kit-studio" && typeof s.kit === "string" ? KIT_GARMENT[s.kit.toLowerCase()] ?? "jersey" : "jersey";
+}
 
 export interface QtyTier {
   minQty: number;
@@ -27,6 +47,8 @@ export interface PricingConfig {
   tiers: QtyTier[];
   fabric: Record<string, number>;
   trim: Record<string, number>;
+  /** added to (or, below zero, taken off) the jersey price per piece */
+  garment: Record<string, number>;
   reversible: number;
   shippingFlat: number;
   freeShippingOver: number;
@@ -53,6 +75,11 @@ export const DEFAULT_PRICING: PricingConfig = {
     neckarm: num(process.env.PRICE_TRIM_NECKARM, 20),
     full: num(process.env.PRICE_TRIM_FULL, 30),
   },
+  garment: {
+    jersey: 0,
+    hoodie: signed(process.env.PRICE_GARMENT_HOODIE, 250),
+    shorts: signed(process.env.PRICE_GARMENT_SHORTS, -80),
+  },
   reversible: num(process.env.PRICE_REVERSIBLE, 60),
   shippingFlat: num(process.env.PRICE_SHIPPING, 80),
   freeShippingOver: num(process.env.PRICE_FREE_SHIPPING_OVER, 3500),
@@ -65,6 +92,7 @@ export interface PriceInput {
   fabric: string;
   trim: string;
   reversible?: boolean;
+  garment?: Garment;
 }
 
 export interface PriceBreakdown {
@@ -72,6 +100,8 @@ export interface PriceBreakdown {
   tierPrice: number;
   fabricSurcharge: number;
   trimSurcharge: number;
+  garment: Garment;
+  garmentSurcharge: number;
   reversibleSurcharge: number;
   unitPrice: number;
   subtotal: number;
@@ -89,7 +119,7 @@ export function tierFor(qty: number, cfg: PricingConfig): QtyTier {
 }
 
 export function priceOrder(
-  { totalQty, fabric, trim, reversible = false }: PriceInput,
+  { totalQty, fabric, trim, reversible = false, garment = "jersey" }: PriceInput,
   cfg: PricingConfig = DEFAULT_PRICING,
 ): PriceBreakdown {
   const qty = Math.max(0, Math.trunc(totalQty));
@@ -97,8 +127,10 @@ export function priceOrder(
   const fabricSurcharge = cfg.fabric[fabric] ?? 0;
   const trimSurcharge = cfg.trim[trim] ?? 0;
   const reversibleSurcharge = reversible ? cfg.reversible : 0;
+  // a config saved before garments existed has no garment table
+  const garmentSurcharge = garment === "jersey" ? 0 : cfg.garment?.[garment] ?? DEFAULT_PRICING.garment[garment] ?? 0;
 
-  const unitPrice = tierPrice + fabricSurcharge + trimSurcharge + reversibleSurcharge;
+  const unitPrice = Math.max(0, tierPrice + fabricSurcharge + trimSurcharge + garmentSurcharge + reversibleSurcharge);
   const subtotal = unitPrice * qty;
   const shippingFee = subtotal === 0 || subtotal >= cfg.freeShippingOver ? 0 : cfg.shippingFlat;
   const total = subtotal + shippingFee;
@@ -108,6 +140,8 @@ export function priceOrder(
     tierPrice,
     fabricSurcharge,
     trimSurcharge,
+    garment,
+    garmentSurcharge,
     reversibleSurcharge,
     unitPrice,
     subtotal,

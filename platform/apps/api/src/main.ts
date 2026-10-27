@@ -24,6 +24,19 @@ async function bootstrap() {
   // enumerable, but it IS unauthenticated — anyone holding the link can view
   // the image. Move this behind a guard (or signed URLs) before going live.
   const uploadDir = resolve(process.env.UPLOAD_DIR ?? "./uploads");
+  // Team logos and fonts (kit studio). Named by content hash, so they never change:
+  // cache for a year. The web app draws them into WebGL from another origin, which
+  // needs CORS; they are print artwork, not personal data.
+  app.use(
+    "/uploads/kit-assets",
+    (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      next();
+    },
+    express.static(resolve(uploadDir, "kit-assets"), { index: false, dotfiles: "deny", immutable: true, maxAge: "365d", fallthrough: false }),
+  );
   app.use("/uploads", express.static(uploadDir, { index: false, dotfiles: "deny", maxAge: "1h" }));
   app.enableCors({
     // dev: accept any localhost:<port>; also accept the configured origin

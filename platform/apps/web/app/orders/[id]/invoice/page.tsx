@@ -21,7 +21,7 @@ export default function InvoicePage() {
   }, [id, token]);
 
   if (loading || (!o && !err)) return <p style={{ padding: 40, fontFamily: "sans-serif" }}>กำลังโหลด…</p>;
-  if (err) return <p style={{ padding: 40, fontFamily: "sans-serif", color: "#dc2626" }}>{err}</p>;
+  if (err) return <p style={{ padding: 40, fontFamily: "sans-serif", color: "#c2410c" }}>{err}</p>;
 
   const inv = o.invoices?.[0];
   const a = o.shippingAddress;
@@ -33,9 +33,9 @@ export default function InvoicePage() {
     <div className="inv">
       <style>{`
         .inv{max-width:800px;margin:0 auto;padding:44px 40px;background:#fff;color:#111;font-family:"Noto Sans Thai",sans-serif;font-size:13.5px;line-height:1.65}
-        .inv h1{font-size:26px;margin:0 0 2px;letter-spacing:1px}
+        .inv h1{font-family:Anton,"Noto Sans Thai",sans-serif;font-weight:400;font-size:32px;margin:0 0 2px;letter-spacing:2px}
         .inv table{width:100%;border-collapse:collapse;margin-top:18px}
-        .inv th{text-align:left;background:#f1f5f9;padding:9px 11px;font-size:12px;border-bottom:2px solid #cbd5e1}
+        .inv th{text-align:left;background:#f2f0eb;padding:9px 11px;font-size:12px;border-bottom:2px solid #cbd5e1}
         .inv td{padding:9px 11px;border-bottom:1px solid #e2e8f0}
         .inv .r{text-align:right}
         .inv .muted{color:#64748b;font-size:12px}
@@ -44,13 +44,13 @@ export default function InvoicePage() {
         @media print{.noprint{display:none}.inv{padding:0}@page{margin:16mm}}
       `}</style>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #2563eb", paddingBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #f26522", paddingBottom: 16 }}>
         <div>
           <h1>AXIOM SIAM</h1>
           <div className="muted">Axiom Siam Co.,Ltd.<br />ผู้ผลิตชุดกีฬา OEM/ODM</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 19, fontWeight: 800, color: "#2563eb" }}>ใบแจ้งหนี้ / INVOICE</div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: "#f26522" }}>ใบแจ้งหนี้ / INVOICE</div>
           <div className="muted">
             เลขที่: <b>{inv?.invoiceNo ?? "(ยังไม่ออกใบแจ้งหนี้)"}</b><br />
             วันที่: {d(inv?.issuedAt ?? o.createdAt)}<br />
@@ -92,8 +92,8 @@ export default function InvoicePage() {
           <span>มูลค่าก่อน VAT</span><span>{baht(beforeVat)}</span>
         </div>
         <div className="tot muted"><span>VAT 7%</span><span>{baht(vat)}</span></div>
-        <div className="tot" style={{ borderTop: "2px solid #2563eb", marginTop: 6, paddingTop: 8, fontSize: 17, fontWeight: 800 }}>
-          <span>ยอดชำระ</span><span style={{ color: "#2563eb" }}>{baht(o.total)}</span>
+        <div className="tot" style={{ borderTop: "2px solid #f26522", marginTop: 6, paddingTop: 8, fontSize: 17, fontWeight: 800 }}>
+          <span>ยอดชำระ</span><span style={{ color: "#f26522" }}>{baht(o.total)}</span>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export default function InvoicePage() {
       </p>
 
       <div className="noprint">
-        <button onClick={() => window.print()} style={{ padding: "10px 22px", borderRadius: 30, border: "1.5px solid #2563eb", background: "#2563eb", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={() => window.print()} style={{ padding: "10px 22px", borderRadius: 30, border: "1.5px solid #f26522", background: "#f26522", color: "#0d0e10", fontWeight: 700, cursor: "pointer" }}>
           🖨 พิมพ์ / บันทึกเป็น PDF
         </button>
       </div>

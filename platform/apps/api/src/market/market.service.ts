@@ -212,6 +212,34 @@ export class MarketService {
       const p = await this.prisma.templatePurchase.findUnique({ where: { templateId_buyerId: { templateId: id, buyerId: userId } } });
       if (!p) throw new ForbiddenException("ต้องซื้อเทมเพลตก่อนถึงจะเปิดใช้ได้");
     }
-    return { id: t.id, name: t.name, stateJson: t.stateJson };
+    return { id: t.id, name: t.name, stateJson: t.stateJson, watermark: false };
+  }
+
+  /**
+   * State for the marketplace's live colour preview — open to guests.
+   *
+   * Deliberate trade-off: to show the design on any colour we must hand the
+   * browser the real vector state, so anyone who opens devtools can lift it.
+   * `watermark: true` makes the editor stamp the preview, which stops casual
+   * copying but is NOT real protection. Only publish here what you accept
+   * being seen; the money is in printing the shirt, not in the JSON.
+   */
+  async getPreviewState(userId: string | undefined, id: string) {
+    const t = await this.prisma.marketTemplate.findFirst({
+      where: { id, deletedAt: null, takedownAt: null },
+      select: { id: true, name: true, designerId: true, stateJson: true, status: true },
+    });
+    if (!t) throw new NotFoundException("ไม่พบเทมเพลต");
+    // an unpublished draft is only previewable by its own designer
+    if (t.status !== "published" && t.designerId !== userId) throw new NotFoundException("ไม่พบเทมเพลต");
+
+    let owned = t.designerId === userId;
+    if (!owned && userId) {
+      const p = await this.prisma.templatePurchase.findUnique({
+        where: { templateId_buyerId: { templateId: id, buyerId: userId } },
+      });
+      owned = !!p;
+    }
+    return { id: t.id, name: t.name, stateJson: t.stateJson, watermark: !owned };
   }
 }
