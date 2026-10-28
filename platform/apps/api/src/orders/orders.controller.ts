@@ -1,12 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Public, Roles, CurrentUser, type AuthUser } from "../auth/decorators";
 import { OrdersService } from "./orders.service";
 import {
-  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema,
-  type CreateOrderDto, type PriceQueryDto, type UpdateOrderStatusDto, type OrderListQueryDto,
+  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema, TaxInvoiceSchema,
+  type CreateOrderDto, type PriceQueryDto, type UpdateOrderStatusDto, type OrderListQueryDto, type TaxInvoiceDto,
 } from "./orders.dto";
 
 @Controller("orders")
@@ -43,6 +43,13 @@ export class OrdersController {
   @Post(":id/cancel")
   cancel(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.orders.cancel(id, user.id);
+  }
+
+  /** the customer's (or, for them, an admin's) details for a full tax invoice */
+  @UseGuards(JwtAuthGuard)
+  @Put(":id/tax-invoice")
+  taxInvoice(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(TaxInvoiceSchema)) dto: TaxInvoiceDto) {
+    return this.orders.setTaxInvoice(id, user.id, dto, user.role === "admin");
   }
 
   @UseGuards(JwtAuthGuard)

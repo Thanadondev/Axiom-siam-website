@@ -28,7 +28,9 @@ type InvoiceDb = {
  * Two admins approving at the same moment race for the same number: the unique
  * index on invoiceNo stops the second, which takes the next one.
  */
-export async function issueInvoice(db: InvoiceDb, orderId: string, amount: number, now = new Date()): Promise<string | null> {
+export interface InvoiceBuyer { name: string; taxId: string; branch: string; address: string }
+
+export async function issueInvoice(db: InvoiceDb, orderId: string, amount: number, now = new Date(), buyer?: InvoiceBuyer | null): Promise<string | null> {
   const existing = await db.invoice.findFirst({ where: { orderId } });
   if (existing) return existing.invoiceNo;
   const year = now.getFullYear();
@@ -40,7 +42,13 @@ export async function issueInvoice(db: InvoiceDb, orderId: string, amount: numbe
     });
     const invoiceNo = formatInvoiceNo(year, (last ? invoiceSeq(last.invoiceNo, year) ?? 0 : 0) + 1);
     try {
-      await db.invoice.create({ data: { orderId, invoiceNo, amount, taxId: process.env.COMPANY_TAX_ID ?? null } });
+      await db.invoice.create({
+        data: {
+          orderId, invoiceNo, amount, taxId: process.env.COMPANY_TAX_ID ?? null,
+          // the buyer is frozen onto the invoice: a tax invoice never changes after it is issued
+          ...(buyer ? { buyerName: buyer.name, buyerTaxId: buyer.taxId, buyerBranch: buyer.branch, buyerAddress: buyer.address } : {}),
+        },
+      });
       return invoiceNo;
     } catch (e: any) {
       if (e?.code !== "P2002") throw e; // only a taken number is worth another try

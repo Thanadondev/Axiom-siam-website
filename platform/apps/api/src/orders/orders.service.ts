@@ -7,6 +7,7 @@ import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from 
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto } from "./orders.dto";
 import { kitLook } from "./kit-look";
 import { ledger } from "../payments/ledger";
+import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -126,13 +127,49 @@ export class OrdersService {
         payments: { select: { id: true, provider: true, amount: true, status: true, type: true, createdAt: true } },
         refunds: { select: { id: true, amount: true, reason: true, createdAt: true }, orderBy: { createdAt: "asc" } },
         shipments: true,
-        invoices: { select: { id: true, invoiceNo: true, amount: true, issuedAt: true } },
+        invoices: {
+          select: { id: true, invoiceNo: true, amount: true, issuedAt: true, buyerName: true, buyerTaxId: true, buyerBranch: true, buyerAddress: true },
+        },
+        taxInvoice: true,
       },
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
     // what has been paid and what is due now (deposit, then the balance)
-    return { ...o, balance: ledger(o, o.payments, o.refunds) };
+    const { taxInvoice, ...rest } = o;
+    return {
+      ...rest,
+      balance: ledger(o, o.payments, o.refunds),
+      taxInfo: readTaxInfo(taxInvoice),
+      // the company's own details for printing a tax invoice (null until set in .env)
+      seller: sellerFromEnv(),
+    };
+  }
+
+  /**
+   * The customer's details for a full tax invoice. Once a tax invoice has been
+   * issued with them it can't change (a correction needs a credit note).
+   */
+  async setTaxInvoice(id: string, userId: string, dto: TaxParty, isAdmin = false) {
+    const o = await this.prisma.order.findUnique({
+      where: { id },
+      select: { id: true, userId: true, status: true, invoices: { select: { id: true, buyerTaxId: true } } },
+    });
+    if (!o) throw new NotFoundException("ไม่พบออเดอร์");
+    if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
+    if (o.status === "cancelled") throw new BadRequestException("ออเดอร์นี้ถูกยกเลิกแล้ว");
+    const inv = o.invoices[0];
+    if (inv?.buyerTaxId) throw new BadRequestException("ออกใบกำกับภาษีด้วยข้อมูลนี้ไปแล้ว แก้ไขไม่ได้ — กรุณาติดต่อทีมงาน");
+    const info: TaxParty = { name: dto.name, taxId: dto.taxId, branch: dto.branch, address: dto.address };
+    await this.prisma.order.update({ where: { id }, data: { taxInvoice: JSON.stringify(info) } });
+    // already invoiced without a buyer: this turns that invoice into the full tax invoice
+    if (inv) {
+      await this.prisma.invoice.update({
+        where: { id: inv.id },
+        data: { buyerName: info.name, buyerTaxId: info.taxId, buyerBranch: info.branch, buyerAddress: info.address },
+      });
+    }
+    return { taxInfo: info, attached: Boolean(inv), message: inv ? "ออกใบกำกับภาษีแล้ว" : "บันทึกข้อมูลแล้ว — จะออกใบกำกับภาษีเมื่อชำระเงิน" };
   }
 
   /** customer cancels their own order — only while nothing has been produced */

@@ -27,7 +27,12 @@ const prisma: any = {
       const o = db.orders.find(r => r.id === where.id);
       if (!o) return null;
       const pw = select?.payments?.where;
-      return { ...o, payments: db.payments.filter(p => p.orderId === o.id && match(p, pw)), refunds: db.refunds.filter(r => r.orderId === o.id) };
+      return {
+        ...o,
+        payments: db.payments.filter(p => p.orderId === o.id && match(p, pw)),
+        refunds: db.refunds.filter(r => r.orderId === o.id),
+        invoices: db.invoices.filter(i => i.orderId === o.id),
+      };
     },
     update: async ({ where, data }: any) => Object.assign(db.orders.find(r => r.id === where.id)!, data),
   },
@@ -48,7 +53,8 @@ const prisma: any = {
       if (where.invoiceNo?.startsWith) return [...db.invoices].filter(r => r.invoiceNo.startsWith(where.invoiceNo.startsWith)).sort((a, b) => b.invoiceNo.localeCompare(a.invoiceNo))[0] ?? null;
       return db.invoices.find(r => match(r, where)) ?? null;
     },
-    create: async ({ data }: any) => { db.invoices.push(data); return data; },
+    create: async ({ data }: any) => { const row = { id: id(), ...data }; db.invoices.push(row); return row; },
+    update: async ({ where, data }: any) => Object.assign(db.invoices.find(r => r.id === where.id)!, data),
   },
   shipment: { create: async () => ({}), findFirst: async () => null },
   $transaction: async (ops: Promise<any>[]) => Promise.all(ops),
@@ -188,5 +194,32 @@ describe("refunds", () => {
   it("can't refund an order with no money in", async () => {
     const o = addOrder(1000, 1000);
     await expect(payments.recordRefund("admin", o.id, { amount: 100, method: "cash", reason: "ทดสอบ" })).rejects.toThrow(/ไม่มีเงิน/);
+  });
+});
+
+describe("full tax invoice", () => {
+  const buyer = { name: "บจก. ทีมฟุตบอล", taxId: "0105536084835", branch: "00000", address: "1 ถนนสุขุมวิท กรุงเทพฯ 10110" };
+
+  it("is issued with the buyer when they asked before paying", async () => {
+    const o = addOrder(3900, 3900);
+    await orders.setTaxInvoice(o.id, "u1", buyer);
+    await payments.recordManual("admin", o.id, { amount: 3900, method: "transfer", note: "โอน" });
+    expect(db.invoices[0]).toMatchObject({ buyerName: buyer.name, buyerTaxId: buyer.taxId, buyerBranch: "00000" });
+  });
+
+  it("is completed when they ask after the invoice went out, then can't change", async () => {
+    const o = addOrder(3900, 3900);
+    await payments.recordManual("admin", o.id, { amount: 3900, method: "transfer", note: "โอน" });
+    expect(db.invoices[0].buyerTaxId).toBeUndefined();
+    const r = await orders.setTaxInvoice(o.id, "u1", buyer);
+    expect(r.attached).toBe(true);
+    expect(db.invoices[0].buyerName).toBe(buyer.name);
+    await expect(orders.setTaxInvoice(o.id, "u1", { ...buyer, name: "อื่น" })).rejects.toThrow(/แก้ไขไม่ได้/);
+  });
+
+  it("is only the order owner's (or an admin's) to fill in", async () => {
+    const o = addOrder(3900, 3900);
+    await expect(orders.setTaxInvoice(o.id, "someone-else", buyer)).rejects.toThrow(/ไม่ใช่ของคุณ/);
+    await orders.setTaxInvoice(o.id, "admin-user", buyer, true);
   });
 });

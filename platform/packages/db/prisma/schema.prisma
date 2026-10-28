@@ -459,6 +459,8 @@ model Order {
   depositAmount     Int         @default(0) @map("deposit_amount")
   fabricSummary     String?     @map("fabric_summary")
   note              String?
+  /// the customer's details for a full tax invoice (JSON text: name, taxId, branch, address)
+  taxInvoice        String?     @map("tax_invoice")
   shippingAddressId String?     @map("shipping_address_id")
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
@@ -569,6 +571,11 @@ model Invoice {
   currency   Currency @default(THB)
   taxId      String?  @map("tax_id")
   pdfUrl     String?  @map("pdf_url")
+  // the buyer, frozen when the tax invoice is issued (a tax invoice can't change afterwards)
+  buyerName    String? @map("buyer_name")
+  buyerTaxId   String? @map("buyer_tax_id")
+  buyerBranch  String? @map("buyer_branch")
+  buyerAddress String? @map("buyer_address")
   issuedAt   DateTime @default(now()) @map("issued_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)

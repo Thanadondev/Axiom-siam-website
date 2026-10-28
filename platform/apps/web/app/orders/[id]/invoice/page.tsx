@@ -25,6 +25,13 @@ export default function InvoicePage() {
 
   const inv = o.invoices?.[0];
   const a = o.shippingAddress;
+  const seller = o.seller; // the company's tax details (null until set in .env)
+  // a full tax invoice: the seller's tax details and a buyer frozen onto the invoice
+  const isTax = Boolean(seller && inv?.buyerTaxId);
+  const branchText = (b?: string | null) => (!b || b === "00000" ? "สำนักงานใหญ่" : `สาขาที่ ${b}`);
+  const garment = /^(เสื้อฮู้ด|กางเกง) · /.exec(o.fabricSummary ?? "")?.[1];
+  const itemLabel = garment ? `${garment}กีฬาสั่งผลิต`.replace("เสื้อฮู้ดกีฬา", "เสื้อฮู้ด") : "เสื้อกีฬาสั่งผลิต";
+  const deposit = o.depositAmount > 0 && o.depositAmount < o.total;
   const vatRate = 0.07;
   const beforeVat = Math.round((o.total / (1 + vatRate)) * 100) / 100;
   const vat = Math.round((o.total - beforeVat) * 100) / 100;
@@ -47,10 +54,18 @@ export default function InvoicePage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #f26522", paddingBottom: 16 }}>
         <div>
           <h1>AXIOM SIAM</h1>
-          <div className="muted">Axiom Siam Co.,Ltd.<br />ผู้ผลิตชุดกีฬา OEM/ODM</div>
+          {seller ? (
+            <div className="muted" style={{ maxWidth: 360 }}>
+              <b style={{ color: "#111" }}>{seller.name}</b><br />{seller.address}<br />
+              เลขประจำตัวผู้เสียภาษี {seller.taxId} · {branchText(seller.branch)}
+            </div>
+          ) : (
+            <div className="muted">Axiom Siam Co.,Ltd.<br />ผู้ผลิตชุดกีฬา OEM/ODM</div>
+          )}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 19, fontWeight: 800, color: "#f26522" }}>ใบแจ้งหนี้ / INVOICE</div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: "#f26522" }}>{isTax ? "ใบกำกับภาษี / TAX INVOICE" : "ใบแจ้งหนี้ / INVOICE"}</div>
+          {isTax && <div className="muted" style={{ fontWeight: 700 }}>ต้นฉบับ</div>}
           <div className="muted">
             เลขที่: <b>{inv?.invoiceNo ?? "(ยังไม่ออกใบแจ้งหนี้)"}</b><br />
             วันที่: {d(inv?.issuedAt ?? o.createdAt)}<br />
@@ -60,11 +75,19 @@ export default function InvoicePage() {
       </div>
 
       <div style={{ display: "flex", gap: 40, marginTop: 22 }}>
-        <div style={{ flex: 1 }}>
-          <div className="muted">ลูกค้า</div>
-          <b>{o.user?.fullName || o.user?.email}</b>
-          {a && <div className="muted">{a.recipient} · {a.phone}<br />{a.line1} {a.line2}<br />{a.district} {a.province} {a.postalCode}</div>}
-        </div>
+        {isTax ? (
+          <div style={{ flex: 1 }}>
+            <div className="muted">ผู้ซื้อ</div>
+            <b>{inv.buyerName}</b>
+            <div className="muted">{inv.buyerAddress}<br />เลขประจำตัวผู้เสียภาษี {inv.buyerTaxId} · {branchText(inv.buyerBranch)}</div>
+          </div>
+        ) : (
+          <div style={{ flex: 1 }}>
+            <div className="muted">ลูกค้า</div>
+            <b>{o.user?.fullName || o.user?.email}</b>
+            {a && <div className="muted">{a.recipient} · {a.phone}<br />{a.line1} {a.line2}<br />{a.district} {a.province} {a.postalCode}</div>}
+          </div>
+        )}
         <div style={{ flex: 1 }}>
           <div className="muted">สเปกงาน</div>
           {o.fabricSummary}
@@ -76,7 +99,7 @@ export default function InvoicePage() {
         <tbody>
           {o.items.map((it: any) => (
             <tr key={it.id}>
-              <td>เสื้อกีฬาสั่งผลิต</td><td>{it.size}</td>
+              <td>{itemLabel}</td><td>{it.size}</td>
               <td className="r">{it.qty}</td><td className="r">{baht(it.unitPrice)}</td>
               <td className="r">{baht(it.unitPrice * it.qty)}</td>
             </tr>
@@ -98,10 +121,20 @@ export default function InvoicePage() {
       </div>
 
       <p className="muted" style={{ marginTop: 34, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-        ราคารวมภาษีมูลค่าเพิ่มแล้ว · ชำระเต็มจำนวนก่อนเริ่มผลิต · เอกสารนี้ออกโดยระบบอัตโนมัติ
+        ราคารวมภาษีมูลค่าเพิ่มแล้ว · {deposit ? `ชำระมัดจำ ${baht(o.depositAmount)} ก่อนเริ่มผลิต ส่วนที่เหลือก่อนจัดส่ง` : "ชำระเต็มจำนวนก่อนเริ่มผลิต"} · เอกสารนี้ออกโดยระบบอัตโนมัติ
         {o.note && <><br />หมายเหตุ: {o.note}</>}
       </p>
 
+      {!seller && (
+        <p className="noprint" style={{ color: "#b45309", fontSize: 12.5, textAlign: "left" }}>
+          ยังออกเป็นใบกำกับภาษีเต็มรูปไม่ได้: ผู้ดูแลระบบต้องตั้ง COMPANY_NAME, COMPANY_ADDRESS, COMPANY_TAX_ID (และ COMPANY_BRANCH) ใน .env ของ API
+        </p>
+      )}
+      {seller && inv && !inv.buyerTaxId && (
+        <p className="noprint" style={{ fontSize: 12.5, textAlign: "left", color: "#64748b" }}>
+          ต้องการใบกำกับภาษีเต็มรูป? กรอกข้อมูลผู้ซื้อที่หน้าออเดอร์ (ส่วน "ใบกำกับภาษี")
+        </p>
+      )}
       <div className="noprint">
         <button onClick={() => window.print()} style={{ padding: "10px 22px", borderRadius: 30, border: "1.5px solid #f26522", background: "#f26522", color: "#0d0e10", fontWeight: 700, cursor: "pointer" }}>
           🖨 พิมพ์ / บันทึกเป็น PDF

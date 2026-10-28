@@ -112,6 +112,8 @@ export default function OrderDetail() {
           )
       )}
 
+      {o.status !== "cancelled" && token && <TaxInvoiceCard o={o} token={token} onSaved={load} />}
+
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
         <div>
           <div className="acard">
@@ -210,3 +212,86 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+
+/** a Thai tax id's check digit, so a typo is caught before it reaches the invoice */
+function validTaxId(raw: string) {
+  const id = raw.replace(/[\s-]/g, "");
+  if (!/^\d{13}$/.test(id)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(id[i]) * (13 - i);
+  return (11 - (sum % 11)) % 10 === Number(id[12]);
+}
+
+/**
+ * The customer's details for a full tax invoice (ใบกำกับภาษีเต็มรูป). Before the
+ * invoice is issued they can be changed; once a tax invoice carries them, not.
+ */
+function TaxInvoiceCard({ o, token, onSaved }: { o: any; token: string; onSaved: () => void }) {
+  const issued = o.invoices?.[0];
+  const locked = Boolean(issued?.buyerTaxId);
+  const t = o.taxInfo;
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: t?.name ?? "", taxId: t?.taxId ?? "", hq: (t?.branch ?? "00000") === "00000", branch: t?.branch && t.branch !== "00000" ? t.branch : "", address: t?.address ?? "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const idOk = validTaxId(f.taxId);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<any>(`/orders/${o.id}/tax-invoice`, {
+        method: "PUT", token,
+        body: JSON.stringify({ name: f.name, taxId: f.taxId, branch: f.hq ? "00000" : f.branch.padStart(5, "0"), address: f.address }),
+      });
+      setMsg({ ok: true, text: r.message }); setOpen(false); onSaved();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+
+  const branchText = (b: string) => (!b || b === "00000" ? "สำนักงานใหญ่" : `สาขาที่ ${b}`);
+  return (
+    <div className="acard">
+      <div className="eyebrow">ใบกำกับภาษี</div>
+      {t && !open ? (
+        <>
+          <h2 className="ah2" style={{ marginTop: 4 }}>{locked ? "ออกใบกำกับภาษีแล้ว" : "จะออกใบกำกับภาษีในนามนี้"}</h2>
+          <p className="asub" style={{ lineHeight: 1.7 }}>
+            <b>{t.name}</b> · เลขประจำตัวผู้เสียภาษี {t.taxId} · {branchText(t.branch)}<br />{t.address}
+          </p>
+          {locked
+            ? <p className="dim">แก้ไขไม่ได้แล้ว หากข้อมูลผิด กรุณาติดต่อทีมงาน</p>
+            : <button className="minibtn" onClick={() => setOpen(true)}>แก้ไขข้อมูล</button>}
+        </>
+      ) : !open ? (
+        <>
+          <h2 className="ah2" style={{ marginTop: 4 }}>ต้องการใบกำกับภาษีเต็มรูป?</h2>
+          <p className="asub">สำหรับบริษัท / ร้านค้า / ผู้ที่ต้องใช้ใบกำกับภาษี กรอกข้อมูลตามทะเบียนก่อนหรือหลังชำระเงินก็ได้</p>
+          <button className="minibtn" onClick={() => setOpen(true)}>🧾 ขอใบกำกับภาษี</button>
+        </>
+      ) : (
+        <div style={{ display: "grid", gap: 10, marginTop: 8, maxWidth: 560 }}>
+          <label><span className="dim">ชื่อบริษัท / ชื่อผู้ซื้อ (ตามทะเบียน)</span>
+            <input className="ainput" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></label>
+          <label><span className="dim">เลขประจำตัวผู้เสียภาษี 13 หลัก</span>
+            <input className="ainput" inputMode="numeric" value={f.taxId} onChange={e => setF({ ...f, taxId: e.target.value.replace(/[^\d-]/g, "") })} />
+            {f.taxId && !idOk && <span style={{ color: "var(--err, #dc2626)", fontSize: 12 }}>เลขไม่ถูกต้อง ตรวจสอบอีกครั้ง</span>}</label>
+          <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" checked={f.hq} onChange={() => setF({ ...f, hq: true })} /> สำนักงานใหญ่</label>
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="radio" checked={!f.hq} onChange={() => setF({ ...f, hq: false })} /> สาขาที่</label>
+            {!f.hq && <input className="ainput" style={{ width: 110 }} inputMode="numeric" placeholder="00001" maxLength={5} value={f.branch} onChange={e => setF({ ...f, branch: e.target.value.replace(/\D/g, "") })} />}
+          </div>
+          <label><span className="dim">ที่อยู่ตามทะเบียน</span>
+            <textarea className="ainput" rows={3} value={f.address} onChange={e => setF({ ...f, address: e.target.value })} /></label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="abtn solid" disabled={busy || !idOk || f.name.trim().length < 2 || f.address.trim().length < 10 || (!f.hq && !f.branch)} onClick={save}>
+              {busy ? "กำลังบันทึก…" : "บันทึก"}
+            </button>
+            <button className="minibtn" disabled={busy} onClick={() => setOpen(false)}>ยกเลิก</button>
+          </div>
+          <p className="dim">หลังออกใบกำกับภาษีแล้วจะแก้ไขข้อมูลไม่ได้ กรุณาตรวจสอบให้ถูกต้อง</p>
+        </div>
+      )}
+      {msg && <p style={{ marginTop: 10, fontSize: 13, color: msg.ok ? "var(--ok, #16a34a)" : "var(--err, #dc2626)" }}>{msg.ok ? "✓ " : "⚠ "}{msg.text}</p>}
+    </div>
+  );
+}

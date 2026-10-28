@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cleanTaxId, validThaiTaxId } from "./tax-invoice";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 
@@ -44,6 +45,15 @@ export const CreateOrderSchema = z.object({
   note: z.preprocess(emptyToUndef, z.string().max(1000).optional()),
 });
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>;
+
+/** the customer's details for a full tax invoice (ใบกำกับภาษีเต็มรูป) */
+export const TaxInvoiceSchema = z.object({
+  name: z.string().trim().min(2, "กรุณากรอกชื่อบริษัท / ชื่อผู้ซื้อ").max(160),
+  taxId: z.string().trim().transform(cleanTaxId).refine(validThaiTaxId, "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (13 หลัก)"),
+  branch: z.string().trim().regex(/^\d{5}$/, "เลขสาขา 5 หลัก (สำนักงานใหญ่ = 00000)").default("00000"),
+  address: z.string().trim().min(10, "กรุณากรอกที่อยู่ตามทะเบียน").max(400),
+});
+export type TaxInvoiceDto = z.infer<typeof TaxInvoiceSchema>;
 
 export const ORDER_STATUSES = [
   "pending", "paid", "approved", "in_production", "shipped", "delivered", "completed", "cancelled", "refunded",

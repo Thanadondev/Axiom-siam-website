@@ -10,6 +10,7 @@ import { MIN_CHARGE_BAHT } from "./money";
 import { ledger, upfrontCovered, DUE_TH, type Ledger } from "./ledger";
 import { signSlipUrl } from "./slip-link";
 import { issueInvoice } from "./invoices";
+import { readTaxInfo } from "../orders/tax-invoice";
 
 const CLOSED = ["cancelled", "refunded", "completed"];
 const METHOD_TH: Record<string, string> = { cash: "เงินสด", transfer: "โอน (นอกระบบ)", cheque: "เช็ค", other: "อื่น ๆ" };
@@ -462,7 +463,9 @@ export class PaymentsService {
   }
 
   private async issueInvoice(orderId: string, amount: number) {
-    await issueInvoice(this.prisma, orderId, amount).catch(e => this.log.warn(`could not issue invoice for ${orderId}: ${e.message}`));
+    const o = await this.prisma.order.findUnique({ where: { id: orderId }, select: { taxInvoice: true } });
+    await issueInvoice(this.prisma, orderId, amount, new Date(), readTaxInfo(o?.taxInvoice))
+      .catch(e => this.log.warn(`could not issue invoice for ${orderId}: ${e.message}`));
   }
 
 }
