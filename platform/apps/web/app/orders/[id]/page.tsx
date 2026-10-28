@@ -97,6 +97,9 @@ export default function OrderDetail() {
           {o.invoices?.length > 0 && (
             <Link className="minibtn" href={`/orders/${o.id}/invoice`} target="_blank">🧾 ใบแจ้งหนี้ {o.invoices[0].invoiceNo}</Link>
           )}
+          {o.creditNotes?.map((c: any) => (
+            <Link key={c.id} className="minibtn" href={`/orders/${o.id}/credit-note/${c.id}`} target="_blank">↩ ใบลดหนี้ {c.creditNo} · {baht(c.amount)}</Link>
+          ))}
         </div>
         {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>

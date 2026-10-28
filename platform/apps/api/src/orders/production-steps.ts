@@ -41,6 +41,7 @@ export function planStep(status: string, current: number, to: number): StepPlan 
 
 /** the step that goes with a status change made elsewhere (board buttons, slip approval…) */
 export function stepForStatus(status: string, current: number): number {
+  current = Number.isFinite(current) ? current : 0;
   if (status === "shipped" || status === "delivered" || status === "completed") return SHIP_STEP;
   if (status === "in_production") return Math.max(1, Math.min(current, LAST_FLOOR_STEP));
   return current;

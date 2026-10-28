@@ -9,7 +9,7 @@ import { judgeSlip, ManualSlipReader, type SlipReader, type SlipFacts } from "./
 import { MIN_CHARGE_BAHT } from "./money";
 import { ledger, upfrontCovered, DUE_TH, type Ledger } from "./ledger";
 import { signSlipUrl } from "./slip-link";
-import { issueInvoice } from "./invoices";
+import { issueInvoice, issueCreditNote } from "./invoices";
 import { readTaxInfo } from "../orders/tax-invoice";
 
 const CLOSED = ["cancelled", "refunded", "completed"];
@@ -420,7 +420,7 @@ export class PaymentsService {
     const method = { transfer: "โอนคืน", cash: "เงินสด", other: "อื่น ๆ" }[dto.method] ?? dto.method;
     const left = held - dto.amount;
 
-    await this.prisma.$transaction([
+    const [refund] = await this.prisma.$transaction([
       this.prisma.refund.create({
         data: { orderId: order.id, amount: dto.amount, reason: `${dto.reason} · ${method}`, providerRef: ref },
       }),
@@ -435,15 +435,23 @@ export class PaymentsService {
       }),
     ]);
 
+    // the invoice's value comes down with the money: a credit note (ใบลดหนี้) for it
+    const cn = await issueCreditNote(this.prisma, {
+      orderId: order.id, refundId: (refund as { id: string }).id, amount: dto.amount, reason: dto.reason, whole: dto.close,
+    }).catch(e => { this.log.warn(`could not issue a credit note for ${order.orderNo}: ${e.message}`); return null; });
+
     await this.notify.push({
       userId: order.userId,
       title: `คืนเงินแล้ว — ${order.orderNo}`,
-      body: `฿${dto.amount.toLocaleString()} · ${dto.reason}`,
+      body: `฿${dto.amount.toLocaleString()} · ${dto.reason}${cn ? ` · ใบลดหนี้ ${cn.creditNo}` : ""}`,
       link: `/orders/${order.id}`,
       email: true,
     });
     this.log.log(`order ${order.orderNo}: refund ฿${dto.amount} by ${adminId}${dto.close ? " (closed)" : ""}`);
-    return { ok: true, held: left, orderStatus: dto.close ? "refunded" : order.status, message: `บันทึกคืนเงิน ฿${dto.amount.toLocaleString()} แล้ว` };
+    return {
+      ok: true, held: left, orderStatus: dto.close ? "refunded" : order.status, creditNote: cn,
+      message: `บันทึกคืนเงิน ฿${dto.amount.toLocaleString()} แล้ว${cn ? ` · ออกใบลดหนี้ ${cn.creditNo} (฿${cn.amount.toLocaleString()})` : ""}`,
+    };
   }
 
   // ---------- helpers ----------

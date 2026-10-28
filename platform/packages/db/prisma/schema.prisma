@@ -473,6 +473,7 @@ model Order {
   statusHistory   OrderStatusHistory[]
   payments        Payment[]
   invoices        Invoice[]
+  creditNotes     CreditNote[]
   refunds         Refund[]
   shipments       Shipment[]
 
@@ -582,9 +583,35 @@ model Invoice {
   buyerAddress String? @map("buyer_address")
   issuedAt   DateTime @default(now()) @map("issued_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditNotes CreditNote[]
 
   @@map("invoices")
+}
+
+/// ใบลดหนี้: lowers the value of an issued invoice (a refund, or the sale called off).
+/// Numbered CN-YYYY-00001 in its own sequence; the buyer is copied from the invoice.
+model CreditNote {
+  id           String   @id @default(uuid())
+  creditNo     String   @unique @map("credit_no")
+  orderId      String   @map("order_id")
+  invoiceId    String   @map("invoice_id")
+  refundId     String?  @unique @map("refund_id")
+  /// the reduction in value, VAT included
+  amount       Int
+  reason       String
+  buyerName    String?  @map("buyer_name")
+  buyerTaxId   String?  @map("buyer_tax_id")
+  buyerBranch  String?  @map("buyer_branch")
+  buyerAddress String?  @map("buyer_address")
+  issuedAt     DateTime @default(now()) @map("issued_at")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  refund  Refund? @relation(fields: [refundId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("credit_notes")
 }
 
 model Refund {
@@ -595,7 +622,8 @@ model Refund {
   providerRef String?  @map("provider_ref")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditNote CreditNote?
 
   @@index([orderId])
   @@map("refunds")

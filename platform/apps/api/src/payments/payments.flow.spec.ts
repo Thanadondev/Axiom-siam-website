@@ -8,7 +8,7 @@ import { OrdersService } from "../orders/orders.service";
  */
 
 type Row = Record<string, any>;
-let db: { orders: Row[]; payments: Row[]; history: Row[]; invoices: Row[]; refunds: Row[] };
+let db: { orders: Row[]; payments: Row[]; history: Row[]; invoices: Row[]; refunds: Row[]; credits: Row[] };
 let seq = 0;
 const id = () => `id-${++seq}`;
 
@@ -32,6 +32,7 @@ const prisma: any = {
         payments: db.payments.filter(p => p.orderId === o.id && match(p, pw)),
         refunds: db.refunds.filter(r => r.orderId === o.id),
         invoices: db.invoices.filter(i => i.orderId === o.id),
+        creditNotes: db.credits.filter(c => c.orderId === o.id),
       };
     },
     update: async ({ where, data }: any) => Object.assign(db.orders.find(r => r.id === where.id)!, data),
@@ -47,7 +48,13 @@ const prisma: any = {
     update: async ({ where, data }: any) => Object.assign(db.payments.find(r => r.id === where.id)!, data),
   },
   orderStatusHistory: { create: async ({ data }: any) => { db.history.push(data); return data; } },
-  refund: { create: async ({ data }: any) => { db.refunds.push(data); return data; } },
+  refund: { create: async ({ data }: any) => { const row = { id: id(), ...data }; db.refunds.push(row); return row; } },
+  creditNote: {
+    findFirst: async ({ where }: any) =>
+      [...db.credits].filter(r => r.creditNo.startsWith(where.creditNo.startsWith)).sort((a, b) => b.creditNo.localeCompare(a.creditNo))[0] ?? null,
+    findMany: async ({ where }: any) => db.credits.filter(r => match(r, where)),
+    create: async ({ data }: any) => { const row = { id: id(), ...data }; db.credits.push(row); return row; },
+  },
   invoice: {
     findFirst: async ({ where }: any) => {
       if (where.invoiceNo?.startsWith) return [...db.invoices].filter(r => r.invoiceNo.startsWith(where.invoiceNo.startsWith)).sort((a, b) => b.invoiceNo.localeCompare(a.invoiceNo))[0] ?? null;
@@ -71,7 +78,7 @@ const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 const slip = (n: number) => ({ buffer: Buffer.concat([png, Buffer.from(String(n))]), mimetype: "image/png", size: 20 });
 
 beforeEach(() => {
-  db = { orders: [], payments: [], history: [], invoices: [], refunds: [] };
+  db = { orders: [], payments: [], history: [], invoices: [], refunds: [], credits: [] };
   seq = 0;
 });
 const addOrder = (total: number, depositAmount: number) => {
@@ -221,5 +228,49 @@ describe("full tax invoice", () => {
     const o = addOrder(3900, 3900);
     await expect(orders.setTaxInvoice(o.id, "someone-else", buyer)).rejects.toThrow(/ไม่ใช่ของคุณ/);
     await orders.setTaxInvoice(o.id, "admin-user", buyer, true);
+  });
+});
+
+describe("credit notes (ใบลดหนี้)", () => {
+  const y = new Date().getFullYear();
+  const buyer = { name: "บจก. ทีมฟุตบอล", taxId: "0105536084835", branch: "00000", address: "1 ถนนสุขุมวิท กรุงเทพฯ 10110" };
+
+  it("come with each refund on an invoiced order, numbered in their own sequence, carrying the buyer", async () => {
+    const o = addOrder(3900, 3900);
+    await orders.setTaxInvoice(o.id, "u1", buyer);
+    await payments.recordManual("admin", o.id, { amount: 3900, method: "transfer", note: "โอน" });
+    const r = await payments.recordRefund("admin", o.id, { amount: 500, method: "transfer", reason: "ส่วนลดเสื้อตำหนิ" });
+    expect(r.creditNote).toEqual({ creditNo: `CN-${y}-00001`, amount: 500 });
+    expect(r.message).toMatch(/ใบลดหนี้ CN-/);
+    expect(db.credits[0]).toMatchObject({ invoiceId: db.invoices[0].id, refundId: db.refunds[0].id, amount: 500, reason: "ส่วนลดเสื้อตำหนิ", buyerTaxId: buyer.taxId });
+    const one = await orders.getOne(o.id, "u1");
+    expect(one.creditNotes).toHaveLength(1);
+  });
+
+  it("credit what's left on the invoice when the sale is called off", async () => {
+    const o = addOrder(4000, 2000);
+    await payments.recordManual("admin", o.id, { amount: 2000, method: "transfer", note: "มัดจำ" });
+    expect(db.invoices[0].amount).toBe(4000);
+    await payments.recordRefund("admin", o.id, { amount: 300, method: "transfer", reason: "ส่วนลด" });
+    await payments.recordRefund("admin", o.id, { amount: 1700, method: "transfer", reason: "ลูกค้ายกเลิก", close: true });
+    // the invoice was for 4,000: 300 off, then the remaining 3,700 when the order closes
+    expect(db.credits.map(c => [c.creditNo, c.amount])).toEqual([[`CN-${y}-00001`, 300], [`CN-${y}-00002`, 3700]]);
+    expect(o.status).toBe("refunded");
+  });
+
+  it("never take an invoice below zero, and skip orders that were never invoiced", async () => {
+    const o = addOrder(1000, 1000);
+    await payments.recordManual("admin", o.id, { amount: 1000, method: "cash", note: "หน้าร้าน" });
+    db.invoices[0].amount = 600; // an invoice for less than was paid (e.g. issued before a price change)
+    await payments.recordRefund("admin", o.id, { amount: 800, method: "cash", reason: "คืน" });
+    expect(db.credits.map(c => c.amount)).toEqual([600]);
+    const r = await payments.recordRefund("admin", o.id, { amount: 200, method: "cash", reason: "คืนส่วนที่เหลือ", close: true });
+    expect(r.creditNote).toBeNull();
+
+    const p = addOrder(500, 500);
+    p.status = "paid";
+    db.payments.push({ id: id(), orderId: p.id, status: "paid", type: "full", amount: 500 });
+    const r2 = await payments.recordRefund("admin", p.id, { amount: 500, method: "cash", reason: "คืน", close: true });
+    expect(r2.creditNote).toBeNull();
   });
 });

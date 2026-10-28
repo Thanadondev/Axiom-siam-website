@@ -131,6 +131,10 @@ export class OrdersService {
         invoices: {
           select: { id: true, invoiceNo: true, amount: true, issuedAt: true, buyerName: true, buyerTaxId: true, buyerBranch: true, buyerAddress: true },
         },
+        creditNotes: {
+          select: { id: true, creditNo: true, invoiceId: true, amount: true, reason: true, issuedAt: true, buyerName: true, buyerTaxId: true, buyerBranch: true, buyerAddress: true },
+          orderBy: { creditNo: "asc" },
+        },
         taxInvoice: true,
       },
     });
