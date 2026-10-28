@@ -60,10 +60,10 @@ const lookFor = (k: Kit, extra: Partial<JerseyLook> = {}): JerseyLook => {
  * opening shot at the door and again in the view from the roof.
  */
 const SPOTS: { href: string; th: string; en: string; subTh: string; subEn: string; at: [number, number, number] }[] = [
-  { href: "/shop", th: "ออกแบบเสื้อ", en: "Design a kit", subTh: "เลือกทรง เปลี่ยนสี ใส่ชื่อ", subEn: "Cut, colours, names", at: [2.3, 1.8, 27] },
+  { href: "/shop", th: "ออกแบบเสื้อ", en: "Design a kit", subTh: "เลือกทรง เปลี่ยนสี ใส่ชื่อ", subEn: "Cut, colours, names", at: [2.3, 1.8, 15] },
   { href: "/design", th: "ออกแบบขั้นสูง", en: "Advanced designer", subTh: "วางลายเองทุกจุด", subEn: "Lay out every panel", at: [0, 1.5, 0.3] },
-  { href: "/templates", th: "ตลาดลาย", en: "Template market", subTh: "ลายจากดีไซเนอร์", subEn: "Designs from designers", at: [10.5, 4.2, -14] },
-  { href: "/account", th: "ติดตามออเดอร์", en: "Track my order", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", at: [10.5, 1.6, -2] },
+  { href: "/templates", th: "ตลาดลาย", en: "Template market", subTh: "ลายจากดีไซเนอร์", subEn: "Designs from designers", at: [10, 3.6, -9] },
+  { href: "/account", th: "ติดตามออเดอร์", en: "Track my order", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", at: [9.5, 1.6, -2] },
 ];
 
 const WORK = [
@@ -209,12 +209,14 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0b0a0a);
-      scene.fog = new THREE.FogExp2(0x14110f, 0.0135);
+      scene.fog = new THREE.FogExp2(0x14110f, 0.016);
       const camera = new THREE.PerspectiveCamera(38, el.clientWidth / el.clientHeight, 0.1, 400);
 
-      // The hall: x −30…30, z −24…36, roof trusses at 13 m. The kit hangs over
-      // the centre of the floor; the camera walks in down the central aisle.
-      const HALL = { x: 30, z0: -24, z1: 36, h: 14 };
+      // The hall: x −18…18, z −14…24, roof 12 m. A mid-size sewing hall, not a
+      // hangar. The kit hangs over the centre of the floor; the camera walks in
+      // down the central aisle.
+      const HALL = { x: 18, z0: -14, z1: 24, h: 12 };
+      const HW = HALL.x * 2, HD = HALL.z1 - HALL.z0, HZ = (HALL.z0 + HALL.z1) / 2;
       const dummy = new THREE.Object3D();
       const col = new THREE.Color();
       // the simple block-out of the hall; swapped for the modelled props once factory_kit.glb arrives
@@ -255,7 +257,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
         const P = (wx: number, wz: number) => [(wx + 30) * m, (wz + 24) * m] as const;
         // the central aisle
         x.strokeStyle = "#d9a81e"; x.lineWidth = 0.12 * m;
-        for (const sx of [-5.5, 5.5]) { const [a, b] = P(sx, -22), [, d] = P(sx, 36); x.beginPath(); x.moveTo(a, b); x.lineTo(a, d); x.stroke(); }
+        for (const sx of [-5.5, 5.5]) { const [a, b] = P(sx, HALL.z0 + 2), [, d] = P(sx, HALL.z1); x.beginPath(); x.moveTo(a, b); x.lineTo(a, d); x.stroke(); }
         // the QC bay in the middle: hatched border
         const [qx, qz] = P(-4, -3.5), qw = 8 * m, qh = 7 * m;
         x.strokeRect(qx, qz, qw, qh);
@@ -281,12 +283,12 @@ export default function ScrollStory({ th }: { th: boolean }) {
         m.scale.set(w, h, 1); m.position.set(px, py, pz); m.rotation.y = ry; m.receiveShadow = true;
         scene.add(m);
       };
-      wall(60, HALL.h, 0, HALL.h / 2, HALL.z0, 0);
-      wall(60, HALL.h, 0, HALL.h / 2, HALL.z1, Math.PI);
-      wall(60, HALL.h, -HALL.x, HALL.h / 2, 6, Math.PI / 2);
-      wall(60, HALL.h, HALL.x, HALL.h / 2, 6, -Math.PI / 2);
+      wall(HW, HALL.h, 0, HALL.h / 2, HALL.z0, 0);
+      wall(HW, HALL.h, 0, HALL.h / 2, HALL.z1, Math.PI);
+      wall(HD, HALL.h, -HALL.x, HALL.h / 2, HZ, Math.PI / 2);
+      wall(HD, HALL.h, HALL.x, HALL.h / 2, HZ, -Math.PI / 2);
       const ceil = new THREE.Mesh(wallGeo, keep(new THREE.MeshStandardMaterial({ color: 0x121213, roughness: 1 })));
-      ceil.scale.set(60, 60, 1); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, HALL.h, 6);
+      ceil.scale.set(HW, HD, 1); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, HALL.h, HZ);
       scene.add(ceil);
       // dusk through the high windows: a long band of panes along the back and side walls
       const winTex = keep(canvasTex(THREE, 1024, 128, x => {
@@ -302,12 +304,12 @@ export default function ScrollStory({ th }: { th: boolean }) {
       const band = (w: number, px: number, pz: number, ry: number, rep: number) => {
         const t = winTex.clone(); t.needsUpdate = true; t.repeat.set(rep, 1); trash.push(t);
         const m = new THREE.Mesh(wallGeo, rep === 1 ? winMat : keep(new THREE.MeshBasicMaterial({ map: t, fog: false })));
-        m.scale.set(w, 2.2, 1); m.position.set(px, 11.6, pz); m.rotation.y = ry;
+        m.scale.set(w, 2.2, 1); m.position.set(px, HALL.h - 2.4, pz); m.rotation.y = ry;
         scene.add(m);
       };
-      band(56, 0, HALL.z0 + 0.05, 0, 1);
-      band(56, -HALL.x + 0.05, 6, Math.PI / 2, 1);
-      band(56, HALL.x - 0.05, 6, -Math.PI / 2, 1);
+      band(HW - 4, 0, HALL.z0 + 0.05, 0, 1);
+      band(HD - 4, -HALL.x + 0.05, HZ, Math.PI / 2, 1);
+      band(HD - 4, HALL.x - 0.05, HZ, -Math.PI / 2, 1);
       // the sign over the far end of the hall
       try { await (document as any).fonts?.load?.('400 100px "Anton"'); } catch { /* use whatever loaded */ }
       const signTex = keep(canvasTex(THREE, 2048, 640, x => {
@@ -320,24 +322,24 @@ export default function ScrollStory({ th }: { th: boolean }) {
         x.font = '500 64px "Noto Sans Thai", sans-serif';
         x.fillText("SIAM SPORTSWEAR FACTORY", 1024, 610);
       }));
-      const sign = new THREE.Mesh(keep(new THREE.PlaneGeometry(14, 4.4)), keep(new THREE.MeshBasicMaterial({ map: signTex, transparent: true, depthTest: false, fog: false, color: 0xd8d6d0 })));
-      sign.position.set(16.5, 8.2, HALL.z0 + 0.1);
+      const sign = new THREE.Mesh(keep(new THREE.PlaneGeometry(9.8, 3.08)), keep(new THREE.MeshBasicMaterial({ map: signTex, transparent: true, depthTest: false, fog: false, color: 0xd8d6d0 })));
+      sign.position.set(10.4, 6.2, HALL.z0 + 0.1);
       sign.renderOrder = 10; // the hero shot's sign reads over the steel in front of it
       scene.add(sign);
 
       // ---------- steel: columns and roof trusses ----------
       const steel = keep(new THREE.MeshStandardMaterial({ color: 0x2b2d31, metalness: 0.7, roughness: 0.45 }));
-      const colXs = [-26, -7.5, 7.5, 26];
-      const colZs = [-18, -8, 2, 12, 22, 32];
+      const colXs = [-HALL.x + 0.3, -7.5, 7.5, HALL.x - 0.3];
+      const colZs = [-8, 2, 12, 22];
       inst(keep(new THREE.BoxGeometry(0.45, HALL.h, 0.45)), steel, colXs.length * colZs.length, (i, d) => {
         d.position.set(colXs[i % colXs.length], HALL.h / 2, colZs[Math.floor(i / colXs.length)]);
       });
-      inst(keep(new THREE.BoxGeometry(60, 0.5, 0.3)), steel, colZs.length, (i, d) => d.position.set(0, 12.8, colZs[i]));
-      inst(keep(new THREE.BoxGeometry(0.25, 0.25, 60)), steel, 9, (i, d) => d.position.set(-24 + i * 6, 12.4, 6));
+      inst(keep(new THREE.BoxGeometry(HW, 0.5, 0.3)), steel, colZs.length, (i, d) => d.position.set(0, HALL.h - 1.2, colZs[i]));
+      inst(keep(new THREE.BoxGeometry(0.25, 0.25, HD)), steel, 6, (i, d) => d.position.set(-15 + i * 6, HALL.h - 1.6, HZ));
 
       // ---------- pendant high-bay lamps (the light of the hall) ----------
-      const lampXs = [-17, -3.5, 3.5, 17];
-      const lampZs = [-16, -6, 4, 14, 24];
+      const lampXs = [-11, -3.5, 3.5, 11];
+      const lampZs = [-10, -3, 4, 11, 18];
       const lamps: [number, number][] = [];
       lampXs.forEach(lx => lampZs.forEach(lz => lamps.push([lx, lz])));
       const LAMP_Y = 8.6;
@@ -363,7 +365,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
       const target = new THREE.Object3D();
       scene.add(target);
       // a few real lights carry the shadows; the rest of the lamps are glow
-      [[-3.5, 4, 1.3], [3.5, -6, 1.0], [-3.5, 24, 1.0], [17, 4, 0.8], [-17, 4, 0.8]].forEach(([lx, lz, k], i) => {
+      [[-3.5, 4, 1.3], [3.5, -3, 1.0], [-3.5, 18, 1.0], [11, 4, 0.8], [-11, 4, 0.8]].forEach(([lx, lz, k], i) => {
         const s = new THREE.SpotLight(0xffe9cc, k, 34, 0.95, 0.7, 1.4);
         s.position.set(lx, LAMP_Y, lz);
         const tg = new THREE.Object3D(); tg.position.set(lx, 0, lz); scene.add(tg);
@@ -388,8 +390,8 @@ export default function ScrollStory({ th }: { th: boolean }) {
       scene.add(rim);
 
       // ---------- the sewing lines either side of the aisle ----------
-      const lineXs = [-22.5, -19.5, -16.5, -13.5, -10.5, 10.5, 13.5, 16.5, 19.5, 22.5];
-      const lineZs = [-18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26];
+      const lineXs = [-12.5, -9.5, 9.5, 12.5];
+      const lineZs = [-10, -6, -2, 2, 6, 10, 14, 18];
       const SEATS = lineXs.length * lineZs.length;
       const seat = (i: number) => [lineXs[i % lineXs.length], lineZs[Math.floor(i / lineXs.length)]] as const;
       inst(keep(new THREE.BoxGeometry(1.9, 0.06, 1.0)), keep(new THREE.MeshStandardMaterial({ color: 0x8a8378, roughness: 0.7 })), SEATS, (i, d) => { const [sx, sz] = seat(i); d.position.set(sx, 0.78, sz); });
@@ -408,24 +410,26 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
       // ---------- fabric rolls racked along the left wall ----------
       const ROLL_COLORS = [0xf26522, 0x2f6fd6, 0xe23b3b, 0xf2f0eb, 0x1d1f23, 0xf5c518, 0x2aa96b, 0x7c4dff, 0x0e3a7a];
-      const ROLLS = 5 * 22;
+      const BAYS = Math.floor((HD - 4) / 2.4);
+      const ROLLS = 5 * BAYS;
       inst(keep(new THREE.CylinderGeometry(0.28, 0.28, 1.7, 18)), keep(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 })), ROLLS, (i, d) => {
         const r = i % 5, c = Math.floor(i / 5);
-        d.position.set(-28.6 + (r % 2) * 0.1, 0.4 + r * 0.62, -20 + c * 2.4);
+        d.position.set(-HALL.x + 1.4 + (r % 2) * 0.1, 0.4 + r * 0.62, HALL.z0 + 2 + c * 2.4);
         d.rotation.z = Math.PI / 2;
       }, i => col.setHex(ROLL_COLORS[(i * 5 + Math.floor(i / 5)) % ROLL_COLORS.length]));
-      inst(keep(new THREE.BoxGeometry(2.2, 3.4, 0.08)), steel, 22, (i, d) => d.position.set(-28.6, 1.7, -21.2 + i * 2.4));
+      inst(keep(new THREE.BoxGeometry(2.2, 3.4, 0.08)), steel, BAYS, (i, d) => d.position.set(-HALL.x + 1.4, 1.7, HALL.z0 + 0.8 + i * 2.4));
 
       // ---------- finished shirts on rails along the right wall, and one rack at the door ----------
       const shirtGeo = keep(new THREE.BoxGeometry(0.62, 0.78, 0.035));
       const shirtMat = keep(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }));
-      const HANG = 4 * 46;
+      const RAIL = Math.floor((HD - 8) / 1.2);
+      const HANG = 2 * RAIL;
       inst(shirtGeo, shirtMat, HANG, (i, d) => {
-        const r = i % 4, k = Math.floor(i / 4);
-        d.position.set(27.5 - r * 0.9, 1.55, -20 + k * 1.2 + (r % 2) * 0.6);
+        const r = i % 2, k = Math.floor(i / 2);
+        d.position.set(HALL.x - 2.2 - r * 0.9, 1.55, HALL.z0 + 6 + k * 1.2 + r * 0.6);
         d.rotation.y = Math.PI / 2 + (Math.random() - 0.5) * 0.25;
-      }, i => col.setHex(JOB[Math.floor(i / 23) % JOB.length]));
-      inst(keep(new THREE.CylinderGeometry(0.02, 0.02, 56, 6)), steel, 4, (i, d) => { d.position.set(27.5 - i * 0.9, 2.0, 7.6); d.rotation.x = Math.PI / 2; });
+      }, i => col.setHex(JOB[Math.floor(i / 12) % JOB.length]));
+      inst(keep(new THREE.CylinderGeometry(0.02, 0.02, HD - 8, 6)), steel, 2, (i, d) => { d.position.set(HALL.x - 2.2 - i * 0.9, 2.0, HZ + 2); d.rotation.x = Math.PI / 2; });
       // the foreground: two rails of shirts by the door, cut-outs facing the lens
       const teeTex = keep(canvasTex(THREE, 256, 256, x => {
         x.fillStyle = "#fff";
@@ -440,17 +444,17 @@ export default function ScrollStory({ th }: { th: boolean }) {
       const FORE = 2 * 9;
       inst(keep(new THREE.PlaneGeometry(1.0, 1.0)), teeMat, FORE, (i, d) => {
         const side = i < 9 ? -1 : 1, k = i % 9;
-        d.position.set(side * (1.9 + k * 0.4), 1.62, 27.2 - k * 0.12);
+        d.position.set(side * (1.9 + k * 0.4), 1.62, 15.2 - k * 0.12);
         d.rotation.y = -side * (0.35 + k * 0.03);
         d.rotation.z = (Math.random() - 0.5) * 0.06;
       }, i => col.setHex(JOB[(i * 3 + 1) % JOB.length]));
-      inst(keep(new THREE.CylinderGeometry(0.02, 0.02, 4.2, 6)), steel, 2, (i, d) => { d.position.set((i ? 1 : -1) * 3.6, 2.17, 26.75); d.rotation.z = Math.PI / 2; d.rotation.y = (i ? 1 : -1) * 0.12; });
+      inst(keep(new THREE.CylinderGeometry(0.02, 0.02, 4.2, 6)), steel, 2, (i, d) => { d.position.set((i ? 1 : -1) * 3.6, 2.17, 14.75); d.rotation.z = Math.PI / 2; d.rotation.y = (i ? 1 : -1) * 0.12; });
 
       // ---------- lint in the light ----------
       const MOTES = small ? 900 : 2200;
       const moteGeo = keep(new THREE.BufferGeometry());
       const mp = new Float32Array(MOTES * 3);
-      for (let i = 0; i < MOTES; i++) { mp[i * 3] = (Math.random() - 0.5) * 22; mp[i * 3 + 1] = Math.random() * 9; mp[i * 3 + 2] = -18 + Math.random() * 48; }
+      for (let i = 0; i < MOTES; i++) { mp[i * 3] = (Math.random() - 0.5) * 22; mp[i * 3 + 1] = Math.random() * 9; mp[i * 3 + 2] = HALL.z0 + 4 + Math.random() * (HD - 6); }
       moteGeo.setAttribute("position", new THREE.BufferAttribute(mp, 3));
       const moteMat = keep(new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 }, uPx: { value: renderer.getPixelRatio() } },
@@ -539,16 +543,21 @@ export default function ScrollStory({ th }: { th: boolean }) {
         const TINTS = [0xf26522, 0x2f6fd6, 0xe23b3b, 0xf2f0eb, 0x1d1f23, 0xf5c518, 0x2aa96b, 0x7c4dff, 0x0e3a7a, 0xff8fb1];
 
         // steel
-        put("column", colXs.flatMap(x => colZs.map(z => M(x, 0, z))), undefined, false);
-        put("truss", colZs.flatMap(z => Array.from({ length: 10 }, (_, k) => M(-27 + k * 6, 11.3, z))), undefined, false);
+        // the column model is 14 m; squash it to this roof
+        const colH = new THREE.Vector3(1, HALL.h / 14, 1);
+        put("column", colXs.flatMap(x => colZs.map(z => new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), q, colH))), undefined, false);
+        put("truss", colZs.flatMap(z => Array.from({ length: HW / 6 }, (_, k) => M(-HALL.x + 3 + k * 6, HALL.h - 2.7, z))), undefined, false);
         put("highbay", lamps.map(([x, z]) => M(x, LAMP_Y, z)), undefined, false);
-        put("wall_fan", [-13, -3, 7, 17, 27].flatMap(z => [M(-29.7, 3.4, z, Math.PI / 2), M(29.7, 4.6, z - 5, -Math.PI / 2)]), undefined, false);
+        put("wall_fan", [
+          ...[-9, 1, 11, 21].map(z => M(-HALL.x + 0.3, 3.4, z, Math.PI / 2)),
+          ...[-6, 4, 14].map(z => M(HALL.x - 0.3, 4.6, z, -Math.PI / 2)),
+        ], undefined, false);
 
-        // the sewing lines: right-hand rows near the back make room for packing
+        // the sewing lines: on the right, packing takes the back and the racks of finished kit the front
         const benches: any[] = [];
         for (let i = 0; i < SEATS; i++) {
           const [sx, sz] = seat(i);
-          if (sx > 0 && sz < -12) continue;
+          if (sx > 0 && (sz < -7 || sz > 12)) continue;
           if (small && lineZs.indexOf(sz) % 2) continue;
           benches.push(M(sx, 0, sz, (i % 3 - 1) * 0.03));
         }
@@ -557,24 +566,24 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
         // fabric store: pallet racking down the left wall, rolls of every colour
         const racks: any[] = [], rolls: any[] = [];
-        for (let z = -21; z <= 33; z += 3) {
-          const R = M(-28.25, 0, z, Math.PI / 2);
+        for (let z = HALL.z0 + 2; z <= HALL.z1 - 2; z += 3) {
+          const R = M(-HALL.x + 1.75, 0, z, Math.PI / 2);
           racks.push(R);
           for (let lv = 0; lv < 4; lv++) for (const d of [-0.36, 0, 0.36]) rolls.push(R.clone().multiply(M(0, 0.42 + lv * 0.95, d)));
         }
         put("roll_rack", racks, undefined, false);
         put("fabric_roll", rolls, i => TINTS[(i * 5 + Math.floor(i / 12)) % TINTS.length], false);
 
-        // finished kit: rolling racks down the right wall, and two across the door in the opening shot
+        // finished kit: rolling racks down the right wall (packing keeps the back corner), and two across the door in the opening shot
         const gr: any[] = [], tees: any[] = [];
-        for (let z = -20; z <= 34; z += small ? 4.4 : 2.6) {
-          const R = M(27.3, 0, z, Math.PI / 2);
+        for (let z = -8; z <= HALL.z1 - 3; z += small ? 4.8 : 3.2) {
+          const R = M(HALL.x - 2.7, 0, z, Math.PI / 2);
           gr.push(R);
           for (let k = 0; k < 8; k++) tees.push(R.clone().multiply(M(-0.7 + k * 0.2, 1.78, 0, Math.PI / 2 + (Math.sin(k * 7.3 + z) * 0.12))));
         }
         put("garment_rack", gr, undefined, false);
         put("shirt_hanging", tees, i => TINTS[Math.floor(i / 8) % TINTS.length], false);
-        const doorRacks = [M(-2.7, 0, 27.4, 0.12), M(2.7, 0, 27.4, -0.12)];
+        const doorRacks = [M(-2.7, 0, 15.4, 0.12), M(2.7, 0, 15.4, -0.12)];
         const doorTees: any[] = [];
         doorRacks.forEach((R, side) => {
           for (let k = 0; k < 6; k++) doorTees.push(R.clone().multiply(M(-0.75 + k * 0.3, 1.78, 0, (side ? -1 : 1) * (0.55 + k * 0.05))));
@@ -589,7 +598,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
         // packing at the back right, and trolleys in the aisles
         const pal: any[] = [], box: any[] = [];
-        [[13, -20.5], [15, -20.5], [17, -20.5], [13, -17.5], [15.4, -17.2], [19.5, -19]].forEach(([x, z], n) => {
+        [[8.5, -12], [10.5, -12], [12.5, -12], [8.5, -9.2], [10.9, -8.9], [14, -10.6]].forEach(([x, z], n) => {
           const P = M(x, 0, z, n * 0.07);
           pal.push(P);
           const layers = 1 + (n % 3);
@@ -597,7 +606,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
         });
         put("pallet", pal, undefined, false);
         put("carton", box);
-        put("trolley", [M(6.4, 0, 12, 0.3), M(-6.6, 0, -4, -0.4), M(8.6, 0, 20.5, 1.2), M(-8.8, 0, 16, 2.6)], i => TINTS[i * 2 + 1]);
+        put("trolley", [M(6.4, 0, 12, 0.3), M(-6.6, 0, -4, -0.4), M(6.6, 0, 17.5, 1.2), M(-8.8, 0, 16, 2.6)], i => TINTS[i * 2 + 1]);
 
         simple.visible = false;
         kitDone(prims);
@@ -708,8 +717,8 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
       // ---------- camera path: one composed shot per chapter ----------
       const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-      const CAM = [V(0, 1.6, 32), V(2.6, 2.7, 7.2), V(20.8, 2.7, 34.5), V(0.6, 5.4, 3.4), V(-1.6, 2.5, 6.4), V(0, 2.3, 7.4), V(-15, 7.5, 19), V(0, 11.6, 21)];
-      const LOOK = [V(1, 5.2, -22), V(0, KIT_Y - 0.2, 0), V(26.4, 1.3, 12), V(0, 0.85, 0.3), V(0, KIT_Y, 0), V(0, 0.55, -0.4), V(2, 2.2, -6), V(0, 0, -6)];
+      const CAM = [V(0, 1.6, 20), V(2.6, 2.7, 7.2), V(10.6, 2.7, 23), V(0.6, 5.4, 3.4), V(-1.6, 2.5, 6.4), V(0, 2.3, 7.4), V(-10, 6.2, 13), V(0, 9.2, 19.5)];
+      const LOOK = [V(1, 3.9, -14), V(0, KIT_Y - 0.2, 0), V(15, 1.3, 0), V(0, 0.85, 0.3), V(0, KIT_Y, 0), V(0, 0.55, -0.4), V(2, 2.0, -5), V(0, 0, -5)];
       const cam = V(0, 0, 0), look = V(0, 0, 0), tmp = V(0, 0, 0);
       const keyAt = (arr: any[], p: number, out: any) => {
         const i = Math.min(arr.length - 2, Math.floor(p));
