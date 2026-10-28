@@ -43,10 +43,17 @@ if (-not $ready) { Die "Postgres did not respond within 60s. Check: docker logs 
 Ok "Postgres ready on localhost:5432"
 
 # ---------- 4. Migrate ----------
-Step "Running Prisma migrations"
-npm run migrate -w packages/db -- --name sync_schema
+# "migrate deploy" only applies the migrations in the repo. Unlike "migrate dev"
+# it never offers to reset the database, so data already there stays put.
+Step "Applying Prisma migrations"
+npm run deploy -w packages/db
 if ($LASTEXITCODE -ne 0) { Die "Migration failed - read the error above" }
-Ok "schema is in sync with the database"
+Ok "database is up to date"
+
+Step "Generating the Prisma client"
+npm run generate -w packages/db
+if ($LASTEXITCODE -ne 0) { Die "prisma generate failed - stop the API (it locks the engine file) and re-run" }
+Ok "client generated"
 
 # ---------- 5. Seed ----------
 Step "Seeding initial data"
