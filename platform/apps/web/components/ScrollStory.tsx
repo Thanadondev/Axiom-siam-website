@@ -74,7 +74,7 @@ const WORK = [
 ];
 
 /** splits a heading into words that rise in one after another when the panel is active; *word = accent */
-function Words({ text }: { text: string }) {
+export function Words({ text }: { text: string }) {
   let n = 0;
   return (
     <>
