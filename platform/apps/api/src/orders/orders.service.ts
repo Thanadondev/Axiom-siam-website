@@ -4,7 +4,8 @@ import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
 import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
-import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto } from "./orders.dto";
+import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto, ProductionStepDto } from "./orders.dto";
+import { planStep, stepForStatus, stepName, SHIP_STEP } from "./production-steps";
 import { kitLook } from "./kit-look";
 import { ledger } from "../payments/ledger";
 import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
@@ -12,7 +13,7 @@ import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
   subtotal: true, discount: true, shippingFee: true, total: true, depositAmount: true,
-  fabricSummary: true, note: true, createdAt: true, updatedAt: true,
+  fabricSummary: true, note: true, productionStep: true, createdAt: true, updatedAt: true,
 } as const;
 
 function makeOrderNo() {
@@ -231,7 +232,7 @@ export class OrdersService {
     const o = await this.prisma.order.findUnique({
       where: { id },
       select: {
-        id: true, status: true, orderNo: true, userId: true, total: true, depositAmount: true,
+        id: true, status: true, orderNo: true, userId: true, total: true, depositAmount: true, productionStep: true,
         payments: { select: { status: true, type: true, amount: true } },
         refunds: { select: { amount: true } },
       },
@@ -267,9 +268,13 @@ export class OrdersService {
     if (requiresTracking(dto.status) && !dto.trackingNo)
       throw new BadRequestException("กรุณากรอกเลขพัสดุก่อนเปลี่ยนเป็น 'จัดส่งแล้ว'");
 
+    // starting production puts the job on step 1; shipping is the last step
+    const step = stepForStatus(dto.status, o.productionStep);
     const [order] = await this.prisma.$transaction([
-      this.prisma.order.update({ where: { id }, data: { status: dto.status }, select: ORDER_SELECT }),
-      this.prisma.orderStatusHistory.create({ data: { orderId: id, status: dto.status, note: dto.note, changedBy: adminId } }),
+      this.prisma.order.update({ where: { id }, data: { status: dto.status, productionStep: step }, select: ORDER_SELECT }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId: id, status: dto.status, step: step !== o.productionStep ? step : undefined, note: dto.note, changedBy: adminId },
+      }),
     ]);
 
     // keep the shipment record in step with the order status
@@ -295,5 +300,36 @@ export class OrdersService {
     });
 
     return { ...order, message: `อัปเดต ${o.orderNo} เป็น ${dto.status}` };
+  }
+
+  /**
+   * Move an order along the production line (steps 1–9). The first step also
+   * starts production. The customer gets an in-app note at each step; the
+   * emails stay for the status changes that matter (paid, shipped…).
+   */
+  async adminSetStep(id: string, adminId: string, dto: ProductionStepDto) {
+    const o = await this.prisma.order.findUnique({
+      where: { id },
+      select: { id: true, status: true, orderNo: true, userId: true, productionStep: true },
+    });
+    if (!o) throw new NotFoundException("ไม่พบออเดอร์");
+    const plan = planStep(o.status, o.productionStep, dto.step);
+    if (!plan.ok) throw new BadRequestException(plan.error);
+
+    const [order] = await this.prisma.$transaction([
+      this.prisma.order.update({ where: { id }, data: { status: plan.status, productionStep: plan.step }, select: ORDER_SELECT }),
+      this.prisma.orderStatusHistory.create({
+        data: { orderId: id, status: plan.status, step: plan.step, note: dto.note, changedBy: adminId },
+      }),
+    ]);
+
+    await this.notify.push({
+      userId: o.userId,
+      title: `ออเดอร์ ${o.orderNo}: ขั้นที่ ${plan.step}/${SHIP_STEP} · ${stepName(plan.step)}`,
+      body: dto.note || undefined,
+      link: `/orders/${id}`,
+    });
+
+    return { ...order, message: `${o.orderNo} → ขั้น ${plan.step} · ${stepName(plan.step)}` };
   }
 }

@@ -68,6 +68,13 @@ export const UpdateOrderStatusSchema = z.object({
 });
 export type UpdateOrderStatusDto = z.infer<typeof UpdateOrderStatusSchema>;
 
+/** moving an order to a step on the production line (1–9; 10 comes with shipping) */
+export const ProductionStepSchema = z.object({
+  step: z.coerce.number().int().min(1).max(9),
+  note: z.preprocess(emptyToUndef, z.string().max(500).optional()),
+});
+export type ProductionStepDto = z.infer<typeof ProductionStepSchema>;
+
 export const OrderListQuerySchema = z.object({
   status: z.preprocess(emptyToUndef, z.enum(ORDER_STATUSES).optional()),
   q: z.preprocess(emptyToUndef, z.string().max(80).optional()),

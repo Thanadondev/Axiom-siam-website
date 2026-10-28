@@ -6,6 +6,7 @@ import { loadThreeWithGltf, loadThreePost, hasWebGL, prefersReducedMotion } from
 import { loadJersey, type Jersey } from "../lib/jersey3d";
 import { KITS, defaultConfig } from "../lib/kits";
 import { Words } from "./ScrollStory";
+import { STEPS } from "../lib/production-steps";
 import { PIECES, SHEET_W, SHEET_H, M_PER_PX, drawSheet, paintPiece, tracePiece, cutPath, pathAt, type Piece, type PrintColors } from "../lib/process-pattern";
 
 /**
@@ -20,38 +21,6 @@ import { PIECES, SHEET_W, SHEET_H, M_PER_PX, drawSheet, paintPiece, tracePiece, 
  * size-labelled, folded and boxed, then driven away.
  */
 
-const STEPS = [
-  { th: "ทำไฟล์", en: "Artwork", h: "ทำ*ไฟล์", hEn: "The *file",
-    p: "ออกแบบและเตรียมไฟล์งานพิมพ์ วางแพทเทิร์นทุกชิ้นของเสื้อลงบนแผ่นงานให้พร้อมพิมพ์",
-    pEn: "Design and prepare the print file: every pattern piece of the shirt laid out on the sheet, ready to print." },
-  { th: "พิมพ์", en: "Printing", h: "*พิมพ์", hEn: "*Print",
-    p: "พิมพ์ลายลงกระดาษซับลิเมชั่น ลายบนกระดาษจะกลับด้าน เพื่อให้ออกมาถูกด้านเมื่อรีดลงผ้า",
-    pEn: "The design is printed on sublimation paper, mirrored, so it reads the right way round once it's on the fabric." },
-  { th: "รีด", en: "Heat transfer", h: "*รีด\nลงผ้า", hEn: "Heat\n*transfer",
-    p: "รีดลายจากกระดาษลงบนผ้าด้วยความร้อน หมึกซึมเข้าไปในเนื้อผ้า",
-    pEn: "Heat presses the design from the paper into the fabric." },
-  { th: "ตัดเลเซอร์", en: "Laser cutting", h: "ตัด*เลเซอร์", hEn: "Laser *cut",
-    p: "ตัดชิ้นงานผ้าตามแบบด้วยเลเซอร์ ตรงตามแพทเทิร์นทุกชิ้น",
-    pEn: "Every piece is cut out by laser, following the pattern." },
-  { th: "QC ก่อนเข้าเย็บ", en: "QC before sewing", h: "QC\nก่อน*เข้าเย็บ", hEn: "QC before\n*sewing",
-    p: "ตรวจสอบชิ้นงานหลังตัดหรือรีด ก่อนส่งเข้าไลน์เย็บ",
-    pEn: "The pieces are checked after cutting and pressing, before they go to the sewing line." },
-  { th: "เย็บ", en: "Sewing", h: "*เย็บ", hEn: "*Sew",
-    p: "ประกอบและเย็บเป็นตัวเสื้อผ้าสำเร็จรูป",
-    pEn: "The pieces are assembled and sewn into the finished shirt." },
-  { th: "QC ก่อนรีดแพ็ค", en: "QC before packing", h: "QC\nก่อน*รีดแพ็ค", hEn: "QC before\n*packing",
-    p: "ตรวจสอบความเรียบร้อยของตัวเสื้อทั้งหมดก่อนแพ็คสินค้า",
-    pEn: "Every finished shirt is checked over before it's packed." },
-  { th: "รีดไซส์", en: "Size label", h: "รีด*ไซส์", hEn: "Size *label",
-    p: "รีดป้ายไซส์ลงบนเสื้อ",
-    pEn: "The size label is heat-pressed onto the shirt." },
-  { th: "รีดและแพ็ค", en: "Press & pack", h: "รีด*และแพ็ค", hEn: "Press &\n*pack",
-    p: "รีดเสื้อให้เรียบ พับ ใส่ถุง แล้วบรรจุลงกล่อง",
-    pEn: "Pressed flat, folded, bagged and boxed." },
-  { th: "จัดส่ง", en: "Delivery", h: "*จัดส่ง", hEn: "*Delivery",
-    p: "ขึ้นรถ ส่งถึงทีมของคุณ",
-    pEn: "Onto the truck and on its way to your team." },
-];
 const N = STEPS.length;
 const CHAPTERS = N + 2; // the line from above, ten steps, the call
 const GAP = 6; // metres between stations
@@ -83,6 +52,19 @@ export default function ProcessStory({ th }: { th: boolean }) {
   const [flat, setFlat] = useState(false);
   const thRef = useRef(th);
   thRef.current = th;
+
+  // /process?step=4 opens at that station (the order tracker links here)
+  useEffect(() => {
+    const n = Number(new URLSearchParams(window.location.search).get("step"));
+    if (!Number.isInteger(n) || n < 1 || n > N) return;
+    const t = window.setTimeout(() => {
+      const el = root.current;
+      if (!el) return;
+      const sp = el.offsetHeight - window.innerHeight;
+      window.scrollTo({ top: el.offsetTop + (sp * n) / (CHAPTERS - 1) + 2, behavior: "auto" });
+    }, 80);
+    return () => clearTimeout(t);
+  }, []);
 
   // scroll → panels
   useEffect(() => {

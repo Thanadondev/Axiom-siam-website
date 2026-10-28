@@ -7,6 +7,7 @@ import { apiFetch } from "../../lib/api";
 import AppShell from "../../components/AppShell";
 import TwoFactorCard from "../../components/TwoFactorCard";
 import SecurityCard from "../../components/SecurityCard";
+import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 
 const ORDER_STATUS_TH: Record<string, string> = {
   pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
@@ -239,7 +240,8 @@ export default function AccountPage() {
                     <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString("th-TH")}</div></td>
                     <td className="dim">{o.fabricSummary}</td>
                     <td><b>฿{o.total.toLocaleString("th-TH")}</b></td>
-                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span></td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span>
+                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>ขั้น {o.productionStep}/{SHIP_STEP} · {STEPS[o.productionStep - 1]?.th}</div>}</td>
                     <td><Link className="minibtn" href={`/orders/${o.id}`}>ดูรายละเอียด</Link></td>
                   </tr>
                 ))}

@@ -9,6 +9,7 @@ import { apiFetch } from "../../../lib/api";
 import { kitById, restoreConfig, KITS, type Kit } from "../../../lib/kits";
 import { useKitAssets } from "../../../lib/use-kit-assets";
 import { assetHref } from "../../../lib/kit-assets";
+import { STEPS, SHIP_STEP } from "../../../lib/production-steps";
 import "../../app.css";
 import "../../home.css";
 
@@ -18,7 +19,8 @@ import "../../home.css";
  * next column); opening a card shows the shirt in 3D, the size split, the
  * roster and a printable job sheet. Status changes go through the same
  * admin endpoint as the order table in /admin, so the API's transition
- * rules still apply.
+ * rules still apply. Inside "กำลังผลิต" a job moves through the line's steps
+ * (ทำไฟล์ → รีดและแพ็ค); the customer sees the step on their order.
  */
 
 type Status = "pending" | "paid" | "approved" | "in_production" | "shipped" | "delivered" | "completed" | "cancelled" | "refunded";
@@ -29,6 +31,8 @@ interface Card {
   user: { id: string; email: string; fullName?: string | null };
   items: { size: string; qty: number }[];
   look: Look | null;
+  /** where it is on the line: 0 not started, 1–9 the factory steps, 10 shipped */
+  productionStep?: number;
   /** money still owed (the balance after a deposit): it can't ship until this is 0 */
   balance?: { outstanding: number };
 }
@@ -36,7 +40,7 @@ interface Card {
 const COLUMNS: { id: Status; label: string; hint: string }[] = [
   { id: "paid", label: "ชำระแล้ว", hint: "รอตรวจแบบกับลูกค้า" },
   { id: "approved", label: "อนุมัติแบบ", hint: "พร้อมเข้าไลน์ผลิต" },
-  { id: "in_production", label: "กำลังผลิต", hint: "พิมพ์ · ตัด · เย็บ" },
+  { id: "in_production", label: "กำลังผลิต", hint: "ขั้น 1–9 · ทำไฟล์ → รีดและแพ็ค" },
   { id: "shipped", label: "จัดส่งแล้ว", hint: "รอลูกค้ารับ" },
 ];
 const STATUS_TH: Record<string, string> = {
@@ -94,6 +98,16 @@ export default function ProductionBoard() {
       await apiFetch(`/admin/orders/${card.id}/status`, { method: "PATCH", token, body: JSON.stringify({ status: to, ...extra }) });
       await load();
     } catch (e: any) { setErr(`${card.orderNo}: ${e.message}`); }
+    finally { setBusy(""); }
+  }
+
+  /** move a job along the line (steps 1–9; shipping is the "จัดส่ง" button) */
+  async function step(card: { id: string; orderNo: string }, to: number) {
+    setBusy(card.id); setErr("");
+    try {
+      await apiFetch(`/admin/orders/${card.id}/step`, { method: "PATCH", token, body: JSON.stringify({ step: to }) });
+      await load();
+    } catch (e: any) { setErr(`${card.orderNo}: ${e.message}`); throw e; }
     finally { setBusy(""); }
   }
 
@@ -158,6 +172,9 @@ export default function ProductionBoard() {
                   const kit = kitOf(c.look);
                   const age = daysSince(c.updatedAt);
                   const fwd = FORWARD[c.status];
+                  const at = c.productionStep ?? 0;
+                  // on the line, the button walks the steps; after the last floor step it ships
+                  const nextStep = c.status === "in_production" && at < SHIP_STEP - 1 ? at + 1 : 0;
                   return (
                     <article key={c.id} className="ax-pb-card" draggable={!!fwd} data-busy={busy === c.id || undefined}
                       onDragStart={() => setDragging(c)} onDragEnd={() => setDragging(null)}>
@@ -170,12 +187,19 @@ export default function ProductionBoard() {
                           <b className="ax-mono">{c.orderNo}</b>
                           <span>{c.user.fullName || c.user.email}</span>
                           <span className="sizes">{qtyOf(c)} ตัว · {sizeSplit(c.items).map(([s, n]) => `${s}${n}`).join(" ")}</span>
+                          {c.status === "in_production" && at > 0 && (
+                            <span className="step"><i style={{ width: `${(at / SHIP_STEP) * 100}%` }} />ขั้น {at}/{SHIP_STEP} · {STEPS[at - 1]?.th}</span>
+                          )}
                           {!!c.balance?.outstanding && <span className="owes">ค้างชำระ ฿{c.balance.outstanding.toLocaleString("th-TH")} · ส่งไม่ได้จนกว่าจะครบ</span>}
                         </div>
                       </button>
                       <footer>
                         <span className="age" data-late={age >= 7 || undefined}>{age === 0 ? "วันนี้" : `${age} วัน`}</span>
-                        {fwd && (
+                        {nextStep > 0 ? (
+                          <button type="button" className="ax-pb-next" disabled={!!busy} onClick={() => step(c, nextStep).catch(() => {})}>
+                            {busy === c.id ? "…" : `${STEPS[nextStep - 1].th} →`}
+                          </button>
+                        ) : fwd && (
                           <button type="button" className="ax-pb-next" disabled={!!busy} onClick={() => move(c, fwd)}>
                             {busy === c.id ? "…" : `${FORWARD_TH[c.status]} →`}
                           </button>
@@ -190,7 +214,7 @@ export default function ProductionBoard() {
         })}
       </div>
 
-      {open && token && <Drawer id={open} token={token} onClose={() => setOpen(null)} onMove={(c, to) => move(c, to)} busy={busy} />}
+      {open && token && <Drawer id={open} token={token} onClose={() => setOpen(null)} onMove={(c, to) => move(c, to)} onStep={step} busy={busy} />}
       {ship && <ShipDialog card={ship} busy={busy === ship.id} onCancel={() => setShip(null)} onShip={(courier, trackingNo, note) => { const c = ship; setShip(null); move(c, "shipped", { courier, trackingNo, note }); }} />}
     </Frame>
   );
@@ -215,13 +239,14 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 /** order detail: the shirt in 3D, sizes, roster, shipping, and the job sheet */
-function Drawer({ id, token, onClose, onMove, busy }: { id: string; token: string; onClose: () => void; onMove: (c: Card, to: Status) => void; busy: string }) {
+function Drawer({ id, token, onClose, onMove, onStep, busy }: {
+  id: string; token: string; onClose: () => void; onMove: (c: Card, to: Status) => void;
+  onStep: (c: { id: string; orderNo: string }, to: number) => Promise<void>; busy: string;
+}) {
   const [o, setO] = useState<any>(null);
   const [err, setErr] = useState("");
-  useEffect(() => {
-    setO(null);
-    apiFetch<any>(`/admin/orders/${id}`, { token }).then(setO).catch(e => setErr(e.message));
-  }, [id, token]);
+  const fetchOne = useCallback(() => apiFetch<any>(`/admin/orders/${id}`, { token }).then(setO).catch(e => setErr(e.message)), [id, token]);
+  useEffect(() => { setO(null); fetchOne(); }, [fetchOne]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", k);
@@ -302,6 +327,25 @@ function Drawer({ id, token, onClose, onMove, busy }: { id: string; token: strin
                   ))}
                 </div>
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
+              </div>
+            )}
+            {["paid", "approved", "in_production"].includes(o.status) && (
+              <div>
+                <span className="ax-label">ขั้นตอนผลิต · ลูกค้าเห็นในหน้าออเดอร์</span>
+                <div className="ax-pb-steps" role="group" aria-label="ตั้งขั้นตอนผลิต">
+                  {STEPS.map((s, i) => {
+                    const n = i + 1, at = o.productionStep ?? 0;
+                    const ship = n === SHIP_STEP;
+                    return (
+                      <button key={s.en} type="button" disabled={!!busy || ship || n === at}
+                        data-state={n < at ? "done" : n === at ? "now" : undefined} aria-pressed={n === at}
+                        title={ship ? "ตั้งอัตโนมัติเมื่อบันทึกการจัดส่ง" : `ตั้งเป็นขั้น ${n}`}
+                        onClick={() => onStep(o, n).then(fetchOne).catch(() => {})}>
+                        <b>{n}</b><span>{s.th}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {o.note && <div><span className="ax-label">หมายเหตุจากลูกค้า</span><p style={{ margin: 0, fontSize: 14 }}>{o.note}</p></div>}

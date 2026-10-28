@@ -5,8 +5,8 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Public, Roles, CurrentUser, type AuthUser } from "../auth/decorators";
 import { OrdersService } from "./orders.service";
 import {
-  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema, TaxInvoiceSchema,
-  type CreateOrderDto, type PriceQueryDto, type UpdateOrderStatusDto, type OrderListQueryDto, type TaxInvoiceDto,
+  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema, TaxInvoiceSchema, ProductionStepSchema,
+  type CreateOrderDto, type PriceQueryDto, type UpdateOrderStatusDto, type OrderListQueryDto, type TaxInvoiceDto, type ProductionStepDto,
 } from "./orders.dto";
 
 @Controller("orders")
@@ -79,5 +79,11 @@ export class AdminOrdersController {
   @Patch(":id/status")
   setStatus(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(UpdateOrderStatusSchema)) dto: UpdateOrderStatusDto) {
     return this.orders.adminSetStatus(id, user.id, dto);
+  }
+
+  /** where the job is on the production line (the customer sees it on their order) */
+  @Patch(":id/step")
+  setStep(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(ProductionStepSchema)) dto: ProductionStepDto) {
+    return this.orders.adminSetStep(id, user.id, dto);
   }
 }

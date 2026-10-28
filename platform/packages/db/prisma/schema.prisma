@@ -461,6 +461,8 @@ model Order {
   note              String?
   /// the customer's details for a full tax invoice (JSON text: name, taxId, branch, address)
   taxInvoice        String?     @map("tax_invoice")
+  /// where the job is on the line: 0 not started, 1–9 the factory steps, 10 shipped
+  productionStep    Int         @default(0) @map("production_step")
   shippingAddressId String?     @map("shipping_address_id")
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
@@ -515,6 +517,8 @@ model OrderStatusHistory {
   id        String      @id @default(uuid())
   orderId   String      @map("order_id")
   status    OrderStatus
+  /// set when the entry records a move along the production line (1–10)
+  step      Int?
   note      String?
   changedBy String?     @map("changed_by")
   createdAt DateTime    @default(now()) @map("created_at")

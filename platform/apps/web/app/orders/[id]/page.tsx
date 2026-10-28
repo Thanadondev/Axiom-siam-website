@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import AppShell from "../../../components/AppShell";
 import PayPanel from "../../../components/PayPanel";
+import ProductionTracker from "../../../components/ProductionTracker";
+import { STEPS } from "../../../lib/production-steps";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 
@@ -99,6 +101,8 @@ export default function OrderDetail() {
         {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
 
+      <ProductionTracker status={o.status} productionStep={o.productionStep} history={o.statusHistory} />
+
       {/* pay by transfer — the panel owns the QR, the account and the slip upload */}
       {(o.balance ? o.balance.due > 0 : o.status === "pending") && token && (
         payEnabled
@@ -152,7 +156,7 @@ export default function OrderDetail() {
             <div style={{ marginTop: 10 }}>
               {o.statusHistory.map((h: any) => (
                 <div key={h.id} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span className="tag">{STATUS_TH[h.status]}</span>
+                  <span className="tag">{h.step ? `ขั้น ${h.step} · ${STEPS[h.step - 1]?.th ?? ""}` : STATUS_TH[h.status]}</span>
                   <div style={{ flex: 1 }}>
                     <div className="dim">{dt(h.createdAt)}</div>
                     {h.note && <div style={{ fontSize: 13 }}>{h.note}</div>}

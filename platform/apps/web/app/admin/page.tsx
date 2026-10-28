@@ -6,6 +6,7 @@ import AppShell from "../../components/AppShell";
 import SlipReview from "../../components/SlipReview";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
+import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
@@ -527,7 +528,8 @@ export default function AdminPage() {
                       )}
                       {o.balance?.refunded > 0 && <div className="dim">คืนแล้ว {baht(o.balance.refunded)}</div>}
                     </td>
-                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span></td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span>
+                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>ขั้น {o.productionStep}/{SHIP_STEP} · {STEPS[o.productionStep - 1]?.th}</div>}</td>
                     <td>
                       <div className="rowbtns">
                         {next.length === 0 ? <span className="dim">ปิดแล้ว</span> : (
