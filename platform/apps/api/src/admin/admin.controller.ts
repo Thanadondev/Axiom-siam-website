@@ -8,8 +8,8 @@ import { AdminService } from "./admin.service";
 import { SettingsService } from "../settings/settings.service";
 import { PaymentsService } from "../payments/payments.service";
 import {
-  ApproveSlipSchema, RejectSlipSchema, BankConfigSchema,
-  type ApproveSlipDto, type RejectSlipDto, type BankConfigDto,
+  ApproveSlipSchema, RejectSlipSchema, BankConfigSchema, RecordPaymentSchema,
+  type ApproveSlipDto, type RejectSlipDto, type BankConfigDto, type RecordPaymentDto,
 } from "../payments/payments.dto";
 import {
   UpdatePricingSchema, UpdateMarketSchema, type UpdatePricingDto, type UpdateMarketDto,
@@ -71,6 +71,16 @@ export class AdminController {
     @Body(new ZodValidationPipe(ApproveSlipSchema)) dto: ApproveSlipDto,
   ) {
     return this.payments.approveSlip(me.id, id, dto);
+  }
+
+  /** money received outside the slip flow — the only other way an order becomes paid */
+  @Post("orders/:id/payments")
+  recordPayment(
+    @CurrentUser() me: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(RecordPaymentSchema)) dto: RecordPaymentDto,
+  ) {
+    return this.payments.recordManual(me.id, id, dto);
   }
 
   @Post("payments/:id/reject")

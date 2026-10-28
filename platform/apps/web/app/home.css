@@ -775,3 +775,4 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
 .ax-ck-preview[data-phase="sent"] img { transform: scale(.7) translateY(-6%); opacity: .55; }
 .ax-ck-preview .stamp { position: absolute; bottom: 48px; padding: 8px 16px; border: 2px solid var(--ax-accent); color: var(--ax-accent); letter-spacing: .2em; transform: rotate(-4deg); }
 .ax-ck-preview[data-phase="sent"] .stamp { border-color: var(--okc, #7fd6a0); color: var(--okc, #7fd6a0); }
+.ax-pb-open .meta .owes { color: #f5a524; font-size: 11.5px; }

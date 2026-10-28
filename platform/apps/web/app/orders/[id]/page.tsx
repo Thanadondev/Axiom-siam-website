@@ -64,6 +64,11 @@ export default function OrderDetail() {
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="kpivalue" style={{ color: "var(--brand)" }}>{baht(o.total)}</div>
+            {o.balance && o.balance.paid > 0 && (
+              <div className="dim" style={{ margin: "2px 0 6px" }}>
+                ชำระแล้ว {baht(o.balance.paid)}{o.balance.outstanding > 0 ? ` · ค้าง ${baht(o.balance.outstanding)}` : " · ครบแล้ว"}
+              </div>
+            )}
             <span className={`tag ${cancelled ? "red" : o.status === "completed" ? "green" : "blue"}`}>{STATUS_TH[o.status]}</span>
           </div>
         </div>
@@ -94,7 +99,7 @@ export default function OrderDetail() {
       </div>
 
       {/* pay by transfer — the panel owns the QR, the account and the slip upload */}
-      {o.status === "pending" && token && (
+      {(o.balance ? o.balance.due > 0 : o.status === "pending") && token && (
         payEnabled
           ? <PayPanel orderId={id} token={token} onPaid={load} />
           : (

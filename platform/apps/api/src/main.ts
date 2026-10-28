@@ -20,10 +20,11 @@ async function bootstrap() {
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ limit: "12mb", extended: true }));
 
-  // Serve uploaded slips. The path contains the order's uuid, so it is not
-  // enumerable, but it IS unauthenticated — anyone holding the link can view
-  // the image. Move this behind a guard (or signed URLs) before going live.
+  // Payment slips are financial records: never served as public files. The API
+  // hands their owner (or an admin) a short-lived signed link instead —
+  // GET /api/v1/payments/slip, see payments/slip-link.ts.
   const uploadDir = resolve(process.env.UPLOAD_DIR ?? "./uploads");
+  app.use("/uploads/slips", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
   // Team logos and fonts (kit studio). Named by content hash, so they never change:
   // cache for a year. The web app draws them into WebGL from another origin, which
   // needs CORS; they are print artwork, not personal data.

@@ -6,6 +6,7 @@ import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto } from "./orders.dto";
 import { kitLook } from "./kit-look";
+import { ledger } from "../payments/ledger";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -18,13 +19,6 @@ function makeOrderNo() {
   const ymd = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
   const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `AX-${ymd}-${rand}`;
-}
-
-function makeInvoiceNo() {
-  const d = new Date();
-  const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
-  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `INV-${ym}-${rand}`;
 }
 
 @Injectable()
@@ -136,15 +130,21 @@ export class OrdersService {
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
-    return o;
+    // what has been paid and what is due now (deposit, then the balance)
+    return { ...o, balance: ledger(o, o.payments) };
   }
 
   /** customer cancels their own order — only while nothing has been produced */
   async cancel(id: string, userId: string) {
-    const o = await this.prisma.order.findUnique({ where: { id }, select: { id: true, userId: true, status: true } });
+    const o = await this.prisma.order.findUnique({
+      where: { id },
+      select: { id: true, userId: true, status: true, payments: { where: { status: { in: ["paid", "submitted"] } }, select: { id: true } } },
+    });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
     if (o.status !== "pending") throw new BadRequestException("ยกเลิกได้เฉพาะออเดอร์ที่ยังไม่ชำระเงิน");
+    // money already in (or a slip waiting) needs a person: a refund isn't a button
+    if (o.payments.length) throw new BadRequestException("ออเดอร์นี้มีการชำระเงินแล้วบางส่วน หรือมีสลิปรอตรวจ — กรุณาติดต่อทีมงานเพื่อยกเลิก");
     await this.prisma.$transaction([
       this.prisma.order.update({ where: { id }, data: { status: "cancelled" } }),
       this.prisma.orderStatusHistory.create({ data: { orderId: id, status: "cancelled", note: "ลูกค้ายกเลิก", changedBy: userId } }),
@@ -167,6 +167,7 @@ export class OrdersService {
           ...ORDER_SELECT,
           user: { select: { id: true, email: true, fullName: true } },
           items: { select: { size: true, qty: true } },
+          payments: { select: { status: true, type: true, amount: true } },
         },
       }),
       this.prisma.order.count({ where }),
@@ -181,13 +182,29 @@ export class OrdersService {
         })
       : [];
     const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
-    return { items: items.map(o => ({ ...o, look: look.get(o.id) ?? null })), total };
+    return {
+      items: items.map(({ payments, ...o }) => ({ ...o, balance: ledger(o, payments), look: look.get(o.id) ?? null })),
+      total,
+    };
   }
 
   async adminSetStatus(id: string, adminId: string, dto: UpdateOrderStatusDto) {
-    const o = await this.prisma.order.findUnique({ where: { id }, select: { id: true, status: true, orderNo: true, userId: true, total: true } });
+    const o = await this.prisma.order.findUnique({
+      where: { id },
+      select: { id: true, status: true, orderNo: true, userId: true, total: true, depositAmount: true, payments: { select: { status: true, type: true, amount: true } } },
+    });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (o.status === dto.status) throw new BadRequestException("สถานะเดิมอยู่แล้ว");
+    // an order becomes paid only with the money on record: an approved slip, or a
+    // payment recorded with its amount (POST /admin/orders/:id/payments)
+    if (dto.status === "paid") {
+      throw new BadRequestException("เปลี่ยนเป็น 'ชำระแล้ว' ด้วยการตรวจสลิป หรือปุ่ม 'บันทึกรับเงิน' (ใส่ยอดเงิน) — ไม่ใช่การเปลี่ยนสถานะเฉย ๆ");
+    }
+    // nothing leaves the factory with money still owed
+    if (dto.status === "shipped") {
+      const l = ledger(o, o.payments);
+      if (l.outstanding > 0) throw new BadRequestException(`ยังค้างชำระ ฿${l.outstanding.toLocaleString()} — รับเงินให้ครบก่อนจัดส่ง`);
+    }
     if (!canTransition(o.status, dto.status)) {
       const allowed = NEXT[o.status] ?? [];
       throw new BadRequestException(`เปลี่ยนสถานะจาก "${o.status}" ไป "${dto.status}" ไม่ได้ (ไปได้: ${allowed.join(", ") || "ไม่มี"})`);
@@ -209,16 +226,6 @@ export class OrdersService {
     } else if (dto.status === "delivered") {
       const s = await this.prisma.shipment.findFirst({ where: { orderId: id }, orderBy: { createdAt: "desc" } });
       if (s) await this.prisma.shipment.update({ where: { id: s.id }, data: { status: "delivered", deliveredAt: new Date() } });
-    }
-
-    // paid → issue the invoice once (idempotent)
-    if (dto.status === "paid") {
-      const existing = await this.prisma.invoice.findFirst({ where: { orderId: id } });
-      if (!existing) {
-        await this.prisma.invoice.create({
-          data: { orderId: id, invoiceNo: makeInvoiceNo(), amount: o.total, taxId: process.env.COMPANY_TAX_ID ?? null },
-        }).catch(() => undefined);
-      }
     }
 
     // tell the customer

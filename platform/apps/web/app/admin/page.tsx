@@ -231,6 +231,24 @@ export default function AdminPage() {
     await loadTab("payouts");
     setBusy(false);
   }
+  /** money received outside the slip flow — recorded with its amount, never a bare status change */
+  async function recordPayment(o: any) {
+    const due = o.balance?.outstanding ?? o.total;
+    const amt = prompt(`ยอดที่รับจริงของ ${o.orderNo} (ค้าง ${baht(due)}):`, String(o.balance?.due || due));
+    if (!amt) return;
+    const method = prompt("ช่องทาง: cash (เงินสด) / transfer (โอนนอกระบบ) / cheque (เช็ค) / other", "transfer");
+    if (!method) return;
+    const ref = prompt("เลขอ้างอิง (ถ้ามี):", "") ?? undefined;
+    const note = prompt("หมายเหตุ — ใครรับเงิน รับเมื่อไหร่ (จำเป็น):", "");
+    if (!note) return;
+    setBusy(true);
+    const r = await call<any>(`/admin/orders/${o.id}/payments`, {
+      method: "POST",
+      body: JSON.stringify({ amount: Number(amt.replace(/[^\d]/g, "")), method: method.trim(), ref: ref || undefined, note }),
+    });
+    if (r) { alert(r.message); await loadTab("orders"); }
+    setBusy(false);
+  }
   async function setOrderStatus(o: any, status: string) {
     if (!status) return;
     let courier: string | undefined, trackingNo: string | undefined;
@@ -472,13 +490,20 @@ export default function AdminPage() {
             <Table head={["เลขออเดอร์", "ลูกค้า", "สเปก / จำนวน", "ยอดรวม", "สถานะ", "เปลี่ยนสถานะ"]}>
               {orders.map(o => {
                 const qty = o.items.reduce((s: number, i: any) => s + i.qty, 0);
-                const next = NEXT_STATUS[o.status] ?? [];
+                // "ชำระแล้ว" comes from an approved slip or a recorded payment, not from here
+                const next = (NEXT_STATUS[o.status] ?? []).filter((s: string) => s !== "paid");
+                const owes = o.balance ? o.balance.outstanding > 0 : o.status === "pending";
                 return (
                   <tr key={o.id}>
                     <td><b>{o.orderNo}</b><div className="dim">{dt(o.createdAt)}</div></td>
                     <td>{o.user.fullName ?? "-"}<div className="dim">{o.user.email}</div></td>
                     <td className="dim">{o.fabricSummary}<div>{qty} ตัว · {o.items.map((i: any) => `${i.size}×${i.qty}`).join(", ")}</div></td>
-                    <td><b>{baht(o.total)}</b></td>
+                    <td>
+                      <b>{baht(o.total)}</b>
+                      {o.balance && o.balance.outstanding > 0 && o.status !== "cancelled" && (
+                        <div className="dim" style={{ color: "#b45309" }}>ค้าง {baht(o.balance.outstanding)}</div>
+                      )}
+                    </td>
                     <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span></td>
                     <td>
                       <div className="rowbtns">
@@ -487,6 +512,9 @@ export default function AdminPage() {
                             <option value="">เลือก…</option>
                             {next.map(s => <option key={s} value={s}>{ORDER_STATUS_TH[s]}</option>)}
                           </select>
+                        )}
+                        {owes && !["cancelled", "refunded", "completed"].includes(o.status) && (
+                          <button className="minibtn" disabled={busy} onClick={() => recordPayment(o)}>💰 บันทึกรับเงิน</button>
                         )}
                         <Link className="minibtn" href={`/orders/${o.id}`} target="_blank">ดู</Link>
                       </div>

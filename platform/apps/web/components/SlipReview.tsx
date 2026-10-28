@@ -15,7 +15,9 @@ import { apiFetch } from "../lib/api";
 
 type Slip = {
   id: string;
+  /** what this slip should pay: the deposit, the balance or the whole order */
   amount: number;
+  type?: "deposit" | "full" | "balance";
   slipUrl: string | null;
   slipAmount: number | null;
   slipRef: string | null;
@@ -84,7 +86,7 @@ export default function SlipReview({ token, onChange }: { token: string; onChang
           {rows.map(s => {
             const v = f(s.id);
             const typed = Number(v.amount);
-            const mismatch = v.amount !== "" && Math.abs(typed - s.order.total) > 1;
+            const mismatch = v.amount !== "" && Math.abs(typed - s.amount) > 1;
             return (
               <div key={s.id} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 14, display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 16 }}>
                 {/* the slip itself — click to enlarge */}
@@ -106,8 +108,9 @@ export default function SlipReview({ token, onChange }: { token: string; onChang
                       <div className="dim">{s.order.user.fullName || s.order.user.email}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div className="dim">ต้องชำระ</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: "var(--brand)" }}>{baht(s.order.total)}</div>
+                      <div className="dim">ต้องชำระ{s.type === "deposit" ? " (มัดจำ)" : s.type === "balance" ? " (ส่วนที่เหลือ)" : ""}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "var(--brand)" }}>{baht(s.amount)}</div>
+                      {s.amount !== s.order.total && <div className="dim">ยอดออเดอร์ {baht(s.order.total)}</div>}
                     </div>
                   </div>
 
@@ -137,7 +140,7 @@ export default function SlipReview({ token, onChange }: { token: string; onChang
 
                   {mismatch && (
                     <p style={{ color: "#b45309", fontSize: 12.5, marginTop: 8 }}>
-                      ⚠ ยอดที่กรอก ({baht(typed)}) ไม่ตรงกับยอดออเดอร์ ({baht(s.order.total)}) — ระบบจะปฏิเสธถ้าโอนขาด
+                      ⚠ ยอดที่กรอก ({baht(typed)}) ไม่ตรงกับยอดที่ต้องชำระ ({baht(s.amount)}) — ระบบจะปฏิเสธถ้าโอนขาด
                     </p>
                   )}
                 </div>

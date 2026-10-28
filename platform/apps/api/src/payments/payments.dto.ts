@@ -28,6 +28,15 @@ export const ApproveSlipSchema = z.object({
 });
 export type ApproveSlipDto = z.infer<typeof ApproveSlipSchema>;
 
+/** admin records money received outside the slip flow (cash, cheque, a transfer without a slip) */
+export const RecordPaymentSchema = z.object({
+  amount: z.coerce.number().int().positive("ยอดเงินต้องมากกว่า 0").max(10_000_000),
+  method: z.enum(["cash", "transfer", "cheque", "other"]),
+  ref: z.string().trim().max(64).optional(),
+  note: z.string().trim().min(3, "กรุณาระบุหมายเหตุ (ใครรับเงิน / รับเมื่อไหร่)").max(300),
+});
+export type RecordPaymentDto = z.infer<typeof RecordPaymentSchema>;
+
 /** admin reject — the customer sees this reason, so it must not be empty */
 export const RejectSlipSchema = z.object({
   reason: z.string().trim().min(3, "กรุณาระบุเหตุผล").max(300),

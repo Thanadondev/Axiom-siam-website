@@ -29,6 +29,8 @@ interface Card {
   user: { id: string; email: string; fullName?: string | null };
   items: { size: string; qty: number }[];
   look: Look | null;
+  /** money still owed (the balance after a deposit): it can't ship until this is 0 */
+  balance?: { outstanding: number };
 }
 
 const COLUMNS: { id: Status; label: string; hint: string }[] = [
@@ -168,6 +170,7 @@ export default function ProductionBoard() {
                           <b className="ax-mono">{c.orderNo}</b>
                           <span>{c.user.fullName || c.user.email}</span>
                           <span className="sizes">{qtyOf(c)} ตัว · {sizeSplit(c.items).map(([s, n]) => `${s}${n}`).join(" ")}</span>
+                          {!!c.balance?.outstanding && <span className="owes">ค้างชำระ ฿{c.balance.outstanding.toLocaleString("th-TH")} · ส่งไม่ได้จนกว่าจะครบ</span>}
                         </div>
                       </button>
                       <footer>
