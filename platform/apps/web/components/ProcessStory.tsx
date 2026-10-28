@@ -129,7 +129,9 @@ export default function ProcessStory({ th }: { th: boolean }) {
     let cleanup: (() => void) | null = null;
 
     loadThreeWithGltf().then(async (THREE: any) => {
-      const post = await loadThreePost();
+      // phones go without bloom: it's a full-screen pass or three per frame
+      const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
+      const post = phone ? false : await loadThreePost();
       try { await Promise.all([(document as any).fonts?.load?.('400 100px "Anton"'), (document as any).fonts?.load?.('700 40px "Noto Sans Thai"')]); } catch { /* whatever loaded */ }
       if (disposed || !mount.current) return;
       const el = mount.current;
@@ -139,7 +141,7 @@ export default function ProcessStory({ th }: { th: boolean }) {
       const keep = <T,>(o: T) => { trash.push(o); return o; };
 
       const renderer = new THREE.WebGLRenderer({ antialias: !post, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, small ? 1.5 : 1.6));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, small ? 1.35 : 1.6));
       renderer.outputEncoding = THREE.sRGBEncoding;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -449,7 +451,7 @@ export default function ProcessStory({ th }: { th: boolean }) {
       const ribbon = (() => {
         const v: number[] = [];
         const segEnd: number[] = [];
-        const w = 0.006;
+        const w = 0.007;
         for (let i = 0; i < path.pts.length - 1; i++) {
           if (path.cut[i]) {
             const [ax, az] = toBed(path.pts[i]), [bx, bz] = toBed(path.pts[i + 1]);
@@ -460,7 +462,7 @@ export default function ProcessStory({ th }: { th: boolean }) {
         }
         const g = keep(new THREE.BufferGeometry());
         g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
-        const m = new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ color: 0xffc890, toneMapped: false })));
+        const m = new THREE.Mesh(g, keep(new THREE.MeshBasicMaterial({ color: 0xff5a10, toneMapped: false })));
         m.position.y = BED_Y + 0.009;
         m.frustumCulled = false;
         return { m, g, segEnd };
@@ -1031,8 +1033,27 @@ export default function ProcessStory({ th }: { th: boolean }) {
           if (u > 0.42) shipment.position.x += dx;
         }
 
-                if (composer) composer.render(); else renderer.render(scene, camera);
+        // only the stations near the camera are drawn (the overview and the end show them all)
+        for (let i = 1; i <= N; i++) st[i].visible = cp < 0.75 || cp > N + 0.25 || Math.abs(cp - i) < 1.6;
+
+        if (composer) composer.render(); else renderer.render(scene, camera);
+
+        // a slow device drops to 1× pixels and no bloom, once
+        if (!degraded && dt > 0) {
+          frames++; slow += dt;
+          if (frames === 90) {
+            if (slow / frames > 1 / 30) {
+              degraded = true;
+              renderer.setPixelRatio(1);
+              composer?.renderTarget1?.dispose?.(); composer?.renderTarget2?.dispose?.();
+              composer = null; bloom = null;
+              fit();
+            }
+            frames = 0; slow = 0;
+          }
+        }
       };
+      let degraded = false, frames = 0, slow = 0;
       raf = requestAnimationFrame(loop);
 
       cleanup = () => {

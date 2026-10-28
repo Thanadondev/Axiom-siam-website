@@ -1029,7 +1029,10 @@ export default function ScrollStory({ th }: { th: boolean }) {
             <div><b>50K+</b><span>{th ? "ตัวต่อเดือน" : "Units a month"}</span></div>
             <div><b>QC</b><span>{th ? "ทุกขั้นตอน" : "Every step"}</span></div>
           </div>
-          <Link href="/account" className="ax-story-go">{th ? "ติดตามออเดอร์ของฉัน" : "Track my order"} <span aria-hidden="true">→</span></Link>
+          <div className="ax-row" style={{ justifyContent: "center" }}>
+            <Link href="/process" className="ax-story-go">{th ? "ดูขั้นตอนผลิตทั้ง 10 ขั้น" : "See all ten steps"} <span aria-hidden="true">→</span></Link>
+            <Link href="/account" className="ax-story-go">{th ? "ติดตามออเดอร์ของฉัน" : "Track my order"} <span aria-hidden="true">→</span></Link>
+          </div>
         </div>
 
         {/* 6 — work */}
