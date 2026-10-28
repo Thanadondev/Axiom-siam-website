@@ -713,7 +713,7 @@ export default function ProcessStory({ th }: { th: boolean }) {
         for (const x of [-6.5, -3.7, 4.6, 7.4]) {
           const R = M(x, 0, H.z0 + 1.1);
           racks.push(R);
-          for (let lv = 0; lv < 4; lv++) for (const d of [-0.36, 0, 0.36]) rolls.push(R.clone().multiply(M(0, 0.42 + lv * 0.95, d, Math.PI / 2)));
+          for (let lv = 0; lv < 4; lv++) for (const d of [-0.36, 0, 0.36]) rolls.push(R.clone().multiply(M(0, 0.42 + lv * 0.95, d)));
         }
         many(fk, "roll_rack", racks);
         many(fk, "fabric_roll", rolls, i => TINTS[(i * 5 + Math.floor(i / 12)) % TINTS.length]);
