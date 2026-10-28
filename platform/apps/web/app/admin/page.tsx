@@ -249,6 +249,26 @@ export default function AdminPage() {
     if (r) { alert(r.message); await loadTab("orders"); }
     setBusy(false);
   }
+  /** money given back — closes the order as "คืนเงินแล้ว" only when all of it is back */
+  async function recordRefund(o: any) {
+    const held = (o.balance?.paid ?? 0) - (o.balance?.refunded ?? 0);
+    const amt = prompt(`ยอดที่คืนให้ลูกค้า ${o.orderNo} (รับไว้ ${baht(held)}):`, String(held));
+    if (!amt) return;
+    const amount = Number(amt.replace(/[^\d]/g, ""));
+    const reason = prompt("เหตุผลที่คืนเงิน (ลูกค้าจะเห็น):", "");
+    if (!reason) return;
+    const method = prompt("ช่องทาง: transfer (โอนคืน) / cash (เงินสด) / other", "transfer");
+    if (!method) return;
+    const ref = prompt("เลขอ้างอิงการโอนคืน (ถ้ามี):", "") ?? undefined;
+    const close = amount === held && confirm(`คืนครบ ${baht(held)} แล้ว — ปิดออเดอร์เป็น "คืนเงินแล้ว" เลยไหม?`);
+    setBusy(true);
+    const r = await call<any>(`/admin/orders/${o.id}/refunds`, {
+      method: "POST",
+      body: JSON.stringify({ amount, reason, method: method.trim(), ref: ref || undefined, close }),
+    });
+    if (r) { alert(r.message); await loadTab("orders"); }
+    setBusy(false);
+  }
   async function setOrderStatus(o: any, status: string) {
     if (!status) return;
     let courier: string | undefined, trackingNo: string | undefined;
@@ -491,7 +511,9 @@ export default function AdminPage() {
               {orders.map(o => {
                 const qty = o.items.reduce((s: number, i: any) => s + i.qty, 0);
                 // "ชำระแล้ว" comes from an approved slip or a recorded payment, not from here
-                const next = (NEXT_STATUS[o.status] ?? []).filter((s: string) => s !== "paid");
+                // "ชำระแล้ว" / "คืนเงินแล้ว" come from recording the money, not from here
+                const next = (NEXT_STATUS[o.status] ?? []).filter((s: string) => s !== "paid" && s !== "refunded");
+                const held = o.balance ? o.balance.paid - o.balance.refunded : 0;
                 const owes = o.balance ? o.balance.outstanding > 0 : o.status === "pending";
                 return (
                   <tr key={o.id}>
@@ -503,6 +525,7 @@ export default function AdminPage() {
                       {o.balance && o.balance.outstanding > 0 && o.status !== "cancelled" && (
                         <div className="dim" style={{ color: "#b45309" }}>ค้าง {baht(o.balance.outstanding)}</div>
                       )}
+                      {o.balance?.refunded > 0 && <div className="dim">คืนแล้ว {baht(o.balance.refunded)}</div>}
                     </td>
                     <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span></td>
                     <td>
@@ -515,6 +538,9 @@ export default function AdminPage() {
                         )}
                         {owes && !["cancelled", "refunded", "completed"].includes(o.status) && (
                           <button className="minibtn" disabled={busy} onClick={() => recordPayment(o)}>💰 บันทึกรับเงิน</button>
+                        )}
+                        {held > 0 && !["refunded", "cancelled"].includes(o.status) && (
+                          <button className="minibtn danger" disabled={busy} onClick={() => recordRefund(o)}>↩ คืนเงิน</button>
                         )}
                         <Link className="minibtn" href={`/orders/${o.id}`} target="_blank">ดู</Link>
                       </div>
@@ -764,10 +790,11 @@ export default function AdminPage() {
                   <span className="dim">▇ ออเดอร์ผลิต</span>
                   <span className="dim" style={{ opacity: .7 }}>▇ ตลาดลาย</span>
                 </div>
-                <Table head={["เดือน", "ออเดอร์", "ยอดออเดอร์", "ขายลาย", "ยอดขายลาย", "รายได้แพลตฟอร์ม"]}>
+                <Table head={["เดือน", "ออเดอร์", "ยอดออเดอร์ (หักคืนเงิน)", "ขายลาย", "ยอดขายลาย", "รายได้แพลตฟอร์ม"]}>
                   {monthly.filter(m => m.orders || m.templateSales).map(m => (
                     <tr key={m.month}>
-                      <td><b>{m.month}</b></td><td>{m.orders}</td><td>{baht(m.orderGross)}</td>
+                      <td><b>{m.month}</b></td><td>{m.orders}</td>
+                      <td>{baht(m.orderGross)}{m.orderRefunds > 0 && <div className="dim">คืน {baht(m.orderRefunds)}</div>}</td>
                       <td>{m.templateSales}</td><td>{baht(m.templateGross)}</td><td><b style={{ color: "var(--brand)" }}>{baht(m.platformRevenue)}</b></td>
                     </tr>
                   ))}

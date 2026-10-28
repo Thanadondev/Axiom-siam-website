@@ -124,6 +124,7 @@ export class OrdersService {
         items: { select: { id: true, size: true, qty: true, unitPrice: true, designId: true, roster: true, designSnapshot: isAdmin } },
         statusHistory: { orderBy: { createdAt: "asc" } },
         payments: { select: { id: true, provider: true, amount: true, status: true, type: true, createdAt: true } },
+        refunds: { select: { id: true, amount: true, reason: true, createdAt: true }, orderBy: { createdAt: "asc" } },
         shipments: true,
         invoices: { select: { id: true, invoiceNo: true, amount: true, issuedAt: true } },
       },
@@ -131,7 +132,7 @@ export class OrdersService {
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
     // what has been paid and what is due now (deposit, then the balance)
-    return { ...o, balance: ledger(o, o.payments) };
+    return { ...o, balance: ledger(o, o.payments, o.refunds) };
   }
 
   /** customer cancels their own order — only while nothing has been produced */
@@ -168,6 +169,7 @@ export class OrdersService {
           user: { select: { id: true, email: true, fullName: true } },
           items: { select: { size: true, qty: true } },
           payments: { select: { status: true, type: true, amount: true } },
+          refunds: { select: { amount: true } },
         },
       }),
       this.prisma.order.count({ where }),
@@ -183,7 +185,7 @@ export class OrdersService {
       : [];
     const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
     return {
-      items: items.map(({ payments, ...o }) => ({ ...o, balance: ledger(o, payments), look: look.get(o.id) ?? null })),
+      items: items.map(({ payments, refunds, ...o }) => ({ ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null })),
       total,
     };
   }
@@ -191,7 +193,11 @@ export class OrdersService {
   async adminSetStatus(id: string, adminId: string, dto: UpdateOrderStatusDto) {
     const o = await this.prisma.order.findUnique({
       where: { id },
-      select: { id: true, status: true, orderNo: true, userId: true, total: true, depositAmount: true, payments: { select: { status: true, type: true, amount: true } } },
+      select: {
+        id: true, status: true, orderNo: true, userId: true, total: true, depositAmount: true,
+        payments: { select: { status: true, type: true, amount: true } },
+        refunds: { select: { amount: true } },
+      },
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     if (o.status === dto.status) throw new BadRequestException("สถานะเดิมอยู่แล้ว");
@@ -199,6 +205,17 @@ export class OrdersService {
     // payment recorded with its amount (POST /admin/orders/:id/payments)
     if (dto.status === "paid") {
       throw new BadRequestException("เปลี่ยนเป็น 'ชำระแล้ว' ด้วยการตรวจสลิป หรือปุ่ม 'บันทึกรับเงิน' (ใส่ยอดเงิน) — ไม่ใช่การเปลี่ยนสถานะเฉย ๆ");
+    }
+    // "คืนเงินแล้ว" is reached by recording the refund (with its amount), not by a label
+    if (dto.status === "refunded") {
+      throw new BadRequestException("ใช้ปุ่ม 'คืนเงิน' (ใส่ยอดที่คืน) — ระบบจะปิดออเดอร์เป็น 'คืนเงินแล้ว' เมื่อคืนครบ");
+    }
+    // a cancelled order holding the customer's money is a debt nobody tracks
+    if (dto.status === "cancelled") {
+      const l = ledger(o, o.payments, o.refunds);
+      if (l.paid - l.refunded > 0) {
+        throw new BadRequestException(`ออเดอร์นี้รับเงินไว้ ฿${(l.paid - l.refunded).toLocaleString()} — คืนเงินด้วยปุ่ม 'คืนเงิน' (ปิดออเดอร์ได้ในขั้นนั้น)`);
+      }
     }
     // nothing leaves the factory with money still owed
     if (dto.status === "shipped") {

@@ -8,8 +8,8 @@ import { AdminService } from "./admin.service";
 import { SettingsService } from "../settings/settings.service";
 import { PaymentsService } from "../payments/payments.service";
 import {
-  ApproveSlipSchema, RejectSlipSchema, BankConfigSchema, RecordPaymentSchema,
-  type ApproveSlipDto, type RejectSlipDto, type BankConfigDto, type RecordPaymentDto,
+  ApproveSlipSchema, RejectSlipSchema, BankConfigSchema, RecordPaymentSchema, RecordRefundSchema,
+  type ApproveSlipDto, type RejectSlipDto, type BankConfigDto, type RecordPaymentDto, type RecordRefundDto,
 } from "../payments/payments.dto";
 import {
   UpdatePricingSchema, UpdateMarketSchema, type UpdatePricingDto, type UpdateMarketDto,
@@ -81,6 +81,16 @@ export class AdminController {
     @Body(new ZodValidationPipe(RecordPaymentSchema)) dto: RecordPaymentDto,
   ) {
     return this.payments.recordManual(me.id, id, dto);
+  }
+
+  /** money given back — the only way an order ends as "คืนเงินแล้ว" */
+  @Post("orders/:id/refunds")
+  recordRefund(
+    @CurrentUser() me: AuthUser,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(RecordRefundSchema)) dto: RecordRefundDto,
+  ) {
+    return this.payments.recordRefund(me.id, id, dto);
   }
 
   @Post("payments/:id/reject")

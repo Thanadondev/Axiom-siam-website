@@ -23,6 +23,8 @@ export interface Ledger {
   total: number;
   /** confirmed money in (approved slips and payments an admin recorded) */
   paid: number;
+  /** money given back (Refund rows) */
+  refunded: number;
   /** total − paid */
   outstanding: number;
   /** what the customer should transfer now (0 = nothing to pay right now) */
@@ -37,12 +39,17 @@ export function upfront(o: LedgerOrder): number {
   return o.depositAmount > 0 && o.depositAmount < o.total ? o.depositAmount : o.total;
 }
 
-export function ledger(o: LedgerOrder, payments: LedgerPayment[]): Ledger {
+/**
+ * Refunds are kept apart from what is owed: giving money back (an overpayment,
+ * a goodwill refund, a cancelled order) never makes a customer owe it again.
+ */
+export function ledger(o: LedgerOrder, payments: LedgerPayment[], refunds: { amount: number }[] = []): Ledger {
   const paid = payments
     .filter(p => p.status === "paid" && p.type !== "refund")
     .reduce((s, p) => s + p.amount, 0);
+  const refunded = refunds.reduce((s, r) => s + r.amount, 0);
   const outstanding = Math.max(0, o.total - paid);
-  const base = { total: o.total, paid, outstanding };
+  const base = { total: o.total, paid, refunded, outstanding };
   if (CLOSED.includes(o.status) || outstanding === 0) return { ...base, due: 0, kind: null };
   if (o.status === "pending") {
     const first = upfront(o);

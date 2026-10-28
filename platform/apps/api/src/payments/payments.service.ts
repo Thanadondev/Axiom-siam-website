@@ -9,6 +9,7 @@ import { judgeSlip, ManualSlipReader, type SlipReader, type SlipFacts } from "./
 import { MIN_CHARGE_BAHT } from "./money";
 import { ledger, upfrontCovered, DUE_TH, type Ledger } from "./ledger";
 import { signSlipUrl } from "./slip-link";
+import { issueInvoice } from "./invoices";
 
 const CLOSED = ["cancelled", "refunded", "completed"];
 const METHOD_TH: Record<string, string> = { cash: "เงินสด", transfer: "โอน (นอกระบบ)", cheque: "เช็ค", other: "อื่น ๆ" };
@@ -387,6 +388,63 @@ export class PaymentsService {
     return { id: payment.id, orderStatus: starts ? "paid" : order.status, ...l, message: `บันทึกรับเงิน ฿${dto.amount.toLocaleString()} แล้ว` };
   }
 
+  // ---------- money given back ----------
+  /**
+   * A refund, recorded against the order with its reason. When it brings every
+   * baht back and the admin says so (close), the order ends as `refunded` —
+   * the only way to get there.
+   */
+  async recordRefund(adminId: string, orderId: string, dto: { amount: number; method: string; ref?: string; reason: string; close?: boolean }) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true, orderNo: true, userId: true, status: true, total: true, depositAmount: true,
+        payments: { select: { status: true, type: true, amount: true } },
+        refunds: { select: { amount: true } },
+      },
+    });
+    if (!order) throw new NotFoundException("ไม่พบออเดอร์");
+    if (["refunded", "cancelled"].includes(order.status)) throw new BadRequestException("ออเดอร์นี้ปิดไปแล้ว");
+    if (order.payments.some(p => p.status === "submitted")) {
+      throw new BadRequestException("มีสลิปของลูกค้ารอตรวจอยู่ — ตรวจสลิปนั้นก่อน");
+    }
+    const l = ledger(order, order.payments, order.refunds);
+    const held = l.paid - l.refunded;
+    if (held <= 0) throw new BadRequestException("ออเดอร์นี้ไม่มีเงินที่รับไว้ให้คืน");
+    if (dto.amount > held) throw new BadRequestException(`คืนได้ไม่เกินที่รับไว้ ฿${held.toLocaleString()}`);
+    if (dto.close && dto.amount !== held) {
+      throw new BadRequestException(`ปิดออเดอร์เป็น 'คืนเงินแล้ว' ได้เมื่อคืนครบ ฿${held.toLocaleString()} เท่านั้น`);
+    }
+    const ref = dto.ref?.trim() || null;
+    const method = { transfer: "โอนคืน", cash: "เงินสด", other: "อื่น ๆ" }[dto.method] ?? dto.method;
+    const left = held - dto.amount;
+
+    await this.prisma.$transaction([
+      this.prisma.refund.create({
+        data: { orderId: order.id, amount: dto.amount, reason: `${dto.reason} · ${method}`, providerRef: ref },
+      }),
+      ...(dto.close ? [this.prisma.order.update({ where: { id: order.id }, data: { status: "refunded" } })] : []),
+      this.prisma.orderStatusHistory.create({
+        data: {
+          orderId: order.id,
+          status: dto.close ? "refunded" : order.status,
+          note: `คืนเงิน ฿${dto.amount.toLocaleString()} (${method}${ref ? ` · ref ${ref}` : ""}) — ${dto.reason}`,
+          changedBy: adminId,
+        },
+      }),
+    ]);
+
+    await this.notify.push({
+      userId: order.userId,
+      title: `คืนเงินแล้ว — ${order.orderNo}`,
+      body: `฿${dto.amount.toLocaleString()} · ${dto.reason}`,
+      link: `/orders/${order.id}`,
+      email: true,
+    });
+    this.log.log(`order ${order.orderNo}: refund ฿${dto.amount} by ${adminId}${dto.close ? " (closed)" : ""}`);
+    return { ok: true, held: left, orderStatus: dto.close ? "refunded" : order.status, message: `บันทึกคืนเงิน ฿${dto.amount.toLocaleString()} แล้ว` };
+  }
+
   // ---------- helpers ----------
   private async mineOrThrow(userId: string, orderId: string) {
     const order = await this.prisma.order.findUnique({
@@ -404,12 +462,7 @@ export class PaymentsService {
   }
 
   private async issueInvoice(orderId: string, amount: number) {
-    const existing = await this.prisma.invoice.findFirst({ where: { orderId } });
-    if (existing) return;
-    const d = new Date();
-    const invoiceNo = `INV-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-    await this.prisma.invoice
-      .create({ data: { orderId, invoiceNo, amount, taxId: process.env.COMPANY_TAX_ID ?? null } })
-      .catch(e => this.log.warn(`could not issue invoice for ${orderId}: ${e.message}`));
+    await issueInvoice(this.prisma, orderId, amount).catch(e => this.log.warn(`could not issue invoice for ${orderId}: ${e.message}`));
   }
+
 }

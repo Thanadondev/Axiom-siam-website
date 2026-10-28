@@ -8,7 +8,7 @@ import { OrdersService } from "../orders/orders.service";
  */
 
 type Row = Record<string, any>;
-let db: { orders: Row[]; payments: Row[]; history: Row[]; invoices: Row[] };
+let db: { orders: Row[]; payments: Row[]; history: Row[]; invoices: Row[]; refunds: Row[] };
 let seq = 0;
 const id = () => `id-${++seq}`;
 
@@ -27,7 +27,7 @@ const prisma: any = {
       const o = db.orders.find(r => r.id === where.id);
       if (!o) return null;
       const pw = select?.payments?.where;
-      return { ...o, payments: db.payments.filter(p => p.orderId === o.id && match(p, pw)) };
+      return { ...o, payments: db.payments.filter(p => p.orderId === o.id && match(p, pw)), refunds: db.refunds.filter(r => r.orderId === o.id) };
     },
     update: async ({ where, data }: any) => Object.assign(db.orders.find(r => r.id === where.id)!, data),
   },
@@ -42,8 +42,12 @@ const prisma: any = {
     update: async ({ where, data }: any) => Object.assign(db.payments.find(r => r.id === where.id)!, data),
   },
   orderStatusHistory: { create: async ({ data }: any) => { db.history.push(data); return data; } },
+  refund: { create: async ({ data }: any) => { db.refunds.push(data); return data; } },
   invoice: {
-    findFirst: async ({ where }: any) => db.invoices.find(r => match(r, where)) ?? null,
+    findFirst: async ({ where }: any) => {
+      if (where.invoiceNo?.startsWith) return [...db.invoices].filter(r => r.invoiceNo.startsWith(where.invoiceNo.startsWith)).sort((a, b) => b.invoiceNo.localeCompare(a.invoiceNo))[0] ?? null;
+      return db.invoices.find(r => match(r, where)) ?? null;
+    },
     create: async ({ data }: any) => { db.invoices.push(data); return data; },
   },
   shipment: { create: async () => ({}), findFirst: async () => null },
@@ -61,7 +65,7 @@ const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 const slip = (n: number) => ({ buffer: Buffer.concat([png, Buffer.from(String(n))]), mimetype: "image/png", size: 20 });
 
 beforeEach(() => {
-  db = { orders: [], payments: [], history: [], invoices: [] };
+  db = { orders: [], payments: [], history: [], invoices: [], refunds: [] };
   seq = 0;
 });
 const addOrder = (total: number, depositAmount: number) => {
@@ -149,5 +153,40 @@ describe("customer cancelling", () => {
     const o = addOrder(4000, 2000);
     await payments.recordManual("admin", o.id, { amount: 500, method: "cash", note: "บางส่วน" });
     await expect(orders.cancel(o.id, "u1")).rejects.toThrow(/ติดต่อทีมงาน/);
+  });
+});
+
+describe("invoices", () => {
+  it("are numbered in sequence across orders", async () => {
+    const a = addOrder(1000, 1000), b = addOrder(2000, 2000);
+    await payments.recordManual("admin", a.id, { amount: 1000, method: "cash", note: "หน้าร้าน" });
+    await payments.recordManual("admin", b.id, { amount: 2000, method: "cash", note: "หน้าร้าน" });
+    const y = new Date().getFullYear();
+    expect(db.invoices.map(i => i.invoiceNo)).toEqual([`INV-${y}-00001`, `INV-${y}-00002`]);
+  });
+});
+
+describe("refunds", () => {
+  it("give money back, and close the order only when all of it is back", async () => {
+    const o = addOrder(3900, 3900);
+    await payments.recordManual("admin", o.id, { amount: 3900, method: "transfer", note: "โอนมา" });
+    await expect(orders.adminSetStatus(o.id, "admin", { status: "refunded" } as any)).rejects.toThrow(/คืนเงิน/);
+    await expect(orders.adminSetStatus(o.id, "admin", { status: "cancelled" } as any)).rejects.toThrow(/รับเงินไว้ ฿3,900/);
+
+    await expect(payments.recordRefund("admin", o.id, { amount: 500, method: "transfer", reason: "ส่วนลด", close: true })).rejects.toThrow(/คืนครบ/);
+    await payments.recordRefund("admin", o.id, { amount: 500, method: "transfer", reason: "ส่วนลดเสื้อตำหนิ" });
+    expect(o.status).toBe("paid"); // a partial refund leaves the order where it is
+    const one = await orders.getOne(o.id, "u1");
+    expect(one.balance).toMatchObject({ paid: 3900, refunded: 500, outstanding: 0 });
+
+    await expect(payments.recordRefund("admin", o.id, { amount: 5000, method: "cash", reason: "เกิน" })).rejects.toThrow(/ไม่เกินที่รับไว้ ฿3,400/);
+    await payments.recordRefund("admin", o.id, { amount: 3400, method: "transfer", reason: "ลูกค้ายกเลิก", close: true });
+    expect(o.status).toBe("refunded");
+    await expect(payments.recordRefund("admin", o.id, { amount: 1, method: "cash", reason: "อีก" })).rejects.toThrow(/ปิดไปแล้ว/);
+  });
+
+  it("can't refund an order with no money in", async () => {
+    const o = addOrder(1000, 1000);
+    await expect(payments.recordRefund("admin", o.id, { amount: 100, method: "cash", reason: "ทดสอบ" })).rejects.toThrow(/ไม่มีเงิน/);
   });
 });

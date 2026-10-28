@@ -67,6 +67,7 @@ export default function OrderDetail() {
             {o.balance && o.balance.paid > 0 && (
               <div className="dim" style={{ margin: "2px 0 6px" }}>
                 ชำระแล้ว {baht(o.balance.paid)}{o.balance.outstanding > 0 ? ` · ค้าง ${baht(o.balance.outstanding)}` : " · ครบแล้ว"}
+                {o.balance.refunded > 0 && ` · คืนเงินแล้ว ${baht(o.balance.refunded)}`}
               </div>
             )}
             <span className={`tag ${cancelled ? "red" : o.status === "completed" ? "green" : "blue"}`}>{STATUS_TH[o.status]}</span>

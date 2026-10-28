@@ -37,6 +37,17 @@ export const RecordPaymentSchema = z.object({
 });
 export type RecordPaymentDto = z.infer<typeof RecordPaymentSchema>;
 
+/** admin gives money back — recorded against the order (Refund) */
+export const RecordRefundSchema = z.object({
+  amount: z.coerce.number().int().positive("ยอดคืนต้องมากกว่า 0").max(10_000_000),
+  method: z.enum(["transfer", "cash", "other"]),
+  ref: z.string().trim().max(64).optional(),
+  reason: z.string().trim().min(3, "กรุณาระบุเหตุผลที่คืนเงิน").max(300),
+  /** all the money is back: close the order as "คืนเงินแล้ว" */
+  close: z.boolean().optional(),
+});
+export type RecordRefundDto = z.infer<typeof RecordRefundSchema>;
+
 /** admin reject — the customer sees this reason, so it must not be empty */
 export const RejectSlipSchema = z.object({
   reason: z.string().trim().min(3, "กรุณาระบุเหตุผล").max(300),
