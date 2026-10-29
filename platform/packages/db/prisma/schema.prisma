@@ -463,6 +463,11 @@ model Order {
   taxInvoice        String?     @map("tax_invoice")
   /// where the job is on the line: 0 not started, 1–9 the factory steps, 10 shipped
   productionStep    Int         @default(0) @map("production_step")
+  /// the same job's order number in the factory ERP — the production step is read from there
+  erpOrderNo        String?     @unique @map("erp_order_no")
+  /// the ERP's last answer: each step with its dates (apps/api/src/erp)
+  erpStatus         Json?       @map("erp_status")
+  erpSyncedAt       DateTime?   @map("erp_synced_at")
   shippingAddressId String?     @map("shipping_address_id")
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")

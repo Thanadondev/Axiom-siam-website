@@ -5,9 +5,11 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Public, Roles, CurrentUser, type AuthUser } from "../auth/decorators";
 import { OrdersService } from "./orders.service";
 import {
-  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema, TaxInvoiceSchema, ProductionStepSchema,
+  CreateOrderSchema, PriceQuerySchema, UpdateOrderStatusSchema, OrderListQuerySchema, TaxInvoiceSchema, ProductionStepSchema, ErpLinkSchema,
   type CreateOrderDto, type PriceQueryDto, type UpdateOrderStatusDto, type OrderListQueryDto, type TaxInvoiceDto, type ProductionStepDto,
+  type ErpLinkDto,
 } from "./orders.dto";
+import { ErpSyncService } from "../erp/erp-sync.service";
 
 @Controller("orders")
 export class OrdersController {
@@ -64,11 +66,17 @@ export class OrdersController {
 @Roles("admin")
 @Controller("admin/orders")
 export class AdminOrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(private readonly orders: OrdersService, private readonly erp: ErpSyncService) {}
 
   @Get()
   list(@Query(new ZodValidationPipe(OrderListQuerySchema)) q: OrderListQueryDto) {
     return this.orders.adminList(q);
+  }
+
+  /** pull the production status of every linked order still on the floor from the ERP */
+  @Post("erp/sync")
+  syncErp(@CurrentUser() user: AuthUser) {
+    return this.erp.syncActive(user.id);
   }
 
   @Get(":id")
@@ -85,5 +93,16 @@ export class AdminOrdersController {
   @Patch(":id/step")
   setStep(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(ProductionStepSchema)) dto: ProductionStepDto) {
     return this.orders.adminSetStep(id, user.id, dto);
+  }
+
+  /** the same job's order number in the ERP; from then on the step follows the ERP */
+  @Put(":id/erp")
+  linkErp(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(ErpLinkSchema)) dto: ErpLinkDto) {
+    return this.erp.link(id, user.id, dto.erpOrderNo);
+  }
+
+  @Post(":id/erp/sync")
+  syncOneErp(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.erp.syncOne(id, user.id);
   }
 }

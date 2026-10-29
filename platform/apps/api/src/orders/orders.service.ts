@@ -9,6 +9,7 @@ import { planStep, stepForStatus, stepName, SHIP_STEP } from "./production-steps
 import { kitLook } from "./kit-look";
 import { ledger } from "../payments/ledger";
 import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
+import { ErpSyncService } from "../erp/erp-sync.service";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -25,7 +26,12 @@ function makeOrderNo() {
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService, private settings: SettingsService, private notify: NotifyService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settings: SettingsService,
+    private notify: NotifyService,
+    private erp?: ErpSyncService,
+  ) {}
 
   /** live price preview for the checkout page — no side effects */
   async quote(q: PriceQueryDto) {
@@ -116,7 +122,26 @@ export class OrdersService {
   }
 
   async getOne(id: string, userId: string, isAdmin = false) {
-    const o = await this.prisma.order.findUnique({
+    let o = await this.findOne(id, isAdmin);
+    if (!o) throw new NotFoundException("ไม่พบออเดอร์");
+    if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
+    // production tracking lives in the ERP: refresh an old copy before showing it
+    if (this.erp && (await this.erp.refreshIfStale(o))) o = (await this.findOne(id, isAdmin)) ?? o;
+    // what has been paid and what is due now (deposit, then the balance)
+    const { taxInvoice, erpOrderNo, erpStatus, erpSyncedAt, ...rest } = o;
+    return {
+      ...rest,
+      balance: ledger(o, o.payments, o.refunds),
+      taxInfo: readTaxInfo(taxInvoice),
+      // the company's own details for printing a tax invoice (null until set in .env)
+      seller: sellerFromEnv(),
+      // the ERP's steps and dates; its order number is for the team only
+      erp: erpStatus ? { ...(erpStatus as object), syncedAt: erpSyncedAt, ...(isAdmin ? { orderNo: erpOrderNo } : {}) } : isAdmin && erpOrderNo ? { orderNo: erpOrderNo } : null,
+    };
+  }
+
+  private findOne(id: string, isAdmin: boolean) {
+    return this.prisma.order.findUnique({
       where: { id },
       select: {
         ...ORDER_SELECT, userId: true,
@@ -136,19 +161,9 @@ export class OrdersService {
           orderBy: { creditNo: "asc" },
         },
         taxInvoice: true,
+        erpOrderNo: true, erpStatus: true, erpSyncedAt: true,
       },
     });
-    if (!o) throw new NotFoundException("ไม่พบออเดอร์");
-    if (!isAdmin && o.userId !== userId) throw new ForbiddenException("ออเดอร์นี้ไม่ใช่ของคุณ");
-    // what has been paid and what is due now (deposit, then the balance)
-    const { taxInvoice, ...rest } = o;
-    return {
-      ...rest,
-      balance: ledger(o, o.payments, o.refunds),
-      taxInfo: readTaxInfo(taxInvoice),
-      // the company's own details for printing a tax invoice (null until set in .env)
-      seller: sellerFromEnv(),
-    };
   }
 
   /**
@@ -201,6 +216,7 @@ export class OrdersService {
     if (q.status) where.status = q.status;
     if (q.q) where.OR = [
       { orderNo: { contains: q.q, mode: "insensitive" } },
+      { erpOrderNo: { contains: q.q, mode: "insensitive" } },
       { user: { email: { contains: q.q, mode: "insensitive" } } },
     ];
     const [items, total] = await this.prisma.$transaction([
@@ -208,6 +224,7 @@ export class OrdersService {
         where, orderBy: { createdAt: "desc" }, take: q.take ?? 50, skip: q.skip ?? 0,
         select: {
           ...ORDER_SELECT,
+          erpOrderNo: true, erpSyncedAt: true,
           user: { select: { id: true, email: true, fullName: true } },
           items: { select: { size: true, qty: true } },
           payments: { select: { status: true, type: true, amount: true } },

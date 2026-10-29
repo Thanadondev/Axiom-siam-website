@@ -800,6 +800,11 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
 .ax-pb-open .meta .step { position: relative; display: block; margin-top: 4px; padding-top: 6px; font-size: 11.5px; color: var(--ax-ink); }
 .ax-pb-open .meta .step::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; border-radius: 2px; background: var(--ax-line-2); }
 .ax-pb-open .meta .step i { position: absolute; left: 0; top: 0; height: 3px; border-radius: 2px; background: var(--ax-accent); }
+.ax-pb-erp .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ax-pb-erp .row .ax-field { flex: 1 1 160px; min-height: 44px; font-size: 14px; font-family: var(--ax-mono); }
+.ax-pb-erp tr[data-state="done"] td { color: var(--ax-ink); }
+.ax-pb-erp tr[data-state="now"] td { color: var(--ax-accent); font-weight: 600; }
+.ax-pb-card .meta .erp { font-family: var(--ax-mono); font-size: 10.5px; color: var(--ax-mute); letter-spacing: .02em; }
 .ax-pb-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .ax-pb-steps button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 52px; padding: 7px 9px; border: 1px solid var(--ax-line-2); border-radius: 10px; background: transparent; color: var(--ax-ink-2); text-align: left; font: inherit; cursor: pointer; }
 .ax-pb-steps button b { font-family: var(--ax-mono); font-weight: 400; font-size: 11px; color: var(--ax-mute); }

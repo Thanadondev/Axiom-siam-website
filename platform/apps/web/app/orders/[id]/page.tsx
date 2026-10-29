@@ -104,7 +104,7 @@ export default function OrderDetail() {
         {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
 
-      <ProductionTracker status={o.status} productionStep={o.productionStep} history={o.statusHistory} />
+      <ProductionTracker status={o.status} productionStep={o.productionStep} history={o.statusHistory} erp={o.erp} />
 
       {/* pay by transfer — the panel owns the QR, the account and the slip upload */}
       {(o.balance ? o.balance.due > 0 : o.status === "pending") && token && (

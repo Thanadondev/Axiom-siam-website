@@ -75,6 +75,12 @@ export const ProductionStepSchema = z.object({
 });
 export type ProductionStepDto = z.infer<typeof ProductionStepSchema>;
 
+/** linking the order to the same job in the factory ERP (blank unlinks) */
+export const ErpLinkSchema = z.object({
+  erpOrderNo: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().trim().max(60).regex(/^[\w\-\/. ]+$/, "เลขออเดอร์ ERP มีอักขระที่ใช้ไม่ได้").nullish()),
+});
+export type ErpLinkDto = z.infer<typeof ErpLinkSchema>;
+
 export const OrderListQuerySchema = z.object({
   status: z.preprocess(emptyToUndef, z.enum(ORDER_STATUSES).optional()),
   q: z.preprocess(emptyToUndef, z.string().max(80).optional()),

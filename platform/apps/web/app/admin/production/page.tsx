@@ -35,6 +35,9 @@ interface Card {
   productionStep?: number;
   /** money still owed (the balance after a deposit): it can't ship until this is 0 */
   balance?: { outstanding: number };
+  /** the same job in the factory ERP — when set, the step follows the ERP */
+  erpOrderNo?: string | null;
+  erpSyncedAt?: string | null;
 }
 
 const COLUMNS: { id: Status; label: string; hint: string }[] = [
@@ -75,6 +78,7 @@ export default function ProductionBoard() {
   const [cards, setCards] = useState<Record<string, Card[]>>({});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
+  const [note, setNote] = useState("");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [dragging, setDragging] = useState<Card | null>(null);
@@ -111,11 +115,23 @@ export default function ProductionBoard() {
     finally { setBusy(""); }
   }
 
+  /** pull every linked job's step from the ERP now (it also runs by itself every few minutes) */
+  async function syncErp() {
+    setBusy("erp"); setErr(""); setNote("");
+    try {
+      const r = await apiFetch<{ message: string; failed: string[] }>(`/admin/orders/erp/sync`, { method: "POST", token });
+      setNote(r.message);
+      if (r.failed?.length) setErr(r.failed.join(" · "));
+      await load();
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(""); }
+  }
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return cards;
     return Object.fromEntries(Object.entries(cards).map(([k, v]) => [k, v.filter(c =>
-      c.orderNo.toLowerCase().includes(s) || c.user.email.toLowerCase().includes(s) || (c.user.fullName ?? "").toLowerCase().includes(s))]));
+      c.orderNo.toLowerCase().includes(s) || (c.erpOrderNo ?? "").toLowerCase().includes(s) || c.user.email.toLowerCase().includes(s) || (c.user.fullName ?? "").toLowerCase().includes(s))]));
   }, [cards, q]);
 
   const inLine = (cards.in_production ?? []).reduce((n, c) => n + qtyOf(c), 0);
@@ -148,10 +164,14 @@ export default function ProductionBoard() {
           <div data-warn={late > 0 || undefined}><b>{late}</b><span>ค้างเกิน 7 วัน</span></div>
         </div>
         <div className="ax-pb-tools">
-          <input className="ax-field" style={{ minHeight: 44, fontSize: 14 }} placeholder="ค้นหาเลขออเดอร์ / ลูกค้า" value={q} onChange={e => setQ(e.target.value)} aria-label="ค้นหาออเดอร์" />
+          <input className="ax-field" style={{ minHeight: 44, fontSize: 14 }} placeholder="ค้นหาเลขออเดอร์ / เลข ERP / ลูกค้า" value={q} onChange={e => setQ(e.target.value)} aria-label="ค้นหาออเดอร์" />
           <button type="button" className="ax-sq" onClick={load} disabled={!!busy}>รีเฟรช</button>
+          <button type="button" className="ax-sq" style={{ whiteSpace: "nowrap" }} onClick={syncErp} disabled={!!busy} title="อัปเดตขั้นตอนผลิตของออเดอร์ที่ผูกกับ ERP">
+            {busy === "erp" ? "กำลังดึง…" : "ดึงจาก ERP"}
+          </button>
         </div>
       </div>
+      {note && <p className="ax-psub" role="status" style={{ padding: "0 24px 8px", margin: 0 }}>{note}</p>}
       {err && <p className="ax-err" role="alert" style={{ padding: "0 24px 12px" }}>{err}</p>}
 
       <div className="ax-pb-board">
@@ -174,7 +194,8 @@ export default function ProductionBoard() {
                   const fwd = FORWARD[c.status];
                   const at = c.productionStep ?? 0;
                   // on the line, the button walks the steps; after the last floor step it ships
-                  const nextStep = c.status === "in_production" && at < SHIP_STEP - 1 ? at + 1 : 0;
+                  // a job linked to the ERP moves with the ERP, so it has no step button
+                  const nextStep = c.status === "in_production" && at < SHIP_STEP - 1 && !c.erpOrderNo ? at + 1 : 0;
                   return (
                     <article key={c.id} className="ax-pb-card" draggable={!!fwd} data-busy={busy === c.id || undefined}
                       onDragStart={() => setDragging(c)} onDragEnd={() => setDragging(null)}>
@@ -190,6 +211,7 @@ export default function ProductionBoard() {
                           {c.status === "in_production" && at > 0 && (
                             <span className="step"><i style={{ width: `${(at / SHIP_STEP) * 100}%` }} />ขั้น {at}/{SHIP_STEP} · {STEPS[at - 1]?.th}</span>
                           )}
+                          {c.erpOrderNo && <span className="erp" title={c.erpSyncedAt ? `ดึงล่าสุด ${new Date(c.erpSyncedAt).toLocaleString("th-TH")}` : undefined}>ERP {c.erpOrderNo}</span>}
                           {!!c.balance?.outstanding && <span className="owes">ค้างชำระ ฿{c.balance.outstanding.toLocaleString("th-TH")} · ส่งไม่ได้จนกว่าจะครบ</span>}
                         </div>
                       </button>
@@ -199,6 +221,8 @@ export default function ProductionBoard() {
                           <button type="button" className="ax-pb-next" disabled={!!busy} onClick={() => step(c, nextStep).catch(() => {})}>
                             {busy === c.id ? "…" : `${STEPS[nextStep - 1].th} →`}
                           </button>
+                        ) : c.erpOrderNo && c.status === "in_production" && at < SHIP_STEP - 1 ? (
+                          <span className="age">ตาม ERP</span>
                         ) : fwd && (
                           <button type="button" className="ax-pb-next" disabled={!!busy} onClick={() => move(c, fwd)}>
                             {busy === c.id ? "…" : `${FORWARD_TH[c.status]} →`}
@@ -214,7 +238,7 @@ export default function ProductionBoard() {
         })}
       </div>
 
-      {open && token && <Drawer id={open} token={token} onClose={() => setOpen(null)} onMove={(c, to) => move(c, to)} onStep={step} busy={busy} />}
+      {open && token && <Drawer id={open} token={token} onClose={() => setOpen(null)} onMove={(c, to) => move(c, to)} onStep={step} onChanged={load} busy={busy} />}
       {ship && <ShipDialog card={ship} busy={busy === ship.id} onCancel={() => setShip(null)} onShip={(courier, trackingNo, note) => { const c = ship; setShip(null); move(c, "shipped", { courier, trackingNo, note }); }} />}
     </Frame>
   );
@@ -239,9 +263,9 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 /** order detail: the shirt in 3D, sizes, roster, shipping, and the job sheet */
-function Drawer({ id, token, onClose, onMove, onStep, busy }: {
+function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
   id: string; token: string; onClose: () => void; onMove: (c: Card, to: Status) => void;
-  onStep: (c: { id: string; orderNo: string }, to: number) => Promise<void>; busy: string;
+  onStep: (c: { id: string; orderNo: string }, to: number) => Promise<void>; onChanged: () => void; busy: string;
 }) {
   const [o, setO] = useState<any>(null);
   const [err, setErr] = useState("");
@@ -329,9 +353,12 @@ function Drawer({ id, token, onClose, onMove, onStep, busy }: {
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
               </div>
             )}
+            {!["cancelled", "refunded"].includes(o.status) && (
+              <ErpPanel o={o} token={token} onChanged={() => { fetchOne(); onChanged(); }} />
+            )}
             {["paid", "approved", "in_production"].includes(o.status) && (
               <div>
-                <span className="ax-label">ขั้นตอนผลิต · ลูกค้าเห็นในหน้าออเดอร์</span>
+                <span className="ax-label">ขั้นตอนผลิต · ลูกค้าเห็นในหน้าออเดอร์{o.erp?.orderNo ? " · ตั้งเองได้ แต่รอบถัดไปจะกลับไปตาม ERP" : ""}</span>
                 <div className="ax-pb-steps" role="group" aria-label="ตั้งขั้นตอนผลิต">
                   {STEPS.map((s, i) => {
                     const n = i + 1, at = o.productionStep ?? 0;
@@ -367,6 +394,69 @@ function Drawer({ id, token, onClose, onMove, onStep, busy }: {
           </>
         )}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * The same job in the factory ERP: link it by the ERP's order number once, and
+ * the step (and the dates the customer sees) follow the ERP from then on.
+ */
+function ErpPanel({ o, token, onChanged }: { o: any; token: string; onChanged: () => void }) {
+  const linked: string | null = o.erp?.orderNo ?? null;
+  const [no, setNo] = useState(linked ?? "");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { setNo(linked ?? ""); }, [linked]);
+
+  async function call(path: string, init: RequestInit) {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<{ ok?: boolean; message: string }>(path, { ...init, token });
+      setMsg({ ok: r.ok !== false, text: r.message });
+      onChanged();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  const link = (v: string) => call(`/admin/orders/${o.id}/erp`, { method: "PUT", body: JSON.stringify({ erpOrderNo: v }) });
+  const steps: any[] = o.erp?.steps ?? [];
+  const day = (s?: string | null) => (s ? new Date(`${s.slice(0, 10)}T00:00:00`).toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : "–");
+
+  return (
+    <div className="ax-pb-erp">
+      <span className="ax-label">ERP · เลขออเดอร์ในระบบโรงงาน</span>
+      <form className="row" onSubmit={e => { e.preventDefault(); if (no.trim() && no.trim() !== linked) link(no); }}>
+        <input className="ax-field" value={no} onChange={e => setNo(e.target.value)} placeholder="เช่น HJ-447" aria-label="เลขออเดอร์ ERP" maxLength={60} />
+        {no.trim() && no.trim() !== linked ? (
+          <button type="submit" className="ax-btn solid sq" disabled={busy}>{busy ? "…" : linked ? "เปลี่ยน" : "ผูก"}</button>
+        ) : linked ? (
+          <>
+            <button type="button" className="ax-sq" disabled={busy} onClick={() => call(`/admin/orders/${o.id}/erp/sync`, { method: "POST" })}>{busy ? "…" : "ดึงตอนนี้"}</button>
+            <button type="button" className="ax-sq" disabled={busy} onClick={() => { setNo(""); link(""); }}>เลิกผูก</button>
+          </>
+        ) : null}
+      </form>
+      {msg && <p className={msg.ok ? "ax-psub" : "ax-err"} style={{ margin: "6px 0 0", fontSize: 13 }}>{msg.text}</p>}
+      {linked && o.erp?.syncedAt && (
+        <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
+          ดึงล่าสุด {new Date(o.erp.syncedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+          {o.erp.statusLabel ? ` · ERP: ${o.erp.statusLabel}` : ""}
+          {o.erp.dueDate ? ` · กำหนดเสร็จ ${day(o.erp.dueDate)}` : ""}
+        </p>
+      )}
+      {linked && steps.length > 0 && (
+        <table className="ax-pb-table" style={{ marginTop: 8 }}>
+          <thead><tr><th>#</th><th>ขั้นใน ERP</th><th>สถานะ</th><th>เริ่ม</th><th>เสร็จ</th></tr></thead>
+          <tbody>
+            {steps.map(s => (
+              <tr key={s.no} data-state={s.finishedOn ? "done" : s.startedOn ? "now" : undefined}>
+                <td>{s.no}</td><td>{s.name}</td><td>{s.label || s.status}</td><td>{day(s.startedOn)}</td><td>{day(s.finishedOn)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!linked && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 12.5 }}>ผูกแล้วขั้นตอนผลิตที่ลูกค้าเห็นจะอัปเดตตาม ERP อัตโนมัติ</p>}
     </div>
   );
 }
