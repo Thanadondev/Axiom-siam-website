@@ -48,11 +48,15 @@ export function formBaseOf(j: { formBase?: number }) {
   return typeof j.formBase === "number" ? j.formBase : -FORM_KIT_Y / FORM_KIT_SCALE;
 }
 
-/** which form: with arms (sleeves), without (singlets), or the lower-body form (shorts) */
+/**
+ * which form: with arms (short sleeves), without (singlets, and long sleeves — those are
+ * draped hanging at the sides, where the form's held-out arms would poke through), or the
+ * lower-body form (shorts)
+ */
 export type FormKind = "arms" | "sleeveless" | "hip";
 
-export function formKindOf(j: { sleeved?: boolean; layout?: string }): FormKind {
-  return j.layout === "shorts" ? "hip" : j.sleeved === false ? "sleeveless" : "arms";
+export function formKindOf(j: { sleeved?: boolean; longSleeves?: boolean; layout?: string }): FormKind {
+  return j.layout === "shorts" ? "hip" : j.sleeved === false || j.longSleeves ? "sleeveless" : "arms";
 }
 
 export function makeDressForm(THREE: any, prims: KitPrims | null, kind: FormKind | boolean = true) {

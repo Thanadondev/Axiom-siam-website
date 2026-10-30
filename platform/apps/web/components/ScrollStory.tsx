@@ -699,7 +699,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
           const stand = new THREE.Group();
           stand.rotation.y = -(i - 2) * 0.16;
           slot.add(stand);
-          (((j && j.sleeved === false && prims?.dress_form_sleeveless?.length) ? prims.dress_form_sleeveless : prims?.dress_form) || []).forEach(({ geo, mat, local }) => {
+          (((j && (j.sleeved === false || j.longSleeves) && prims?.dress_form_sleeveless?.length) ? prims.dress_form_sleeveless : prims?.dress_form) || []).forEach(({ geo, mat, local }) => {
             const m = new THREE.Mesh(geo, mat);
             m.applyMatrix4(local);
             m.castShadow = true;

@@ -63,10 +63,13 @@ KITS = {
     # a pullover hoodie: long set-in sleeves, rib cuffs and hem, a lined hood and a kangaroo pocket
     "warmup": dict(sleeves="long", neck="hood", cw=0.29, L=0.70, nd=0.085),
     # training shorts: one piece per leg (no side seam), elastic waistband, hemmed legs
-    "stride": dict(sleeves="none", neck="waist", garment="shorts", cw=0.252, L=0.485, nd=0.0),
+    # (cut with room at the hip and a wide leg: training shorts hang loose, they don't hug the seat)
+    "stride": dict(sleeves="none", neck="waist", garment="shorts", cw=0.272, L=0.485, nd=0.0),
 }
 Z_WAIST = fk.HIP_WAIST
 TRACE = "--trace" in ARGS
+# tuning knobs: --opt=key:value,key:value
+OPT = dict(kv.split(":") for a in ARGS if a.startswith("--opt=") for kv in a.split("=", 1)[1].split(","))
 
 
 # ---------------------------------------------------------------- curves
@@ -431,6 +434,11 @@ def place_body(P, face):
 
 
 ARM_A = math.radians(56)
+# the form's arms for the drape (held out along the sleeve line; after the drape a hoodie's
+# long sleeves are swung down nearer the sides, and the hood is draped round arms at that angle)
+ARM = dict(angle=56.0, length=0.3)
+# how easily the cloth bends (shorts: a woven polyester that holds its line)
+FABRIC = dict(bend=1.0, hood_bend=1.0)
 
 
 def sleeve_path(sx, s, arm=0.3, bend=0.16):
@@ -614,12 +622,12 @@ def build(kit_id, spec):
     return ob, mats, order, front, back, sleeved, (neck_w, arm_w, hem_w)
 
 
-def simulate(ob, sleeved, frames=120, settle_only=False, rib_shrink=0.0, shorts=False):
+def simulate(ob, sleeved, frames=120, settle_only=False, rib_shrink=0.0, shorts=False, self_collide=False):
     fk.materials()
     if shorts:
         form = fk.hip_form(bpy.context.collection)
     else:
-        form = fk.dress_form(bpy.context.collection, arms=sleeved, arm_len=0.3)
+        form = fk.dress_form(bpy.context.collection, arms=sleeved, arm_len=ARM["length"], arm_angle=ARM["angle"])
     form.modifiers.new("Collision", "COLLISION")
     form.collision.thickness_outer = 0.004
     form.collision.thickness_inner = 0.02
@@ -670,14 +678,16 @@ def simulate(ob, sleeved, frames=120, settle_only=False, rib_shrink=0.0, shorts=
     st.tension_stiffness = 25
     st.compression_stiffness = 25
     st.shear_stiffness = 15
-    st.bending_stiffness = 1.0
+    st.bending_stiffness = FABRIC["bend"]
     st.air_damping = 3.0
     st.use_sewing_springs = True
     st.sewing_force_max = 8.0
     cs = cl.collision_settings
     cs.collision_quality = 6
     cs.distance_min = 0.004
-    cs.use_self_collision = False
+    cs.use_self_collision = self_collide
+    cs.self_distance_min = 0.003
+    cs.self_friction = 3
     # sew first with little gravity, then let it hang
     ew = st.effector_weights
     if not settle_only:
@@ -808,6 +818,35 @@ def weld(ob):
 
 
 
+# ---------------------------------------------------------------- long sleeves down
+def lower_sleeves(ob, a0, a1):
+    """
+    Swing the draped sleeves down from a0 to a1 degrees (from the vertical) about the
+    shoulder joints, the way a rig poses a model: each sleeve point turns by an amount that
+    eases in from the armhole, so the cap stays sewn in and the rest of the sleeve comes
+    down whole. A short settle afterwards lets the fleece fold under the arm.
+    """
+    me = ob.data
+    slv = {i for i, m in enumerate(me.materials) if m.name.split(".")[0] in ("Sleeve", "Trim_Arm")}
+    on = {v for p in me.polygons if p.material_index in slv for v in p.vertices}
+    off = {v for p in me.polygons if p.material_index not in slv for v in p.vertices}
+    da = math.radians(a0 - a1)
+    for v in me.vertices:
+        if v.index not in on or v.index in off:
+            continue
+        p = v.co
+        sx = 1 if p.x > 0 else -1
+        joint = Vector((sx * 0.15, 0.0, J + 0.24))
+        d = Vector((sx * math.sin(math.radians(a0)), 0.0, -math.cos(math.radians(a0))))
+        s_ = (p - joint).dot(d)
+        t = min(max((s_ - 0.03) / 0.13, 0.0), 1.0)
+        w = t * t * (3 - 2 * t)
+        # right arm: turning toward -z is a positive turn about +y; mirrored on the left
+        R = Matrix.Rotation(sx * da * w, 3, "Y")
+        v.co = joint + R @ (p - joint)
+    me.update()
+
+
 # ---------------------------------------------------------------- the hood (hoodie)
 def mat_index(me, name):
     return next(i for i, m in enumerate(me.materials) if m.name.split(".")[0] == name)
@@ -928,7 +967,7 @@ def hood_stage(ob):
 def simulate_pinned(ob, n_pin, frames=200, wind=0.0):
     """drape what was added after the first n_pin vertices; the rest stays where it is"""
     fk.materials()
-    form = fk.dress_form(bpy.context.collection, arms=True, arm_len=0.3)
+    form = fk.dress_form(bpy.context.collection, arms=True, arm_len=ARM["length"], arm_angle=ARM["angle"])
     form.modifiers.new("Collision", "COLLISION")
     form.collision.thickness_outer = 0.004
     form.collision.thickness_inner = 0.02
@@ -955,7 +994,7 @@ def simulate_pinned(ob, n_pin, frames=200, wind=0.0):
     st.tension_stiffness = 30
     st.compression_stiffness = 30
     st.shear_stiffness = 15
-    st.bending_stiffness = 1.0
+    st.bending_stiffness = FABRIC["hood_bend"]
     st.air_damping = 3.0
     st.use_sewing_springs = True
     st.sewing_force_max = 8.0
@@ -1626,6 +1665,74 @@ def sleeve_print_coords(ob):
         rn.data[v.index].vector = rn.data[j].vector
 
 
+def clear_of_form(ob, kind, clearance):
+    """
+    Keep the finished cloth off the display form the web shows it on. The smoothing and
+    subdivision after the drape pull the cloth a hair inwards where it wraps round the
+    form (the front of the crotch on the shorts), and the black form showed through.
+    Every point closer than `clearance` is pushed out along the form's normal, and the
+    push is eased into its neighbours so the cloth bulges smoothly instead of denting.
+    """
+    from mathutils.bvhtree import BVHTree
+    fk.MATS.clear()
+    fk.materials()
+    col = bpy.context.collection
+    form = fk.hip_form(col) if kind == "hip" else fk.dress_form(col, arms=kind == "arms")
+    parts = [o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith(("hip_form", "dress_form"))]
+    fbm = bmesh.new()
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in parts:
+        t = bmesh.new()
+        t.from_object(o, dg)
+        t.transform(o.matrix_world)
+        tme = bpy.data.meshes.new("t")
+        t.to_mesh(tme)
+        t.free()
+        fbm.from_mesh(tme)
+        bpy.data.meshes.remove(tme)
+    bmesh.ops.recalc_face_normals(fbm, faces=fbm.faces)  # each closed part: normals outward
+    fbm.normal_update()
+    bvh = BVHTree.FromBMesh(fbm)
+    for o in parts:
+        bpy.data.objects.remove(o)
+    for n in [o.name for o in bpy.data.objects if o.name.startswith(("form_stand", "hip_stand"))]:
+        bpy.data.objects.remove(bpy.data.objects[n])
+    me = ob.data
+    adj = [[] for _ in me.vertices]
+    for e in me.edges:
+        a, b = e.vertices
+        adj[a].append(b)
+        adj[b].append(a)
+    moved = 0
+    for _round in range(3):
+        disp = {}
+        for v in me.vertices:
+            loc, nrm, _, d = bvh.find_nearest(v.co, 0.05)
+            if loc is None:
+                continue
+            sd = (v.co - loc).dot(nrm)
+            if sd < clearance:
+                disp[v.index] = nrm * (clearance - sd)
+        if not disp:
+            break
+        moved += len(disp)
+        # ease the push out over two rings of neighbours
+        field = dict(disp)
+        for _ in range(2):
+            grow = {}
+            for i, dv in field.items():
+                for n in adj[i]:
+                    if n not in disp:
+                        grow.setdefault(n, []).append(dv)
+            for n, ds in grow.items():
+                field[n] = sum(ds, Vector()) / len(ds) * 0.5 if n not in field else field[n]
+        for i, dv in field.items():
+            me.vertices[i].co += dv
+    me.update()
+    fbm.free()
+    return moved
+
+
 def finish(kit_id, ob, order, front, sleeved):
     shorts = KITS[kit_id].get("garment") == "shorts"
     face_outward(ob, legs=shorts)
@@ -1658,6 +1765,10 @@ def finish(kit_id, ob, order, front, sleeved):
         p.use_smooth = True
     ng = stitch_grooves(ob)
     T = 0.0016   # fabric thickness, metres (thin knit; thicker pokes the lining through tight seam folds)
+    # off the form the web shows it on (a long sleeve is shown on the form without arms)
+    kind = "hip" if shorts else "arms" if KITS[kit_id]["sleeves"] == "short" else "none"
+    pushed = clear_of_form(ob, kind, T + 0.003)
+    print(f"{kit_id}: {pushed} points eased off the form", flush=True)
     roll = rolled_edges(ob, T, r=0.0032)
     neck = KITS[kit_id]["neck"]
     extras = polo_details(ob) if neck == "polo" else hoodie_details(ob) if neck == "hood" else shorts_details(ob) if shorts else []
@@ -1746,10 +1857,15 @@ def shorts_piece(spec):
     #                                  waistband is cut smaller than the waist (0.79 m) it grips
     hf, hb = spec["cw"], spec["cw"] + 0.02    # at the hip
     ef, eb = 0.055, 0.09             # crotch extensions
-    lf, lb = 0.29, 0.33              # leg opening
+    lf, lb = 0.31, 0.35              # leg opening
     nin = count(0.18)
     p = Piece("leg", "Body")
-    p.add("hem", seg((-lf, 0), (lb, 0), count(lf + lb, 0.01)))
+    # the hem rises toward the side seam line (a running short's curved hem): on the form the
+    # thigh splays out, and a straight hem rode up into a V at the crotch
+    rise = 0.032
+    hu = np.linspace(-lf, lb, 400)
+    hv = rise * (1 - np.where(hu < 0, hu / lf, hu / lb) ** 2) ** 1.5
+    p.add("hem", even(np.stack([hu, hv], 1), count(lf + lb, 0.01)))
     p.add("inB", seg((lb, 0), (hb + eb, vc), nin))
     cb = np.concatenate([bez((hb + eb, vc), (hb + eb * 0.35, vc + 0.004), (hb, vc + 0.05), (hb, vc + 0.12), 100)[:-1],
                          seg((hb, vc + 0.12), (wb, V + 0.025), 60)])
@@ -1930,6 +2046,7 @@ def shorts_details(ob):
 
 def make_shorts(kit_id):
     spec = KITS[kit_id]
+    FABRIC.update(bend=2.5)  # a woven polyester holds its line better than a jersey knit
     ob, piece = build_shorts(kit_id, spec)
     simulate(ob, False, frames=120, shorts=True)
     symmetrize(ob)
@@ -1955,8 +2072,11 @@ def make(kit_id):
     spec = KITS[kit_id]
     if spec.get("garment") == "shorts":
         return make_shorts(kit_id)
-    ob, mats, order, front, back, sleeved, widths = build(kit_id, spec)
     long = spec["sleeves"] == "long"
+    if long:
+        # draped as before (arms held out along the sleeve); the sleeves are brought down after
+        FABRIC.update(hood_bend=float(OPT.get("hood_bend", 1.0)))
+    ob, mats, order, front, back, sleeved, widths = build(kit_id, spec)
     simulate(ob, sleeved, frames=160 if long else 120)
     symmetrize(ob)
     gap = weld(ob)
@@ -1967,6 +2087,14 @@ def make(kit_id):
     if centre:
         ob.data.attributes.remove(centre)
     simulate(ob, sleeved, frames=24, settle_only=True)
+    if long:
+        # held out at 56° the long sleeves stood out stiffly, like a scarecrow: bring them
+        # down nearer the sides (all the way down, they'd cut into the body's sides)
+        down = float(OPT.get("down", 38))
+        lower_sleeves(ob, ARM["angle"], down)
+        ARM.update(angle=down)
+        if int(OPT.get("settle", 0)):
+            simulate(ob, sleeved, frames=int(OPT["settle"]), settle_only=True)
     if spec["neck"] == "hood":
         if "--pre" in ARGS:
             bpy.ops.wm.save_as_mainfile(filepath=str(OUT / f"{kit_id}_pre.blend"))

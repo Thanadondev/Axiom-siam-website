@@ -401,7 +401,7 @@ def shirt_hanging(col):
     return ob
 
 
-def dress_form(col, arms=True, name="dress_form", arm_len=0.2):
+def dress_form(col, arms=True, name="dress_form", arm_len=0.2, arm_angle=56):
     """a headless display form on a chrome pole — the way a kit shop shows a top.
     Floor at the origin; a kit at scale 0.26 sits on it with its origin at 1.25 m. Faces -Y."""
     bm = bmesh.new()
@@ -442,7 +442,8 @@ def dress_form(col, arms=True, name="dress_form", arm_len=0.2):
         poly.use_smooth = True
     p = Part("form_stand")
     # arms held out along the sleeve line, so a short sleeve sits round them as when worn
-    A, L = 56, arm_len   # display arms end inside a short sleeve; the drape uses longer ones
+    # (a long sleeve is draped on arms hanging down at the sides: arm_angle from the vertical)
+    A, L = arm_angle, arm_len   # display arms end inside a short sleeve; the drape uses longer ones
     for sx in ((1, -1) if arms else ()):
         sh = Vector((sx * 0.15, 0.0, J + 0.24))
         d = Vector((sx * math.sin(radians(A)), 0.0, -math.cos(radians(A))))

@@ -46,6 +46,8 @@ export interface Jersey {
   hookZ?: number;
   /** has sleeves (the display form shows arms for these) */
   sleeved?: boolean;
+  /** long sleeves, draped hanging at the sides: shown on the form without its (held-out) arms */
+  longSleeves?: boolean;
   /** where the prints go, and which display form it is draped on (shorts: the hip form) */
   layout?: PrintLayout;
   setLook(look: JerseyLook): void;
@@ -839,6 +841,7 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
     hookTop: hook?.hookTop,
     hookZ: hook?.hookZ,
     sleeved,
+    longSleeves: info.sleeves === "long",
     layout,
     setLook(look: JerseyLook) {
       const c = look.colors;
