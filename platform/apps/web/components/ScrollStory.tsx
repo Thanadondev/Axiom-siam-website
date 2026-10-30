@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { tri, type Lang } from "../lib/i18n";
 import { apiFetch } from "../lib/api";
 import Link from "next/link";
 import { loadThreeWithGltf, loadThreePost, hasWebGL, prefersReducedMotion } from "../lib/three-cdn";
@@ -59,18 +60,18 @@ const lookFor = (k: Kit, extra: Partial<JerseyLook> = {}): JerseyLook => {
  * the real thing in the 3D hall and open the page for it. They show in the
  * opening shot at the door and again in the view from the roof.
  */
-const SPOTS: { href: string; th: string; en: string; subTh: string; subEn: string; at: [number, number, number] }[] = [
-  { href: "/shop", th: "ออกแบบเสื้อ", en: "Design a kit", subTh: "เลือกทรง เปลี่ยนสี ใส่ชื่อ", subEn: "Cut, colours, names", at: [2.3, 1.8, 15] },
-  { href: "/design", th: "ออกแบบขั้นสูง", en: "Advanced designer", subTh: "วางลายเองทุกจุด", subEn: "Lay out every panel", at: [0, 1.5, 0.3] },
-  { href: "/templates", th: "ตลาดลาย", en: "Template market", subTh: "ลายจากดีไซเนอร์", subEn: "Designs from designers", at: [10, 3.6, -9] },
-  { href: "/tracking", th: "ติดตามออเดอร์", en: "Track my order", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", at: [9.5, 1.6, -2] },
+const SPOTS: { href: string; th: string; en: string; ja: string; subTh: string; subEn: string; subJa: string; at: [number, number, number] }[] = [
+  { href: "/shop", th: "ออกแบบเสื้อ", en: "Design a kit", ja: "ユニフォームをデザイン", subTh: "เลือกทรง เปลี่ยนสี ใส่ชื่อ", subEn: "Cut, colours, names", subJa: "型・色・名前を選ぶ", at: [2.3, 1.8, 15] },
+  { href: "/design", th: "ออกแบบขั้นสูง", en: "Advanced designer", ja: "詳細デザインエディタ", subTh: "วางลายเองทุกจุด", subEn: "Lay out every panel", subJa: "すべてのパーツを自由に配置", at: [0, 1.5, 0.3] },
+  { href: "/templates", th: "ตลาดลาย", en: "Template market", ja: "テンプレートマーケット", subTh: "ลายจากดีไซเนอร์", subEn: "Designs from designers", subJa: "デザイナーの柄", at: [10, 3.6, -9] },
+  { href: "/tracking", th: "ติดตามออเดอร์", en: "Track my order", ja: "注文を追跡", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", subJa: "生産と配送の状況", at: [9.5, 1.6, -2] },
 ];
 
 const WORK = [
-  { img: "/portfolio/ex_01.png", t: "ωμον · YUTA", th: "เสื้อกลับด้าน · คาโม่ส้ม", en: "Reversible bib · orange camo" },
-  { img: "/portfolio/ex_02.png", t: "ωμον · YUTA", th: "เสื้อกลับด้าน · คาโม่ฟ้า", en: "Reversible bib · blue camo" },
-  { img: "/portfolio/ex_03.png", t: "SEIJO High School", th: "เสื้อวิ่ง (ซิงเกล็ต)", en: "Running singlet" },
-  { img: "/portfolio/ex_04.png", t: "MEIWA FC · ZEN", th: "เสื้อกลับด้าน · ฟุตบอล", en: "Reversible bib · football" },
+  { img: "/portfolio/ex_01.png", t: "ωμον · YUTA", th: "เสื้อกลับด้าน · คาโม่ส้ม", en: "Reversible bib · orange camo", ja: "リバーシブルビブス · オレンジ迷彩" },
+  { img: "/portfolio/ex_02.png", t: "ωμον · YUTA", th: "เสื้อกลับด้าน · คาโม่ฟ้า", en: "Reversible bib · blue camo", ja: "リバーシブルビブス · ブルー迷彩" },
+  { img: "/portfolio/ex_03.png", t: "SEIJO High School", th: "เสื้อวิ่ง (ซิงเกล็ต)", en: "Running singlet", ja: "ランニングシングレット" },
+  { img: "/portfolio/ex_04.png", t: "MEIWA FC · ZEN", th: "เสื้อกลับด้าน · ฟุตบอล", en: "Reversible bib · football", ja: "リバーシブルビブス · サッカー" },
 ];
 
 /** splits a heading into words that rise in one after another when the panel is active; *word = accent */
@@ -105,7 +106,9 @@ export function Words({ text }: { text: string }) {
   );
 }
 
-export default function ScrollStory({ th }: { th: boolean }) {
+export default function ScrollStory({ lang }: { lang: Lang }) {
+  const th = lang === "th";
+  const L = tri(lang);
   const root = useRef<HTMLDivElement>(null);
   const mount = useRef<HTMLDivElement>(null);
   const panels = useRef<(HTMLDivElement | null)[]>([]);
@@ -130,6 +133,8 @@ export default function ScrollStory({ th }: { th: boolean }) {
   }, []);
   const thRef = useRef(th);
   thRef.current = th;
+  const langRef = useRef(lang);
+  langRef.current = lang;
 
   // scroll → chapter panels (runs with or without WebGL)
   useEffect(() => {
@@ -174,7 +179,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
         lastKit = ki;
         const k = STORY_KITS[ki];
         if (kitLabel.current) kitLabel.current.textContent = thRef.current ? k.name : k.en;
-        if (kitSub.current) kitSub.current.textContent = `${k.code} · ${k.cutLabel}`;
+        if (kitSub.current) { const l = langRef.current; kitSub.current.textContent = `${k.code} · ${l === "th" ? k.cutLabel : l === "ja" ? k.cutJa : k.cutEn}`; }
         setFlatKit(ki);
       }
     };
@@ -772,7 +777,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
       io.observe(el);
 
       // the menu labels: measured size (per language) and how far each is nudged to clear the others
-      let spotLang = thRef.current, spotW = 0;
+      let spotLang = langRef.current, spotW = 0;
       const spotSize: ({ w: number; h: number } | null)[] = SPOTS.map(() => null);
       const spotDy = SPOTS.map(() => 0);
       const spotFlip: (boolean | null)[] = SPOTS.map(() => null);
@@ -870,7 +875,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
         // the menu pins: project each station onto the screen
         const pinA = Math.max(1 - ease((P0 - 0.25) / 0.3), ease((P0 - (CHAPTERS - 1.55)) / 0.35));
         const W = el.clientWidth, H = el.clientHeight;
-        if (spotLang !== thRef.current || spotW !== W) { spotLang = thRef.current; spotW = W; spotSize.fill(null); }
+        if (spotLang !== langRef.current || spotW !== W) { spotLang = langRef.current; spotW = W; spotSize.fill(null); }
         // the chapter text on screen now (the heading at the door, the call from the roof): pins keep off it
         const textEl = pinA > 0.05 ? panels.current[P0 < 1 ? 0 : CHAPTERS - 1] : null;
         // measured on the words themselves (the panel's box is wider than its text)
@@ -976,19 +981,21 @@ export default function ScrollStory({ th }: { th: boolean }) {
     window.scrollTo({ top: el.offsetTop + (span * i) / (CHAPTERS - 1) + 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   };
 
-  const CH = th
-    ? ["เข้าโรงงาน", "เลือกทรง", "คอลเลกชัน", "พิมพ์ลงผ้า", "ชื่อ-เบอร์", "ทั้งทีม", "ผลงาน", "ติดต่อเรา"]
-    : ["Factory", "Cut", "Collection", "Print", "Names", "Team", "Work", "Contact"];
+  const CH = L(
+    ["เข้าโรงงาน", "เลือกทรง", "คอลเลกชัน", "พิมพ์ลงผ้า", "ชื่อ-เบอร์", "ทั้งทีม", "ผลงาน", "ติดต่อเรา"],
+    ["Factory", "Cut", "Collection", "Print", "Names", "Team", "Work", "Contact"],
+    ["工場", "型", "コレクション", "プリント", "名前と番号", "チーム", "実績", "お問い合わせ"],
+  );
 
   const P = (i: number) => (e: HTMLDivElement | null) => { panels.current[i] = e; };
 
   return (
-    <section ref={root} id="story" className="ax-story" style={{ height: `${CHAPTERS * 100}vh` }} aria-label={th ? "เรื่องราวการผลิตเสื้อทีม" : "How a team kit is made"}>
+    <section ref={root} id="story" className="ax-story" style={{ height: `${CHAPTERS * 100}vh` }} aria-label={L("เรื่องราวการผลิตเสื้อทีม", "How a team kit is made", "チームユニフォームができるまで")}>
       {([["collection", 2], ["process", 3], ["work", 6], ["contact", 7]] as const).map(([id, i]) => (
         <span key={id} id={id} className="ax-story-anchor" style={{ top: `calc(${i * 100}vh + 2px)` }} aria-hidden="true" />
       ))}
       <div className="ax-story-pin">
-        <div ref={mount} className="ax-story-canvas" role="img" aria-label={th ? "โรงงานผลิตเสื้อกีฬาแบบ 3D ที่เปลี่ยนไปตามการเลื่อนหน้า" : "A 3D walk through the sportswear factory that follows your scroll"}>
+        <div ref={mount} className="ax-story-canvas" role="img" aria-label={L("โรงงานผลิตเสื้อกีฬาแบบ 3D ที่เปลี่ยนไปตามการเลื่อนหน้า", "A 3D walk through the sportswear factory that follows your scroll", "スクロールに合わせて歩く、3Dのスポーツウェア工場")}>
           {flat && (
             <div className="ax-story-flat">
               <KitThumb kit={STORY_KITS[flatKit]} number={STORY_KITS[flatKit].defaults.number} label={STORY_KITS[flatKit].name} />
@@ -997,11 +1004,11 @@ export default function ScrollStory({ th }: { th: boolean }) {
         </div>
         <div className="ax-story-vignette" aria-hidden="true" />
         {!flat && (
-          <nav className="ax-story-spots" aria-label={th ? "เมนูในโรงงาน" : "Factory menu"}>
+          <nav className="ax-story-spots" aria-label={L("เมนูในโรงงาน", "Factory menu", "工場メニュー")}>
             {SPOTS.map((sp, i) => (
               <Link key={sp.href} href={sp.href} className="ax-spot" ref={e => { spots.current[i] = e; }} style={{ visibility: "hidden" }}>
                 <i aria-hidden="true" />
-                <span><b>{th ? sp.th : sp.en}</b><small>{th ? sp.subTh : sp.subEn}</small></span>
+                <span><b>{L(sp.th, sp.en, sp.ja)}</b><small>{L(sp.subTh, sp.subEn, sp.subJa)}</small></span>
               </Link>
             ))}
           </nav>
@@ -1017,37 +1024,35 @@ export default function ScrollStory({ th }: { th: boolean }) {
         {/* 0 — kick-off */}
         <div ref={P(0)} className="ax-story-panel hero" data-on>
           <div className="lede">
-            <span className="ax-kicker">{th ? "โรงงานผลิตเสื้อกีฬา · ออกแบบเองได้ทั้งทีม" : "Custom team kit · made in Bangkok"}</span>
+            <span className="ax-kicker">{L("โรงงานผลิตเสื้อกีฬา · ออกแบบเองได้ทั้งทีม", "Custom team kit · made in Bangkok", "オーダーチームウェア · バンコクの自社工場")}</span>
             <h1 className="ax-display"><Words text={"Built for\n*your *team."} /></h1>
-            <p>{th
-              ? "ออกแบบเสื้อทีมบนโมเดล 3D เปลี่ยนสีได้ทีละส่วน ใส่ชื่อและเบอร์ทั้งทีม เห็นราคาทันที แล้วสั่งผลิตกับโรงงานได้ในที่เดียว"
-              : "Design your team kit in 3D: recolour every panel, add every player's name and number, see the price straight away and order from the factory."}</p>
+            <p>{L("ออกแบบเสื้อทีมบนโมเดล 3D เปลี่ยนสีได้ทีละส่วน ใส่ชื่อและเบอร์ทั้งทีม เห็นราคาทันที แล้วสั่งผลิตกับโรงงานได้ในที่เดียว", "Design your team kit in 3D: recolour every panel, add every player's name and number, see the price straight away and order from the factory.", "3Dモデルでチームユニフォームをデザイン。パーツごとに色を変え、全員の名前と番号を入れて、価格をその場で確認。そのまま工場に発注できます。")}</p>
             <div className="ax-row">
-              <Link href="/shop" className="ax-btn solid">{th ? "เริ่มออกแบบเสื้อ" : "Start designing"}</Link>
-              <button type="button" className="ax-story-link" onClick={() => go(1)}>{th ? "เดินเข้าโรงงาน" : "Walk into the factory"} <span aria-hidden="true">↓</span></button>
+              <Link href="/shop" className="ax-btn solid">{L("เริ่มออกแบบเสื้อ", "Start designing", "デザインを始める")}</Link>
+              <button type="button" className="ax-story-link" onClick={() => go(1)}>{L("เดินเข้าโรงงาน", "Walk into the factory", "工場の中へ")} <span aria-hidden="true">↓</span></button>
             </div>
-            <nav className="ax-story-chips" aria-label={th ? "เมนู" : "Menu"}>
-              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{th ? sp.th : sp.en}</Link>)}
+            <nav className="ax-story-chips" aria-label={L("เมนู", "Menu", "メニュー")}>
+              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}</Link>)}
             </nav>
           </div>
         </div>
 
         {/* 1 — cuts */}
         <div ref={P(1)} className="ax-story-panel left">
-          <span className="ax-kicker">01 — {th ? "เลือกทรง" : "Pick a cut"}</span>
+          <span className="ax-kicker">01 — {L("เลือกทรง", "Pick a cut", "型を選ぶ")}</span>
           <h2 className="ax-display"><span ref={kitLabel}>{th ? HERO.name : HERO.en}</span></h2>
           <span className="rule" />
-          <span ref={kitSub} className="ax-mono">{HERO.code} · {HERO.cutLabel}</span>
-          <p>{th ? "ฟุตบอล วิ่ง บาส แบด โปโล แต่ละทรงตัดเย็บมาเพื่อกีฬานั้น แล้วเปลี่ยนสีได้ทุกส่วน" : "Football, running, basketball, badminton and polo, each cut for its sport, every panel recolourable."}</p>
-          <Link href="/shop" className="ax-story-go">{th ? "เลือกทรงเสื้อ" : "Pick a cut"} <span aria-hidden="true">→</span></Link>
+          <span ref={kitSub} className="ax-mono">{HERO.code} · {L(HERO.cutLabel, HERO.cutEn, HERO.cutJa)}</span>
+          <p>{L("ฟุตบอล วิ่ง บาส แบด โปโล แต่ละทรงตัดเย็บมาเพื่อกีฬานั้น แล้วเปลี่ยนสีได้ทุกส่วน", "Football, running, basketball, badminton and polo, each cut for its sport, every panel recolourable.", "サッカー、ランニング、バスケ、バドミントン、ポロ。競技ごとの専用の型で、すべてのパーツの色を変えられます。")}</p>
+          <Link href="/shop" className="ax-story-go">{L("เลือกทรงเสื้อ", "Pick a cut", "型を選ぶ")} <span aria-hidden="true">→</span></Link>
         </div>
 
         {/* 2 — collection, at the racks of finished kit */}
         <div ref={P(2)} className="ax-story-panel collection">
           <div className="head">
-            <span className="ax-kicker">02 — {th ? "คอลเลกชัน" : "Collection"}</span>
-            <h2 className="ax-display"><Words text={th ? "เลือก*ทรงตั้งต้น" : "Pick a *base"} /></h2>
-            <p>{th ? "เลือกทรงตั้งต้นตามกีฬา แล้วไปปรับสี ลาย ชื่อ และเบอร์ต่อในห้องออกแบบ" : "Start from a cut made for your sport, then recolour it and add names and numbers in the studio."}</p>
+            <span className="ax-kicker">02 — {L("คอลเลกชัน", "Collection", "コレクション")}</span>
+            <h2 className="ax-display"><Words text={L("เลือก*ทรงตั้งต้น", "Pick a *base", "ベースの*型を選ぶ")} /></h2>
+            <p>{L("เลือกทรงตั้งต้นตามกีฬา แล้วไปปรับสี ลาย ชื่อ และเบอร์ต่อในห้องออกแบบ", "Start from a cut made for your sport, then recolour it and add names and numbers in the studio.", "競技に合った型から始めて、スタジオで色を変え、名前と番号を入れましょう。")}</p>
           </div>
           <div className="ax-story-kits">
             {KITS.map(k => (
@@ -1056,7 +1061,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
                 <div className="meta">
                   <span className="ax-mono">{k.code}</span>
                   <b>{th ? k.name : k.en}</b>
-                  <small>{k.cutLabel}{fromPrice !== null ? ` · ${th ? "เริ่ม" : "from"} ฿${Math.max(0, fromPrice + (garmentDelta[k.garment] ?? 0)).toLocaleString("th-TH")}` : ""}</small>
+                  <small>{L(k.cutLabel, k.cutEn, k.cutJa)}{fromPrice !== null ? ` · ${L("เริ่ม ", "from ", "")}฿${Math.max(0, fromPrice + (garmentDelta[k.garment] ?? 0)).toLocaleString("th-TH")}${lang === "ja" ? "〜" : ""}` : ""}</small>
                 </div>
               </Link>
             ))}
@@ -1065,86 +1070,82 @@ export default function ScrollStory({ th }: { th: boolean }) {
 
         {/* 3 — print */}
         <div ref={P(3)} className="ax-story-panel left">
-          <span className="ax-kicker">03 — {th ? "พิมพ์ลงเนื้อผ้า" : "Printed into the fabric"}</span>
-          <h2 className="ax-display"><Words text={th ? "สีอยู่\nใน*เส้นใย" : "Colour in\nthe *fibre"} /></h2>
+          <span className="ax-kicker">03 — {L("พิมพ์ลงเนื้อผ้า", "Printed into the fabric", "生地に染め込むプリント")}</span>
+          <h2 className="ax-display"><Words text={L("สีอยู่\nใน*เส้นใย", "Colour in\nthe *fibre", "色は\n*繊維の中に")} /></h2>
           <span className="rule" />
-          <p>{th ? "พิมพ์ซับลิเมชันลงผ้า Mesh · B1 · C1 สีสด ไม่ลอก ไม่แตก ใส่แข่งได้ทั้งฤดูกาล" : "Sublimation-printed on Mesh, B1 or C1: bright colour that doesn't peel or crack, season after season."}</p>
+          <p>{L("พิมพ์ซับลิเมชันลงผ้า Mesh · B1 · C1 สีสด ไม่ลอก ไม่แตก ใส่แข่งได้ทั้งฤดูกาล", "Sublimation-printed on Mesh, B1 or C1: bright colour that doesn't peel or crack, season after season.", "Mesh・B1・C1に昇華プリント。鮮やかな色ははがれず割れず、シーズンを通して着られます。")}</p>
           <div className="ax-story-tags"><span>MESH</span><span>B1</span><span>C1</span></div>
-          <Link href="/design" className="ax-story-go">{th ? "ออกแบบลายเองขั้นสูง" : "Open the advanced designer"} <span aria-hidden="true">→</span></Link>
+          <Link href="/design" className="ax-story-go">{L("ออกแบบลายเองขั้นสูง", "Open the advanced designer", "詳細デザインエディタを開く")} <span aria-hidden="true">→</span></Link>
         </div>
 
         {/* 4 — names */}
         <div ref={P(4)} className="ax-story-panel left">
-          <span className="ax-kicker">04 — {th ? "ชื่อและเบอร์" : "Names & numbers"}</span>
-          <h2 className="ax-display"><Words text={th ? "ทุกคน\n*ในทีม" : "Every\n*player"} /></h2>
+          <span className="ax-kicker">04 — {L("ชื่อและเบอร์", "Names & numbers", "名前と番号")}</span>
+          <h2 className="ax-display"><Words text={L("ทุกคน\n*ในทีม", "Every\n*player", "選手\n*全員分")} /></h2>
           <span className="rule" />
-          <p>{th ? "วางรายชื่อจาก Excel ครั้งเดียว ระบบใส่ชื่อและเบอร์ให้ทุกตัว พร้อมแยกไซซ์ให้โรงงาน" : "Paste the roster from Excel once: every shirt gets its name and number, split by size for the factory."}</p>
-          <Link href="/shop" className="ax-story-go">{th ? "ใส่ชื่อ-เบอร์ทั้งทีม" : "Add your roster"} <span aria-hidden="true">→</span></Link>
+          <p>{L("วางรายชื่อจาก Excel ครั้งเดียว ระบบใส่ชื่อและเบอร์ให้ทุกตัว พร้อมแยกไซซ์ให้โรงงาน", "Paste the roster from Excel once: every shirt gets its name and number, split by size for the factory.", "Excelの名簿を一度貼り付けるだけ。全員分の名前と番号が入り、工場向けにサイズ別に振り分けられます。")}</p>
+          <Link href="/shop" className="ax-story-go">{L("ใส่ชื่อ-เบอร์ทั้งทีม", "Add your roster", "チーム全員の名前と番号を入れる")} <span aria-hidden="true">→</span></Link>
         </div>
 
         {/* 5 — team */}
         <div ref={P(5)} className="ax-story-panel bottom center">
-          <span className="ax-kicker">05 — {th ? "ผลิตและส่งถึงทีม" : "Made & delivered"}</span>
-          <h2 className="ax-display"><Words text={th ? "ผ่าน *QC ทุกตัว" : "Checked & *ready"} /></h2>
+          <span className="ax-kicker">05 — {L("ผลิตและส่งถึงทีม", "Made & delivered", "製造からお届けまで")}</span>
+          <h2 className="ax-display"><Words text={L("ผ่าน *QC ทุกตัว", "Checked & *ready", "全数*検品")} /></h2>
           <div className="ax-story-stats">
-            <div><b>5+</b><span>{th ? "ปีประสบการณ์" : "Years making kit"}</span></div>
-            <div><b>10+</b><span>{th ? "ประเทศที่ส่งออก" : "Export countries"}</span></div>
-            <div><b>50K+</b><span>{th ? "ตัวต่อเดือน" : "Units a month"}</span></div>
-            <div><b>QC</b><span>{th ? "ทุกขั้นตอน" : "Every step"}</span></div>
+            <div><b>5+</b><span>{L("ปีประสบการณ์", "Years making kit", "年の製造実績")}</span></div>
+            <div><b>10+</b><span>{L("ประเทศที่ส่งออก", "Export countries", "輸出先の国")}</span></div>
+            <div><b>50K+</b><span>{L("ตัวต่อเดือน", "Units a month", "枚/月")}</span></div>
+            <div><b>QC</b><span>{L("ทุกขั้นตอน", "Every step", "全工程")}</span></div>
           </div>
           <div className="ax-row" style={{ justifyContent: "center" }}>
-            <Link href="/tracking" className="ax-story-go">{th ? "ดูทั้ง 10 ขั้น และติดตามงานของคุณ" : "See all ten steps, track your order"} <span aria-hidden="true">→</span></Link>
-            <Link href="/account" className="ax-story-go">{th ? "ออเดอร์ของฉัน" : "My orders"} <span aria-hidden="true">→</span></Link>
+            <Link href="/tracking" className="ax-story-go">{L("ดูทั้ง 10 ขั้น และติดตามงานของคุณ", "See all ten steps, track your order", "全10工程を見る・注文を追跡")} <span aria-hidden="true">→</span></Link>
+            <Link href="/account" className="ax-story-go">{L("ออเดอร์ของฉัน", "My orders", "注文履歴")} <span aria-hidden="true">→</span></Link>
           </div>
         </div>
 
         {/* 6 — work */}
         <div ref={P(6)} className="ax-story-panel work">
           <div className="head">
-            <span className="ax-kicker">06 — {th ? "ผลงานจริง" : "Real work"}</span>
-            <h2 className="ax-display"><Words text={th ? "ผลิต*ในบ้าน" : "Made *in-house"} /></h2>
+            <span className="ax-kicker">06 — {L("ผลงานจริง", "Real work", "制作実績")}</span>
+            <h2 className="ax-display"><Words text={L("ผลิต*ในบ้าน", "Made *in-house", "*自社工場で製造")} /></h2>
           </div>
           <div className="ax-story-cards">
             {WORK.map((w, i) => (
               <figure key={w.img}>
-                <div className="pic"><img src={w.img} alt={`${w.t} — ${th ? w.th : w.en}`} loading="lazy" /></div>
-                <figcaption><i>{String(i + 1).padStart(2, "0")} / {String(WORK.length).padStart(2, "0")}</i><b>{w.t}</b><span>{th ? w.th : w.en}</span></figcaption>
+                <div className="pic"><img src={w.img} alt={`${w.t} — ${L(w.th, w.en, w.ja)}`} loading="lazy" /></div>
+                <figcaption><i>{String(i + 1).padStart(2, "0")} / {String(WORK.length).padStart(2, "0")}</i><b>{w.t}</b><span>{L(w.th, w.en, w.ja)}</span></figcaption>
               </figure>
             ))}
           </div>
           <div className="ax-story-oem">
-            <p>{th
-              ? "ผลิตให้แบรนด์กีฬา ทีม สโมสร และร้านค้าทั้งในและต่างประเทศ ตั้งแต่เลือกผ้าจนถึงส่งมอบ ในโรงงานของเราเอง"
-              : "We make kit for sports brands, teams, clubs and retailers at home and abroad, from fabric choice to delivery, in our own factory."}</p>
+            <p>{L("ผลิตให้แบรนด์กีฬา ทีม สโมสร และร้านค้าทั้งในและต่างประเทศ ตั้งแต่เลือกผ้าจนถึงส่งมอบ ในโรงงานของเราเอง", "We make kit for sports brands, teams, clubs and retailers at home and abroad, from fabric choice to delivery, in our own factory.", "国内外のスポーツブランド、チーム、クラブ、販売店向けに、生地選びから納品まで自社工場で製造しています。")}</p>
             <ul>
-              <li><span>RANGE</span>{th ? "เสื้อฟุตบอล ชุดวิ่ง เสื้อกล้าม ชุดทีม" : "Football, running, tank tops, team kits"}</li>
-              <li><span>PRINT</span>{th ? "Sublimation สกรีน ปัก DTF" : "Sublimation, screen, embroidery, DTF"}</li>
-              <li><span>FABRIC</span>{th ? "ผ้า Mesh · B1 · C1" : "Mesh · B1 · C1 fabrics"}</li>
-              <li><span>SAMPLE</span>{th ? "รับออกแบบฟรีพร้อมทำตัวอย่าง" : "Free design service with samples"}</li>
-              <li><span>MOQ</span>{th ? "MOQ ยืดหยุ่น รองรับแบรนด์เล็ก-ใหญ่" : "Flexible MOQ for any brand size"}</li>
+              <li><span>RANGE</span>{L("เสื้อฟุตบอล ชุดวิ่ง เสื้อกล้าม ชุดทีม", "Football, running, tank tops, team kits", "サッカー、ランニング、タンクトップ、チームウェア")}</li>
+              <li><span>PRINT</span>{L("Sublimation สกรีน ปัก DTF", "Sublimation, screen, embroidery, DTF", "昇華、シルク、刺繍、DTF")}</li>
+              <li><span>FABRIC</span>{L("ผ้า Mesh · B1 · C1", "Mesh · B1 · C1 fabrics", "Mesh · B1 · C1 の生地")}</li>
+              <li><span>SAMPLE</span>{L("รับออกแบบฟรีพร้อมทำตัวอย่าง", "Free design service with samples", "デザイン無料・サンプル製作対応")}</li>
+              <li><span>MOQ</span>{L("MOQ ยืดหยุ่น รองรับแบรนด์เล็ก-ใหญ่", "Flexible MOQ for any brand size", "小ロットから大口まで柔軟に対応")}</li>
             </ul>
-            <Link href="/templates" className="ax-story-go">{th ? "ดูลายในตลาดลาย" : "Browse the template market"} <span aria-hidden="true">→</span></Link>
+            <Link href="/templates" className="ax-story-go">{L("ดูลายในตลาดลาย", "Browse the template market", "テンプレートマーケットを見る")} <span aria-hidden="true">→</span></Link>
           </div>
         </div>
 
         {/* 7 — call */}
         <div ref={P(7)} className="ax-story-panel top center">
-          <span className="ax-kicker">07 — {th ? "เริ่มเลย" : "Your turn"}</span>
+          <span className="ax-kicker">07 — {L("เริ่มเลย", "Your turn", "さあ、始めよう")}</span>
           <h2 className="ax-display"><Words text={"Ready to\n*kick *off?"} /></h2>
           <div className="ax-row" style={{ justifyContent: "center" }}>
-            <Link href="/shop" className="ax-btn solid">{th ? "เริ่มออกแบบเสื้อ" : "Start designing"}</Link>
-            <a href={`mailto:${CONTACT_EMAIL}`} className="ax-btn ghost">{th ? "ส่งอีเมลถึงเรา" : "Email us"}</a>
+            <Link href="/shop" className="ax-btn solid">{L("เริ่มออกแบบเสื้อ", "Start designing", "デザインを始める")}</Link>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="ax-btn ghost">{L("ส่งอีเมลถึงเรา", "Email us", "メールで問い合わせ")}</a>
           </div>
-          <p className="ax-story-contact">{th
-            ? "เริ่มออกแบบได้เลยโดยไม่ต้องสมัคร หรือติดต่อทีมงานเพื่อขอใบเสนอราคาและตัวอย่างผ้า"
-            : "Start designing without an account, or talk to us for a quote and fabric samples."}
+          <p className="ax-story-contact">{L("เริ่มออกแบบได้เลยโดยไม่ต้องสมัคร หรือติดต่อทีมงานเพื่อขอใบเสนอราคาและตัวอย่างผ้า", "Start designing without an account, or talk to us for a quote and fabric samples.", "アカウント登録なしですぐにデザインを始められます。お見積もりや生地サンプルはお気軽にお問い合わせください。")}
             <span className="ax-mono">{CONTACT_EMAIL} · LINE {CONTACT_LINE}</span></p>
-          <nav className="ax-story-chips" aria-label={th ? "เมนู" : "Menu"}>
-              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{th ? sp.th : sp.en}</Link>)}
+          <nav className="ax-story-chips" aria-label={L("เมนู", "Menu", "メニュー")}>
+              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}</Link>)}
             </nav>
         </div>
 
-        <nav className="ax-story-nav" aria-label={th ? "บทของเรื่อง" : "Chapters"}>
+        <nav className="ax-story-nav" aria-label={L("บทของเรื่อง", "Chapters", "チャプター")}>
           <span className="count ax-mono"><span ref={counter}>01</span> / {String(CHAPTERS).padStart(2, "0")}</span>
           <div className="track" aria-hidden="true"><div ref={bar} className="fill" /></div>
           {CH.map((c, i) => (

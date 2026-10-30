@@ -7,6 +7,7 @@ import { loadJersey, type Jersey } from "../lib/jersey3d";
 import { KITS, defaultConfig } from "../lib/kits";
 import { Words } from "./ScrollStory";
 import { STEPS } from "../lib/production-steps";
+import { tri, locale, type Lang } from "../lib/i18n";
 import { PIECES, SHEET_W, SHEET_H, M_PER_PX, drawSheet, paintPiece, tracePiece, cutPath, pathAt, type Piece, type PrintColors } from "../lib/process-pattern";
 
 /**
@@ -61,14 +62,14 @@ export function walkTo(i: number) {
 }
 
 /** "2026-10-21" (or an ISO time) → "21 ต.ค." */
-export const shortDay = (s: string, th = true) => {
+export const shortDay = (s: string, lang: Lang = "th") => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   const d = m && s.length <= 10 ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(th ? "th-TH" : "en-GB", { day: "numeric", month: "short" });
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(locale(lang), { day: "numeric", month: "short" });
 };
 
-export default function ProcessStory({ th, hero, track, finale }: {
-  th: boolean;
+export default function ProcessStory({ lang, hero, track, finale }: {
+  lang: Lang;
   /** replaces the opening panel's text (the tracking page puts its search there) */
   hero?: ReactNode;
   /** an order being tracked: its station is marked, and the walk goes there */
@@ -83,8 +84,12 @@ export default function ProcessStory({ th, hero, track, finale }: {
   const bar = useRef<HTMLDivElement>(null);
   const counter = useRef<HTMLSpanElement>(null);
   const [flat, setFlat] = useState(false);
+  const th = lang === "th";
+  const L = tri(lang);
   const thRef = useRef(th);
   thRef.current = th;
+  const langRef = useRef(lang);
+  langRef.current = lang;
   /** the tracked order's station, read by the 3D loop */
   const mineRef = useRef(0);
   mineRef.current = track ? Math.min(track.step, N) : 0;
@@ -293,8 +298,9 @@ export default function ProcessStory({ th, hero, track, finale }: {
       const mineTex = keep(canvasTex(THREE, 1024, 160, x => {
         x.fillStyle = "#f26522"; x.fillRect(0, 0, 1024, 160);
         x.fillStyle = "#0d0e10"; x.textAlign = "center"; x.textBaseline = "middle";
-        x.font = thRef.current ? '700 84px "Noto Sans Thai", sans-serif' : '700 76px "Sora", sans-serif';
-        x.fillText(thRef.current ? "● งานของคุณอยู่ที่นี่" : "● YOUR ORDER IS HERE", 512, 86);
+        const ml = langRef.current;
+        x.font = ml === "th" ? '700 84px "Noto Sans Thai", sans-serif' : ml === "ja" ? '700 80px "Noto Sans JP", sans-serif' : '700 76px "Sora", sans-serif';
+        x.fillText(ml === "th" ? "● งานของคุณอยู่ที่นี่" : ml === "ja" ? "● ご注文はここ" : "● YOUR ORDER IS HERE", 512, 86);
       }));
       const mineTag = new THREE.Mesh(unit, keep(new THREE.MeshBasicMaterial({ map: mineTex, toneMapped: false })));
       mineTag.scale.set(1.9, 0.3, 1);
@@ -458,7 +464,7 @@ export default function ProcessStory({ th, hero, track, finale }: {
         const q = Math.round(u * 120);
         if (q === scrQ) return;
         scrQ = q;
-        drawDesigner(scr, u, thRef.current);
+        drawDesigner(scr, u, langRef.current);
         scrTex.needsUpdate = true;
       };
 
@@ -1139,28 +1145,26 @@ export default function ProcessStory({ th, hero, track, finale }: {
     window.scrollTo({ top: el.offsetTop + (sp * i) / (CHAPTERS - 1) + 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   };
   const P = (i: number) => (e: HTMLDivElement | null) => { panels.current[i] = e; };
-  const names = [th ? "ภาพรวม" : "Overview", ...STEPS.map(s => (th ? s.th : s.en)), th ? "เริ่มเลย" : "Start"];
+  const names = [L("ภาพรวม", "Overview", "全体"), ...STEPS.map(s => L(s.th, s.en, s.ja)), L("เริ่มเลย", "Start", "スタート")];
 
   return (
-    <section ref={root} className="ax-story ax-proc" style={{ height: `${CHAPTERS * 100}vh` }} aria-label={th ? "ขั้นตอนการผลิตเสื้อ 10 ขั้น" : "How a kit is made, in ten steps"}>
+    <section ref={root} className="ax-story ax-proc" style={{ height: `${CHAPTERS * 100}vh` }} aria-label={L("ขั้นตอนการผลิตเสื้อ 10 ขั้น", "How a kit is made, in ten steps", "ユニフォームができるまでの10工程")}>
       <div className="ax-story-pin">
-        <div ref={mount} className="ax-story-canvas" role="img" aria-label={th ? "สายการผลิตเสื้อแบบ 3D ที่เลื่อนไปตามการเลื่อนหน้า" : "A 3D production line that follows your scroll"} />
+        <div ref={mount} className="ax-story-canvas" role="img" aria-label={L("สายการผลิตเสื้อแบบ 3D ที่เลื่อนไปตามการเลื่อนหน้า", "A 3D production line that follows your scroll", "スクロールに合わせて進む3D生産ライン")} />
         <div className="ax-story-vignette" aria-hidden="true" />
         <div className="ax-story-grain" aria-hidden="true" />
 
         <div ref={P(0)} className="ax-story-panel hero" data-on>
           {hero ? <div className="lede">{hero}</div> : <div className="lede">
-            <span className="ax-kicker">{th ? "ขั้นตอนผลิต · 10 ขั้น" : "How it's made · 10 steps"}</span>
-            <h1 className="ax-display"><Words text={th ? "จากไฟล์\nถึง*มือคุณ" : "From file\nto *your *team"} /></h1>
-            <p>{th
-              ? "ตามเสื้อหนึ่งตัวผ่านทุกขั้นตอนในโรงงานของเรา ตั้งแต่ไฟล์งานพิมพ์ไปจนถึงขึ้นรถส่งของ"
-              : "Follow one shirt through every step in our factory, from the print file to the delivery truck."}</p>
+            <span className="ax-kicker">{L("ขั้นตอนผลิต · 10 ขั้น", "How it's made · 10 steps", "製造工程 · 全10工程")}</span>
+            <h1 className="ax-display"><Words text={L("จากไฟล์\nถึง*มือคุณ", "From file\nto *your *team", "データから\n*チームの*手元へ")} /></h1>
+            <p>{L("ตามเสื้อหนึ่งตัวผ่านทุกขั้นตอนในโรงงานของเรา ตั้งแต่ไฟล์งานพิมพ์ไปจนถึงขึ้นรถส่งของ", "Follow one shirt through every step in our factory, from the print file to the delivery truck.", "1枚のシャツを追って、印刷データから配送トラックまで、工場の全工程を見てみましょう。")}</p>
             <div className="ax-row">
-              <button type="button" className="ax-story-link" onClick={() => go(1)}>{th ? "เริ่มเดินดูไลน์ผลิต" : "Walk the line"} <span aria-hidden="true">↓</span></button>
+              <button type="button" className="ax-story-link" onClick={() => go(1)}>{L("เริ่มเดินดูไลน์ผลิต", "Walk the line", "ラインを歩く")} <span aria-hidden="true">↓</span></button>
             </div>
             {flat && (
               <ol className="ax-proc-list">
-                {STEPS.map((s, i) => <li key={s.en}><b>{String(i + 1).padStart(2, "0")}</b> {th ? s.th : s.en}</li>)}
+                {STEPS.map((s, i) => <li key={s.en}><b>{String(i + 1).padStart(2, "0")}</b> {L(s.th, s.en, s.ja)}</li>)}
               </ol>
             )}
           </div>}
@@ -1175,19 +1179,19 @@ export default function ProcessStory({ th, hero, track, finale }: {
           return (
           <div key={s.en} ref={P(n)} className="ax-story-panel left ax-proc-step">
             <span className="no ax-display" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
-            <span className="ax-kicker">{th ? `ขั้นที่ ${i + 1} จาก ${N}` : `Step ${i + 1} of ${N}`} · {s.en}</span>
-            <h2 className="ax-display"><Words text={th ? s.h : s.hEn} /></h2>
+            <span className="ax-kicker">{L(`ขั้นที่ ${i + 1} จาก ${N}`, `Step ${i + 1} of ${N}`, `工程 ${i + 1} / ${N}`)} · {s.en}</span>
+            <h2 className="ax-display"><Words text={L(s.h, s.hEn, s.hJa)} /></h2>
             <span className="rule" />
-            <p>{th ? s.p : s.pEn}</p>
+            <p>{L(s.p, s.pEn, s.pJa)}</p>
             {mine && track && (
               <div className="ax-proc-mine" data-state={mine}>
                 <b className="ax-mono">{track.orderNo}</b>
                 <span>
-                  {mine === "done" && (th ? "ผ่านขั้นนี้แล้ว" : "Done")}
-                  {mine === "now" && (n === N ? (th ? "จัดส่งแล้ว" : "Shipped") : th ? "งานของคุณอยู่ขั้นนี้" : "Your order is here")}
-                  {mine === "todo" && (th ? "ยังไม่ถึงขั้นนี้" : "Not here yet")}
-                  {when && ` · ${mine === "now" && !e?.finishedOn ? (th ? "เริ่ม " : "since ") : ""}${shortDay(when, th)}`}
-                  {n === N && shippedNow && track.shipment?.trackingNo && ` · ${th ? "พัสดุ" : "parcel"} ${track.shipment.courier ? `${track.shipment.courier} ` : ""}${track.shipment.trackingNo}`}
+                  {mine === "done" && (L("ผ่านขั้นนี้แล้ว", "Done", "完了"))}
+                  {mine === "now" && (n === N ? (L("จัดส่งแล้ว", "Shipped", "発送済み")) : L("งานของคุณอยู่ขั้นนี้", "Your order is here", "ご注文はこの工程です"))}
+                  {mine === "todo" && (L("ยังไม่ถึงขั้นนี้", "Not here yet", "まだこの工程ではありません"))}
+                  {when && ` · ${mine === "now" && !e?.finishedOn ? (L("เริ่ม ", "since ", "開始 ")) : ""}${shortDay(when, lang)}`}
+                  {n === N && shippedNow && track.shipment?.trackingNo && ` · ${L("พัสดุ", "parcel", "配送")} ${track.shipment.courier ? `${track.shipment.courier} ` : ""}${track.shipment.trackingNo}`}
                 </span>
               </div>
             )}
@@ -1205,17 +1209,17 @@ export default function ProcessStory({ th, hero, track, finale }: {
 
         <div ref={P(CHAPTERS - 1)} className="ax-story-panel top center">
           {finale ?? <>
-          <span className="ax-kicker">{th ? "พร้อมแล้ว" : "Your turn"}</span>
-          <h2 className="ax-display"><Words text={th ? "ถึงคิว*ทีมคุณ" : "Your *team *next"} /></h2>
-          <p>{th ? "ออกแบบเสื้อบนโมเดล 3D แล้วโรงงานจะผลิตตามขั้นตอนทั้ง 10 ขั้นนี้" : "Design your kit in 3D, and the factory makes it through these ten steps."}</p>
+          <span className="ax-kicker">{L("พร้อมแล้ว", "Your turn", "さあ、始めよう")}</span>
+          <h2 className="ax-display"><Words text={L("ถึงคิว*ทีมคุณ", "Your *team *next", "次は\n*あなたのチーム")} /></h2>
+          <p>{L("ออกแบบเสื้อบนโมเดล 3D แล้วโรงงานจะผลิตตามขั้นตอนทั้ง 10 ขั้นนี้", "Design your kit in 3D, and the factory makes it through these ten steps.", "3Dでユニフォームをデザインすれば、工場がこの10工程で仕上げます。")}</p>
           <div className="ax-row" style={{ justifyContent: "center" }}>
-            <Link href="/shop" className="ax-btn solid">{th ? "เริ่มออกแบบเสื้อ" : "Start designing"}</Link>
-            <Link href="/tracking" className="ax-btn ghost">{th ? "ติดตามออเดอร์" : "Track my order"}</Link>
+            <Link href="/shop" className="ax-btn solid">{L("เริ่มออกแบบเสื้อ", "Start designing", "デザインを始める")}</Link>
+            <Link href="/tracking" className="ax-btn ghost">{L("ติดตามออเดอร์", "Track my order", "注文を追跡")}</Link>
           </div>
           </>}
         </div>
 
-        <nav className="ax-story-nav" aria-label={th ? "ขั้นตอน" : "Steps"}>
+        <nav className="ax-story-nav" aria-label={L("ขั้นตอน", "Steps", "工程")}>
           <span className="count ax-mono"><span ref={counter}>00</span> / {String(N).padStart(2, "0")}</span>
           <div className="track" aria-hidden="true"><div ref={bar} className="fill" /></div>
           {names.map((c, i) => (
@@ -1239,7 +1243,8 @@ function canvasTex(THREE: any, w: number, h: number, draw: (x: CanvasRenderingCo
 }
 
 /** the designer's screen at progress u: outlines drawn, pieces filled, sent to print */
-function drawDesigner(c: HTMLCanvasElement, u: number, th: boolean) {
+function drawDesigner(c: HTMLCanvasElement, u: number, lang: Lang) {
+  const L = tri(lang);
   const x = c.getContext("2d")!;
   const W = c.width, Hh = c.height;
   x.fillStyle = "#1b1d22"; x.fillRect(0, 0, W, Hh);
@@ -1254,7 +1259,7 @@ function drawDesigner(c: HTMLCanvasElement, u: number, th: boolean) {
   // layers
   const LX = W - 176;
   x.fillStyle = "#22242a"; x.fillRect(LX, 30, 176, Hh - 30);
-  x.fillStyle = "#e8e6e0"; x.font = '600 13px "Sora", sans-serif'; x.fillText(th ? "เลเยอร์" : "Layers", LX + 14, 54);
+  x.fillStyle = "#e8e6e0"; x.font = '600 13px "Sora", sans-serif'; x.fillText(L("เลเยอร์", "Layers", "レイヤー"), LX + 14, 54);
   const names = ["Front", "Back", "Sleeve L", "Sleeve R", "Collar"];
   names.forEach((n, i) => {
     const on = u > 0.45 + i * 0.07;
@@ -1292,7 +1297,7 @@ function drawDesigner(c: HTMLCanvasElement, u: number, th: boolean) {
   if (u > 0.8) cursor = [((bx + 74 - AX) / AW) * SHEET_W, ((by + 18 - AY) / AH) * SHEET_H];
   x.fillStyle = ex > 0 ? "#f26522" : "#3a3d44"; x.fillRect(bx, by, 148, 36);
   x.fillStyle = "#fff"; x.font = '600 13px "Noto Sans Thai", sans-serif'; x.textAlign = "center";
-  x.fillText(th ? "ส่งพิมพ์" : "Send to print", bx + 74, by + 23);
+  x.fillText(L("ส่งพิมพ์", "Send to print", "印刷へ"), bx + 74, by + 23);
   if (ex > 0) {
     x.fillStyle = "#2f3138"; x.fillRect(AX, AY + AH + 14, AW, 8);
     x.fillStyle = "#2aa96b"; x.fillRect(AX, AY + AH + 14, AW * ex, 8);

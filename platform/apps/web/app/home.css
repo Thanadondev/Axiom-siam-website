@@ -14,8 +14,8 @@
   --ax-accent-ink: #0d0e10;
   --ax-paper: #f2f0eb;
   --ax-paper-ink: #0d0e10;
-  --ax-display: "Anton", "Noto Sans Thai", sans-serif;
-  --ax-body: "Noto Sans Thai", "Sora", system-ui, sans-serif;
+  --ax-display: "Anton", "Noto Sans Thai", "Noto Sans JP", sans-serif;
+  --ax-body: "Noto Sans Thai", "Sora", "Noto Sans JP", system-ui, sans-serif;
   --ax-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   /* vars UserMenu (app.css) reads */
   --ink: var(--ax-ink); --muted: var(--ax-mute); --brand: var(--ax-accent); --on-brand: var(--ax-accent-ink);
@@ -839,3 +839,16 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
   .ax-track-card { padding: 12px 14px; gap: 8px; }
 }
 .ax-track-card .ax-story-link { align-self: flex-start; min-height: 40px; font-size: 14px; padding: 0 2px; }
+
+/* ---------- 日本語: headings in Noto Sans JP (Anton has no kana), a little more room per line ---------- */
+.ax:lang(ja) { --ax-body: "Noto Sans JP", "Sora", system-ui, sans-serif; }
+.ax:lang(ja) .ax-display { font-family: "Anton", "Noto Sans JP", sans-serif; font-weight: 900; line-height: 1.12; letter-spacing: 0; }
+.ax:lang(ja) .ax-story-panel h2 { font-size: clamp(40px, 5.2vw, 92px); }
+.ax:lang(ja) .ax-story-panel.hero h1 { font-size: clamp(56px, 7.5vw, 128px); }
+.ax:lang(ja) .ax-proc-step h2 { font-size: clamp(40px, 5vw, 88px); }
+.ax:lang(ja) .ax-story-panel p { line-height: 1.85; }
+.ax:lang(ja) .ax-kicker { font-family: var(--ax-body); letter-spacing: 0.08em; font-weight: 500; }
+@media (max-width: 720px) {
+  .ax:lang(ja) .ax-story-panel h2, .ax:lang(ja) .ax-proc-step h2 { font-size: 38px; }
+  .ax:lang(ja) .ax-story-panel.hero h1 { font-size: 52px; }
+}

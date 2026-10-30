@@ -63,6 +63,9 @@ export interface Kit {
   note: string;
   deck: string;
   cutLabel: string;
+  /** the cut in English and Japanese (the storefront's other languages) */
+  cutEn: string;
+  cutJa: string;
   cut: KitCut;
   theme: KitTheme;
   paletteLabel: string;
@@ -84,7 +87,7 @@ export const KITS: Kit[] = [
     en: "Striker",
     note: "ทรงเข้ารูป ระบายเหงื่อไว สำหรับเกมเร็ว",
     deck: "ชุดแข่งฟุตบอลทรงเข้ารูป ลายคาดเฉียงพาดอก ปรับสีได้ทุกส่วน พร้อมชื่อและเบอร์รายคนทั้งทีม",
-    cutLabel: "คอวี แขนสั้น",
+    cutLabel: "คอวี แขนสั้น", cutEn: "V-neck, short sleeve", cutJa: "Vネック・半袖",
     cut: { sleeves: "short", neck: "v", fit: 1, length: 1 },
     theme: { bg: "#0f1a2e", ink: "#f2f0eb", soft: "#aab2c4", rail: "#2c3550", accent: "#f26522", accentInk: "#0f1a2e" },
     paletteLabel: "Royal · black · flare",
@@ -101,7 +104,7 @@ export const KITS: Kit[] = [
     en: "Pacer",
     note: "เบา บาง สำหรับงานวิ่งและอีเวนต์",
     deck: "เสื้อวิ่งแขนกุดน้ำหนักเบา ตัดเย็บให้เคลื่อนไหวคล่อง เหมาะกับงานวิ่ง ชมรม และอีเวนต์องค์กร",
-    cutLabel: "คอกลม แขนกุด",
+    cutLabel: "คอกลม แขนกุด", cutEn: "Crew neck, sleeveless", cutJa: "丸首・ノースリーブ",
     cut: { sleeves: "none", neck: "crew", fit: 0.92, length: 1 },
     theme: { bg: "#0e3426", ink: "#f2f0eb", soft: "#b9cec2", rail: "#1f5843", accent: "#fff200", accentInk: "#0e3426" },
     paletteLabel: "Bone · forest · volt",
@@ -118,7 +121,7 @@ export const KITS: Kit[] = [
     en: "Rim",
     note: "ทรงหลวม เบอร์ใหญ่ เห็นชัดจากอัฒจันทร์",
     deck: "เสื้อบาสทรงหลวม ขอบคอและวงแขนตัดสีได้ เบอร์ขนาดใหญ่ทั้งหน้าและหลัง",
-    cutLabel: "คอวี แขนกุด ตัวยาว",
+    cutLabel: "คอวี แขนกุด ตัวยาว", cutEn: "V-neck, sleeveless, long body", cutJa: "Vネック・ノースリーブ・ロング丈",
     cut: { sleeves: "none", neck: "v", fit: 1.1, length: 1.08 },
     theme: { bg: "#4d0f14", ink: "#f7efe6", soft: "#e4bec1", rail: "#7a2129", accent: "#ffc20e", accentInk: "#4d0f14" },
     paletteLabel: "Crimson · gold · ink",
@@ -135,7 +138,7 @@ export const KITS: Kit[] = [
     en: "Smash",
     note: "ผ้ายืดสี่ทาง สำหรับจังหวะตบแรง",
     deck: "เสื้อแบดมินตันผ้ายืดหยุ่นสูง เหมาะกับทีมสโมสรและการแข่งขันระดับโรงเรียน",
-    cutLabel: "คอกลม แขนสั้น",
+    cutLabel: "คอกลม แขนสั้น", cutEn: "Crew neck, short sleeve", cutJa: "丸首・半袖",
     cut: { sleeves: "short", neck: "crew", fit: 0.96, length: 0.97 },
     theme: { bg: "#0a3f47", ink: "#f2f0eb", soft: "#b6d4d7", rail: "#18646d", accent: "#f8aa9e", accentInk: "#0a3f47" },
     paletteLabel: "Lagoon · bone · black",
@@ -152,7 +155,7 @@ export const KITS: Kit[] = [
     en: "Club",
     note: "ใส่ได้ทั้งในสนามและงานองค์กร",
     deck: "โปโลสำหรับทีมงาน สต๊าฟ และองค์กร พิมพ์โลโก้ได้ ใส่ได้ทั้งวันทำงานและวันแข่ง",
-    cutLabel: "คอปก แขนสั้น",
+    cutLabel: "คอปก แขนสั้น", cutEn: "Collar, short sleeve", cutJa: "襟付き・半袖",
     cut: { sleeves: "short", neck: "polo", fit: 1, length: 1 },
     theme: { bg: "#18181b", ink: "#f2f0eb", soft: "#b8b5af", rail: "#34343a", accent: "#ffc20e", accentInk: "#18181b" },
     paletteLabel: "Charcoal · gilt · smoke",
@@ -169,7 +172,7 @@ export const KITS: Kit[] = [
     en: "Warmup",
     note: "ผ้าหนานุ่ม ใส่วอร์มก่อนลงสนามและเดินทาง",
     deck: "ฮู้ดสวมหัวสำหรับทีม ผ้าหนานุ่ม จั๊มปลายแขนและเอว มีกระเป๋าจิงโจ้และเชือกฮู้ด พิมพ์ชื่อและเบอร์ด้านหลังได้",
-    cutLabel: "ฮู้ด แขนยาว",
+    cutLabel: "ฮู้ด แขนยาว", cutEn: "Hoodie, long sleeve", cutJa: "フード・長袖",
     cut: { sleeves: "long", neck: "hood", fit: 1.05, length: 1 },
     theme: { bg: "#2b2118", ink: "#f2f0eb", soft: "#cdbfae", rail: "#4a3a2c", accent: "#f26522", accentInk: "#2b2118" },
     paletteLabel: "Graphite · flare · bone",
@@ -193,7 +196,7 @@ export const KITS: Kit[] = [
     en: "Stride",
     note: "เอวยางยืดพร้อมเชือกผูก เข้าชุดกับเสื้อทีม",
     deck: "กางเกงขาสั้นสำหรับทีม เอวยางยืดพร้อมเชือกผูก ตัดขาเดียวไม่มีตะเข็บข้าง พิมพ์แถบข้างและเบอร์ที่ขาได้",
-    cutLabel: "ขาสั้น เอวยางยืด",
+    cutLabel: "ขาสั้น เอวยางยืด", cutEn: "Shorts, elastic waist", cutJa: "ショートパンツ・ウエストゴム",
     cut: { sleeves: "none", neck: "waist", fit: 1, length: 1 },
     theme: { bg: "#13232b", ink: "#f2f0eb", soft: "#a9bfc8", rail: "#25414e", accent: "#00aeef", accentInk: "#13232b" },
     paletteLabel: "Black · cyan · white",
