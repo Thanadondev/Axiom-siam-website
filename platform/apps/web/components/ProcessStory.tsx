@@ -232,7 +232,8 @@ export default function ProcessStory({ lang, hero, track, finale }: {
       // the end wall, around the dock door (z −2.4…2.4, up to 4.4 m)
       const DOOR = { z: 2.4, h: 4.4 };
       plane(H.z1 - DOOR.z, H.h, H.x1, H.h / 2, (H.z1 + DOOR.z) / 2, -Math.PI / 2);
-      plane(DOOR.z - H.z0, H.h, H.x1, H.h / 2, (H.z0 - DOOR.z) / 2, -Math.PI / 2);
+      // (the side short of the door: z −7…−2.4 — it used to run on to z 0 and close half the door)
+      plane(-DOOR.z - H.z0, H.h, H.x1, H.h / 2, (H.z0 - DOOR.z) / 2, -Math.PI / 2);
       plane(DOOR.z * 2, H.h - DOOR.h, H.x1, (H.h + DOOR.h) / 2, 0, -Math.PI / 2);
       const ceil = new THREE.Mesh(unit, keep(new THREE.MeshStandardMaterial({ color: 0x121213, roughness: 1 })));
       ceil.scale.set(HW, HD, 1); ceil.rotation.x = Math.PI / 2; ceil.position.set(HX, H.h, HZ);
