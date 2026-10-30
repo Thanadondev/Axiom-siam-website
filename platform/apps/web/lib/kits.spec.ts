@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts } from "./kits";
+import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts, isBottom } from "./kits";
 import { FABRICS, SIZES } from "./order-draft";
 import { TRIMS } from "./garment-options";
 
@@ -133,5 +133,31 @@ describe("garments", () => {
     expect(parts.map(p => p.id)).not.toContain("sleeve");
     expect(parts.find(p => p.id === "body")?.label).toBe("ตัวกางเกง");
     expect(kitParts(hoodie).map(p => p.id)).toContain("sleeve");
+  });
+});
+
+describe("the warm-up suit", () => {
+  const crew = kitById("tempo")!;
+  const zip = kitById("tempozip")!;
+  const pants = kitById("track")!;
+
+  it("has a crew-neck top, a full-zip top and track pants", () => {
+    expect(crew.garment).toBe("piste");
+    expect(crew.cut).toMatchObject({ sleeves: "long", neck: "crew" });
+    expect(zip.garment).toBe("piste_zip");
+    expect(zip.cut).toMatchObject({ sleeves: "long", neck: "zip" });
+    expect(pants.garment).toBe("pants");
+    expect(pants.cut.sleeves).toBe("none");
+  });
+
+  it("treats shorts and track pants as bottoms, and nothing else", () => {
+    expect(KITS.filter(isBottom).map(k => k.id).sort()).toEqual(["stride", "track"]);
+  });
+
+  it("names the parts for each piece", () => {
+    expect(kitParts(pants).map(p => p.id)).not.toContain("sleeve");
+    expect(kitParts(pants).find(p => p.id === "trim")?.hint).toContain("จั๊มปลายขา");
+    expect(kitParts(crew).find(p => p.id === "sleeve")?.hint).toContain("รากลัน");
+    expect(kitParts(zip).find(p => p.id === "trim")?.label).toContain("คอตั้ง");
   });
 });

@@ -329,23 +329,34 @@ vec4 diffuseColor = vec4( col, opacity );`,
     const weight = look.fontFamily ? "400" : look.font === "block" ? "400" : "800";
     const layout = dims.layout ?? "top";
 
-    if (layout === "shorts") {
+    if (layout === "shorts" || layout === "pants") {
       // shorts: the logo low on the wearer's right leg, the number on the left; nothing behind
+      // (track pants: high on the thighs, a little smaller)
       const f = frontCanvas.getContext("2d")!;
       f.clearRect(0, 0, TS, TS);
       f.fillStyle = ink;
       f.textAlign = "center";
       f.textBaseline = "middle";
       const scale = REF_WIDTH / (bb.max.x - bb.min.x);
-      const y = hem + 0.8;
+      const pants = layout === "pants";
+      const y = pants ? top - 1.35 : hem + 0.8;
+      // the canvas is square but spans a long leg on pants: squash the print back to its shape
+      const squash = pants ? (bb.max.x - bb.min.x) / (bb.max.y - bb.min.y) : 1;
+      const at = (px: number, py: number, draw: () => void) => {
+        f.save();
+        f.translate(px, py);
+        f.scale(1, squash);
+        draw();
+        f.restore();
+      };
       if (img) {
         const [lx, ly] = toPx(-W * 0.5, y);
-        drawLogo(f, img, lx, ly, TS * (look.logo ? 0.13 : 0.1) * scale, tint);
+        at(lx, ly, () => drawLogo(f, img, 0, 0, TS * (look.logo ? 0.13 : 0.1) * scale * (pants ? 0.8 : 1), tint));
       }
       if (look.number) {
         const [nx, ny] = toPx(W * 0.5, y);
-        f.font = `${weight} ${Math.round(TS * 0.11 * scale)}px "${fam}", sans-serif`;
-        f.fillText(look.number, nx, ny);
+        f.font = `${weight} ${Math.round(TS * 0.11 * scale * (pants ? 0.8 : 1))}px "${fam}", sans-serif`;
+        at(nx, ny, () => f.fillText(look.number, 0, 0));
       }
       frontTex.needsUpdate = true;
       backCanvas.getContext("2d")!.clearRect(0, 0, TS, TS);
@@ -836,7 +847,7 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
 
   const skin = createSkin(THREE, keep, { ...dims, nw: -1, cx: sleeved ? 0.44 : 0.33 }, bb, opts.textureSize ?? 1024, rest); // nw -1: the neck is a real opening
   // a side stripe on shorts is narrower than on a shirt (the stripe starts at 0.75 of uW)
-  if (layout === "shorts") skin.uniforms.uW.value = dims.W * 1.18;
+  if (layout === "shorts" || layout === "pants") skin.uniforms.uW.value = dims.W * 1.18;
   const weave = keep(weaveTexture(THREE));
   const plain = () => keep(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.82 }));
   // Lining (the inside of the fabric) keeps the dark colour it was exported with
@@ -855,7 +866,7 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
 
   let hook: { hookTop: number; hookZ: number } | undefined;
   if (opts.hanger) {
-    if (layout === "shorts") {
+    if (layout === "shorts" || layout === "pants") {
       hook = addClipHanger(THREE, group, keep, dims.top, dims.W * 0.56);
     } else if (typeof info.formBase === "number") {
       // draped on the form: a shaped hanger that fits the shoulders (narrower for singlet straps)

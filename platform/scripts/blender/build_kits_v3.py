@@ -53,6 +53,8 @@ TOP = 1.45          # kit-unit height of the high shoulder point
 TRI_AREA = 0.00011  # m², ≈ 1.6 cm edges for the simulation mesh
 
 # ---------------------------------------------------------------- kits (size L, metres)
+# tuning knobs: --opt=key:value,key:value
+OPT = dict(kv.split(":") for a in ARGS if a.startswith("--opt=") for kv in a.split("=", 1)[1].split(","))
 KITS = {
     #            sleeves   neck    chest  length  neck drop (front)
     "striker": dict(sleeves="short", neck="v", cw=0.27, L=0.74, nd=0.165),
@@ -62,14 +64,30 @@ KITS = {
     "club": dict(sleeves="short", neck="polo", cw=0.27, L=0.74, nd=0.085),
     # a pullover hoodie: long set-in sleeves, rib cuffs and hem, a lined hood and a kangaroo pocket
     "warmup": dict(sleeves="long", neck="hood", cw=0.29, L=0.70, nd=0.085),
+    # the warm-up top (piste): raglan long sleeves running up to the neck, rib cuffs and hem;
+    # crew neck, or zipped all the way with a stand collar
+    "tempo": dict(sleeves="long", neck="crew", raglan=True, cw=0.29, L=0.70, nd=0.085),
+    "tempozip": dict(sleeves="long", neck="zip", raglan=True, cw=0.29, L=0.70, nd=0.065),
     # training shorts: one piece per leg (no side seam), elastic waistband, hemmed legs
     # (cut with room at the hip and a wide leg: training shorts hang loose, they don't hug the seat)
     "stride": dict(sleeves="none", neck="waist", garment="shorts", cw=0.272, L=0.485, nd=0.0),
+    # track pants (the warm-up suit's bottoms): the shorts' cut carried on down to the ankle,
+    # a straight, slightly tapered leg and a rib cuff gathered round the ankle
+    "track": dict(sleeves="none", neck="waist", garment="pants", cw=0.272, L=float(OPT.get("L", 0.985)), nd=0.0,
+                  vc=float(OPT.get("vc", 0.69)), lf=float(OPT.get("lf", 0.135)), lb=float(OPT.get("lb", 0.155)),
+                  rise=0.0, cuff=0.065, ef=0.045, eb=0.08,
+                  # the leg narrows through the thigh to the knee, then runs on gently to the ankle
+                  knee=(float(OPT.get("kv", 0.42)), float(OPT.get("kf", 0.19)), float(OPT.get("kb", 0.22)))),
 }
 Z_WAIST = fk.HIP_WAIST
+# which lower-body form the bottoms are draped on: the hip form (shorts) or legs to the ankle (pants)
+LOWER = dict(kind="hip")
+LOWER_NAMES = ("hip_form", "pants_form", "hip_stand")
+
+
+def lower_form(col):
+    return fk.pants_form(col) if LOWER["kind"] == "pants" else fk.hip_form(col)
 TRACE = "--trace" in ARGS
-# tuning knobs: --opt=key:value,key:value
-OPT = dict(kv.split(":") for a in ARGS if a.startswith("--opt=") for kv in a.split("=", 1)[1].split(","))
 
 
 # ---------------------------------------------------------------- curves
@@ -122,8 +140,75 @@ class Piece:
         return np.array(pts), owner
 
 
+RAGLAN_N = (0.07, -0.03)   # where a raglan seam meets the neckline (half-width, height below the HPS)
+
+
+def raglan_body_piece(spec, face):
+    """
+    A front or back panel for raglan sleeves: no shoulder seam, the sleeve seam runs
+    from the underarm straight up to the neckline. Edge names follow body_piece (the
+    raglan seams are armR/armL), so the sleeves are sewn the same way.
+    """
+    cw, L = spec["cw"], spec["L"]
+    nx, ny = RAGLAN_N
+    # (the back dips a little below the raglan points, so the band curves round the nape)
+    nd = spec["nd"] if face == "front" else -RAGLAN_N[1] + 0.014
+    ax, ay = cw, -0.235
+    hem_y = -L
+    drop = 0.015 if face == "front" else 0.0
+    p = Piece(face, "Body")
+    p.add("hem", bez((-cw, hem_y + 0.02), (-cw * 0.45, hem_y - 0.005 - drop * 1.33), (cw * 0.45, hem_y - 0.005 - drop * 1.33), (cw, hem_y + 0.02), count(2 * cw, 0.01)))
+    side = seg((cw, hem_y + 0.02), (ax, ay), count(abs(ay + L)))
+    p.add("sideR", side)
+    rag = bez((ax, ay), (ax - 0.055, ay + 0.05), (nx + 0.07, ny - 0.085), (nx, ny), 200)
+    p.add("armR", even(rag, RAGLAN_COUNT))
+    # neck: right raglan point → centre → left (the sleeves' tops make up the rest of it)
+    a = np.linspace(0, math.pi, 200)
+    neck = even(np.stack([nx * np.cos(a), ny - max(nd + ny, 0.0) * np.sin(a)], 1), count(math.pi * (nx + max(nd + ny, 0.01)) / 2, 0.007))
+    p.add("neck", neck)
+    p.add("armL", even(rag, RAGLAN_COUNT)[::-1] * [-1, 1])
+    p.add("sideL", side[::-1] * [-1, 1])
+    p.meta = dict(cw=cw, L=L, nw=nx, nd=nd, sx=nx, sy=ny, ax=ax, ay=ay, hem=hem_y, sleeved=True)
+    return p
+
+
+RAGLAN_COUNT = 31   # points on each raglan seam (front, back and the sleeve's two edges must agree)
+
+
+def raglan_sleeve_piece(lenF, lenB, long=True):
+    """
+    A one-piece raglan sleeve: its top edge is part of the neckline, its two long
+    edges are sewn to the front and back raglan seams, then down the underarm to the cuff.
+    """
+    sw = 0.2          # half the width at the underarm
+    t = 0.05          # half the top (neck) edge
+    sl = 0.47 if long else 0.115
+    cf = 0.105 if long else 0.178
+    ch = 0.24
+    for _ in range(40):
+        # fit the cap height so the longer raglan edge matches (+1 cm ease)
+        capL = length(bez((-sw, 0), (-sw * 0.62, 0.02), (-t - 0.03, ch - 0.09), (-t, ch), 200))
+        target = max(lenF, lenB) + 0.01
+        ch *= 1 + 0.7 * (target - capL) / max(target, 1e-6)
+    p = Piece("sleeve", "Sleeve")
+    p.add("cuff", seg((-cf * 0.82, -sl), (cf * 0.82, -sl), count(2 * cf, 0.01)))
+    nu = count(math.hypot(sw - cf, sl))
+    k = -sl + 0.075
+    ck = cf + (sw - cf) * (0.075 / sl)
+    under = even(np.concatenate([seg((cf * 0.82, -sl), (ck, k), 8)[:-1], seg((ck, k), (sw, 0), nu)]), nu + 6)
+    p.add("underB", under)
+    p.add("capB", even(bez((sw, 0), (sw * 0.62, 0.02), (t + 0.03, ch - 0.09), (t, ch), 200), RAGLAN_COUNT))
+    p.add("sneck", bez((t, ch), (t * 0.4, ch + 0.012), (-t * 0.4, ch + 0.012), (-t, ch), count(2 * t, 0.007)))
+    p.add("capF", even(bez((-t, ch), (-t - 0.03, ch - 0.09), (-sw * 0.62, 0.02), (-sw, 0), 200), RAGLAN_COUNT))
+    p.add("underF", under[::-1] * [-1, 1])
+    p.meta = dict(sw=sw, ch=ch, sl=sl, cf=cf, raglan=True)
+    return p
+
+
 def body_piece(spec, face):
     """front or back body panel, pattern coordinates with the HPS at y = 0"""
+    if spec.get("raglan"):
+        return raglan_body_piece(spec, face)
     cw, L = spec["cw"], spec["L"]
     sleeved = spec["sleeves"] != "none"
     nw = {"polo": 0.088, "hood": 0.1}.get(spec["neck"], 0.092)
@@ -463,7 +548,7 @@ def sleeve_path(sx, s, arm=0.3, bend=0.16):
     return p, dd
 
 
-def place_sleeve(P, side):
+def place_sleeve(P, side, raglan=False):
     """roll the sleeve into a tube round the form's arm (the underarm seam underneath)"""
     sx = 1 if side == "R" else -1
     back = Vector((0, 1, 0))
@@ -473,10 +558,22 @@ def place_sleeve(P, side):
     out = []
     for u, v in P:
         th = (u / sw) * math.pi
-        s = 0.045 + (ch - v)
-        c, t = sleeve_path(sx, s)
+        if not raglan:
+            s = 0.045 + (ch - v)
+            c, t = sleeve_path(sx, s)
+            up = Vector((-t.z, 0, t.x)) * sx
+            out.append(tuple(c + (up * math.cos(th) + back * math.sin(th)) * R))
+            continue
+        # raglan: the armpit sits where a set-in sleeve's would; the part above it (the
+        # shoulder, up to the neck) is laid as a widening hood over the top of the form,
+        # held clear of it so the seams can pull it down onto the shoulder
+        s = 0.15 - v
+        k = max(0.0, 0.06 - s)
+        c, t = sleeve_path(sx, max(s, 0.06))
         up = Vector((-t.z, 0, t.x)) * sx
-        out.append(tuple(c + (up * math.cos(th) + back * math.sin(th)) * R))
+        c = c + Vector((-sx, 0, 0)) * k * 0.9 + Vector((0, 0, 1)) * k * float(OPT.get("rlift", 0.55))
+        Rr = R * (1 + float(OPT.get("rgrow", 0.9)) * k / 0.2)
+        out.append(tuple(c + (up * math.cos(th) + back * math.sin(th)) * Rr))
     return np.array(out)
 
 
@@ -498,7 +595,8 @@ def build(kit_id, spec):
     sleeved = spec["sleeves"] != "none"
     long = spec["sleeves"] == "long"
     # (a polo's band lies under the collar: narrow, so it never shows past it)
-    neck_w = {"v": 0.024, "crew": 0.022, "polo": 0.012, "hood": None}[spec["neck"]]
+    neck_w = {"v": 0.024, "crew": 0.022, "polo": 0.012, "hood": None, "zip": 0.012}[spec["neck"]]
+    raglan = bool(spec.get("raglan"))
     arm_w = 0.065 if long else 0.02   # a hoodie's rib cuffs and hem are deep
     hem_w = 0.065 if long else 0.028
 
@@ -510,7 +608,10 @@ def build(kit_id, spec):
         armB = dict(back.edges)["armR"]
         alen = length(armF) + length(armB)
         for side in ("R", "L"):
-            pieces.append((f"sleeve{side}", sleeve_piece(alen, len(armF), long)))
+            if raglan:
+                pieces.append((f"sleeve{side}", raglan_sleeve_piece(length(armF), length(armB), long)))
+            else:
+                pieces.append((f"sleeve{side}", sleeve_piece(alen, len(armF), long)))
 
     bm = bmesh.new()
     uv_layer = bm.loops.layers.uv.new("UVMap")
@@ -528,6 +629,8 @@ def build(kit_id, spec):
                 bands["Trim_Arm"] = band(piece, {"armR", "armL"}, arm_w)
         else:
             bands["Trim_Arm"] = band(piece, {"cuff"}, arm_w)
+            if raglan and neck_w:  # a raglan sleeve's top is part of the neckline
+                bands["Trim_Neck"] = band(piece, {"sneck"}, neck_w)
         # one unconstrained triangulation per panel: a mesh mirrored about a straight
         # centre line folds along it like a hinge
         V, T, n_out, owner, tattr = triangulate(piece, bands)
@@ -536,7 +639,7 @@ def build(kit_id, spec):
         if pname in ("front", "back"):
             P3 = place_body(V, pname)
         else:
-            P3 = place_sleeve(V, pname[-1])
+            P3 = place_sleeve(V, pname[-1], raglan=piece.meta.get("raglan", False))
         verts = [bm.verts.new(tuple(p)) for p in P3]
         piece_verts[pname] = verts
         if mirror is not None:
@@ -580,8 +683,9 @@ def build(kit_id, spec):
             if va is not vb and not bm.edges.get((va, vb)):
                 bm.edges.new((va, vb))
 
-    sew(("front", "shoulderR"), ("back", "shoulderR"))
-    sew(("front", "shoulderL"), ("back", "shoulderL"))
+    if not raglan:
+        sew(("front", "shoulderR"), ("back", "shoulderR"))
+        sew(("front", "shoulderL"), ("back", "shoulderL"))
     sew(("front", "sideR"), ("back", "sideR"))
     sew(("front", "sideL"), ("back", "sideL"))
     if sleeved:
@@ -625,7 +729,7 @@ def build(kit_id, spec):
 def simulate(ob, sleeved, frames=120, settle_only=False, rib_shrink=0.0, shorts=False, self_collide=False):
     fk.materials()
     if shorts:
-        form = fk.hip_form(bpy.context.collection)
+        form = lower_form(bpy.context.collection)
     else:
         form = fk.dress_form(bpy.context.collection, arms=sleeved, arm_len=ARM["length"], arm_angle=ARM["angle"])
     form.modifiers.new("Collision", "COLLISION")
@@ -712,7 +816,7 @@ def simulate(ob, sleeved, frames=120, settle_only=False, rib_shrink=0.0, shorts=
         bpy.ops.object.modifier_apply(modifier=cl.name)
     sc.frame_set(1)
     bpy.data.objects.remove(form)
-    for n in [o.name for o in bpy.data.objects if o.name.startswith(("form_stand", "hip_stand"))]:
+    for n in [o.name for o in bpy.data.objects if o.name.startswith(("form_stand",) + LOWER_NAMES)]:
         bpy.data.objects.remove(bpy.data.objects[n])
     ob.vertex_groups.clear()
     if ob.animation_data:
@@ -1635,6 +1739,143 @@ def polo_details(ob):
     return parts
 
 
+def zip_details(ob):
+    """
+    A full-zip warm-up top: a knitted stand collar round the neck, open at the centre
+    front, and a zip from the hem to the top of the collar with its slider and pull.
+    """
+    from mathutils.bvhtree import BVHTree
+    me = ob.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    loops = open_edges(bm)
+    neck = max(loops, key=lambda l: sum(v.co.z for v in l) / len(l))
+    P = [v.co.copy() for v in neck]
+    N = [v.normal.copy() for v in neck]
+    n = len(P)
+    bvh = BVHTree.FromBMesh(bm)
+    zmin = min(v.co.z for v in bm.verts)
+    bm.free()
+    for _ in range(24):
+        P = [(P[i - 1] + P[i] * 2 + P[(i + 1) % n]) / 4 for i in range(n)]
+        N = [(N[i - 1] + N[i] * 2 + N[(i + 1) % n]).normalized() for i in range(n)]
+    arr = np.array([tuple(p) for p in P] + [tuple(P[0])])
+    sl = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(arr, axis=0), axis=1))])
+    m2 = 96
+    tt = np.linspace(0, sl[-1], m2 + 1)[:-1]
+    P = [Vector([np.interp(x, sl, arr[:, k]) for k in range(3)]) for x in tt]
+    idx = [min(int(np.searchsorted(sl, x)), n - 1) for x in tt]
+    N = [N[i] for i in idx]
+    n = m2
+    i0 = min(range(n), key=lambda i: (P[i].y, abs(P[i].x)))
+    P = P[i0:] + P[:i0]
+    N = N[i0:] + N[:i0]
+    if (P[1] - P[0]).x < 0:
+        P = [P[0]] + P[1:][::-1]
+        N = [N[0]] + N[1:][::-1]
+    neck_front_z = P[0].z
+    trim_neck = next(m for m in me.materials if m.name.startswith("Trim_Neck"))
+    metal = next(m for m in me.materials if m.name.startswith("Button"))
+    # the stand collar: straight up, leaning in a little to hug the neck
+    stand = 0.05
+    gap = 0.0035
+    out = bmesh.new()
+    rings = []
+    # (the shirt's normals turn sharply where the raglan seams meet the neck: the collar
+    # is set from the neckline's own plan shape instead)
+    cx = sum((p.x for p in P), 0.0) / n
+    cy = sum((p.y for p in P), 0.0) / n
+    for i in range(n):
+        nm = Vector((P[i].x - cx, P[i].y - cy, 0)).normalized()
+        up = Vector((0, 0, 1))
+        sec = [P[i] - up * 0.006 + nm * 0.0015]
+        for k in range(1, 7):
+            f = k / 6
+            sec.append(P[i] + up * stand * f - nm * 0.007 * f * f + nm * 0.0015 * (1 - f))
+        rings.append([out.verts.new(q) for q in sec])
+    m = len(rings[0])
+    # where the collar's two front edges stand (the zip runs up between them)
+    front_rings = rings[:3] + rings[-3:]
+    col_front = [sum((r[k].co for r in front_rings), Vector()) / len(front_rings) for k in range(m)]
+    for i in range(n):
+        j = (i + 1) % n
+        # the opening at the centre front: the zip runs up between the two halves
+        if P[i].y < 0 and P[j].y < 0 and (P[i].x * P[j].x <= 0 or min(abs(P[i].x), abs(P[j].x)) < gap):
+            continue
+        for k in range(m - 1):
+            f = out.faces.new((rings[i][k], rings[j][k], rings[j][k + 1], rings[i][k + 1]))
+            f.smooth = True
+    loose = [v for v in out.verts if not v.link_faces]
+    bmesh.ops.delete(out, geom=loose, context="VERTS")
+    cme = bpy.data.meshes.new("collar")
+    out.to_mesh(cme)
+    out.free()
+    collar = bpy.data.objects.new("collar", cme)
+    bpy.context.collection.objects.link(collar)
+    cme.materials.append(trim_neck)
+    sol = collar.modifiers.new("t", "SOLIDIFY")
+    sol.thickness = 0.003
+    sol.offset = 0
+    sub = collar.modifiers.new("s", "SUBSURF")
+    sub.levels = 2
+    apply_all(collar)
+    # the zip: a chain of teeth down the centre front, laid on the shirt (and up the collar)
+    path = []
+    z = neck_front_z - 0.004
+    step = 0.004
+    while z > zmin + 0.004:
+        hit = bvh.ray_cast(Vector((0, -1.0, z)), Vector((0, 1, 0)))
+        if hit[0] is None:
+            break
+        nrm = hit[1] if hit[1].y < 0 else -hit[1]
+        path.append((hit[0] + nrm * 0.0016, nrm))
+        z -= step
+    path = path[::-1]
+    for k in range(m):
+        q = col_front[k]
+        path.append((Vector((0.0, q.y - 0.0025, q.z)), Vector((0, -1, 0))))
+    out = bmesh.new()
+    rows = []
+    for c, nrm in path:
+        side = Vector((1, 0, 0))
+        rows.append([out.verts.new(c + side * x + nrm * h) for x, h in ((-0.0045, 0), (-0.0016, 0.001), (0.0016, 0.001), (0.0045, 0))])
+    for a, b in zip(rows[:-1], rows[1:]):
+        for i in range(3):
+            f = out.faces.new((a[i], a[i + 1], b[i + 1], b[i]))
+            f.smooth = False
+            f.material_index = 1 if i == 1 else 0
+    zme = bpy.data.meshes.new("zip")
+    out.to_mesh(zme)
+    out.free()
+    zipo = bpy.data.objects.new("zip", zme)
+    bpy.context.collection.objects.link(zipo)
+    zme.materials.append(trim_neck)   # the zip tape
+    zme.materials.append(metal)       # the teeth
+    sol = zipo.modifiers.new("t", "SOLIDIFY")
+    sol.thickness = 0.0012
+    sol.offset = -1
+    apply_all(zipo)
+    # slider and pull, parked just under the collar's top
+    c_top = col_front[-2]
+    c_top = Vector((0.0, c_top.y - 0.004, c_top.z - 0.006))
+    b = bmesh.new()
+    bmesh.ops.create_cube(b, size=1.0)
+    b.transform(Matrix.Translation(c_top) @ Matrix.Diagonal((0.011, 0.005, 0.016, 1)))
+    bmesh.ops.create_cube(b, size=1.0, matrix=Matrix.Translation(c_top + Vector((0, -0.003, -0.022))) @ Matrix.Diagonal((0.008, 0.0018, 0.03, 1)))
+    pme = bpy.data.meshes.new("pull")
+    b.to_mesh(pme)
+    b.free()
+    pull = bpy.data.objects.new("pull", pme)
+    bpy.context.collection.objects.link(pull)
+    pme.materials.append(metal)
+    bev = pull.modifiers.new("b", "BEVEL")
+    bev.width = 0.0012
+    bev.segments = 2
+    apply_all(pull)
+    return [collar, zipo, pull]
+
+
 def sleeve_print_coords(ob):
     """
     Sleeves carry no print coordinates of their own; give each sleeve point those of the
@@ -1702,8 +1943,8 @@ def clear_of_form(ob, kind, clearance):
     fk.MATS.clear()
     fk.materials()
     col = bpy.context.collection
-    form = fk.hip_form(col) if kind == "hip" else fk.dress_form(col, arms=kind == "arms")
-    parts = [o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith(("hip_form", "dress_form"))]
+    form = lower_form(col) if kind == "hip" else fk.dress_form(col, arms=kind == "arms")
+    parts = [o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith(("dress_form",) + LOWER_NAMES)]
     fbm = bmesh.new()
     dg = bpy.context.evaluated_depsgraph_get()
     for o in parts:
@@ -1720,7 +1961,7 @@ def clear_of_form(ob, kind, clearance):
     bvh = BVHTree.FromBMesh(fbm)
     for o in parts:
         bpy.data.objects.remove(o)
-    for n in [o.name for o in bpy.data.objects if o.name.startswith(("form_stand", "hip_stand"))]:
+    for n in [o.name for o in bpy.data.objects if o.name.startswith(("form_stand",) + LOWER_NAMES)]:
         bpy.data.objects.remove(bpy.data.objects[n])
     me = ob.data
     adj = [[] for _ in me.vertices]
@@ -1759,7 +2000,7 @@ def clear_of_form(ob, kind, clearance):
 
 
 def finish(kit_id, ob, order, front, sleeved):
-    shorts = KITS[kit_id].get("garment") == "shorts"
+    shorts = KITS[kit_id].get("garment") in ("shorts", "pants")   # (bottoms)
     face_outward(ob, legs=shorts)
     soften_seams(ob, plain=KITS[kit_id]["neck"] in ("hood", "waist"))
     sm = ob.modifiers.new("settle", "CORRECTIVE_SMOOTH")
@@ -1796,7 +2037,7 @@ def finish(kit_id, ob, order, front, sleeved):
     print(f"{kit_id}: {pushed} points eased off the form", flush=True)
     roll = rolled_edges(ob, T, r=0.0032)
     neck = KITS[kit_id]["neck"]
-    extras = polo_details(ob) if neck == "polo" else hoodie_details(ob) if neck == "hood" else shorts_details(ob) if shorts else []
+    extras = polo_details(ob) if neck == "polo" else hoodie_details(ob) if neck == "hood" else zip_details(ob) if neck == "zip" else shorts_details(ob) if shorts else []
     # thickness + lining
     lining = bpy.data.materials.new("Lining")
     lining.use_nodes = True
@@ -1836,7 +2077,7 @@ def finish(kit_id, ob, order, front, sleeved):
         ob["top"] = float(TOP)
         ob["hem"] = float(TOP - m["V"] / S)
         ob["nw"] = -1.0
-        ob["layout"] = "shorts"
+        ob["layout"] = "pants" if KITS[kit_id].get("garment") == "pants" else "shorts"
         ob["kind"] = "bottom"
         ob["sleeves"] = "none"
         ob["neck"] = "waist"
@@ -1877,22 +2118,32 @@ def shorts_piece(spec):
     side line is u = 0, the front runs to u < 0 (centre front seam, front crotch,
     inseam), the back to u > 0. v is the height above the leg hem.
     """
-    vc = 0.17                        # inseam: crotch above the hem
+    vc = spec.get("vc", 0.17)        # inseam: crotch above the hem
     V = spec["L"]                    # centre-front waist above the hem
     wf, wb = 0.18, 0.19              # half the waist each side of the side line: an elastic
     #                                  waistband is cut smaller than the waist (0.79 m) it grips
     hf, hb = spec["cw"], spec["cw"] + 0.02    # at the hip
-    ef, eb = 0.055, 0.09             # crotch extensions
-    lf, lb = float(OPT.get("lf", 0.34)), float(OPT.get("lb", 0.38))   # leg opening: wide, straight legs
-    nin = count(0.18)
+    ef, eb = spec.get("ef", 0.055), spec.get("eb", 0.09)   # crotch extensions
+    lf, lb = float(OPT.get("lf", spec.get("lf", 0.34))), float(OPT.get("lb", spec.get("lb", 0.38)))   # leg opening: wide, straight legs
+    nin = count(vc + 0.01)
     p = Piece("leg", "Body")
     # the hem rises toward the side seam line (a running short's curved hem): on the form the
     # thigh splays out, and a straight hem rode up into a V at the crotch
-    rise = float(OPT.get("rise", 0.015))
+    rise = float(OPT.get("rise", spec.get("rise", 0.015)))
     hu = np.linspace(-lf, lb, 400)
     hv = rise * (1 - np.where(hu < 0, hu / lf, hu / lb) ** 2) ** 1.5
     p.add("hem", even(np.stack([hu, hv], 1), count(lf + lb, 0.01)))
-    p.add("inB", seg((lb, 0), (hb + eb, vc), nin))
+    knee = spec.get("knee")
+    if knee:
+        # inseam: hem → knee straight, then curving out to the crotch point
+        kv, kf, kb = knee
+        def inseam(l, k, c):
+            P = np.concatenate([seg((l, 0), (k, kv), 60)[:-1],
+                                bez((k, kv), (k + (c - k) * 0.25, kv + (vc - kv) * 0.55), (c - 0.012, vc - 0.05), (c, vc), 120)])
+            return even(P, nin)
+        p.add("inB", inseam(lb, kb, hb + eb))
+    else:
+        p.add("inB", seg((lb, 0), (hb + eb, vc), nin))
     cb = np.concatenate([bez((hb + eb, vc), (hb + eb * 0.35, vc + 0.004), (hb, vc + 0.05), (hb, vc + 0.12), 100)[:-1],
                          seg((hb, vc + 0.12), (wb, V + 0.025), 60)])
     p.add("cb", even(cb, count(length(cb))))
@@ -1900,7 +2151,10 @@ def shorts_piece(spec):
     cf = np.concatenate([seg((-wf, V), (-hf, vc + 0.1), 60)[:-1],
                          bez((-hf, vc + 0.1), (-hf, vc + 0.04), (-hf - ef * 0.6, vc + 0.004), (-(hf + ef), vc), 100)])
     p.add("cf", even(cf, count(length(cf))))
-    p.add("inF", seg((-(hf + ef), vc), (-lf, 0), nin))
+    if knee:
+        p.add("inF", (inseam(lf, kf, hf + ef) * [-1, 1])[::-1])
+    else:
+        p.add("inF", seg((-(hf + ef), vc), (-lf, 0), nin))
     p.meta = dict(vc=vc, V=V, hf=hf, hb=hb)
     # the front and back edges of the piece as functions of the height
     def edge_fn(tags, sign):
@@ -1953,12 +2207,12 @@ def build_shorts(kit_id, spec):
         b.inputs["Roughness"].default_value = 0.85
         mats[name] = m
     piece = shorts_piece(spec)
-    bands = {"Waistband": band(piece, {"waist"}, 0.042), "Trim_Hem": band(piece, {"hem"}, 0.022)}
+    bands = {"Waistband": band(piece, {"waist"}, 0.042), "Trim_Hem": band(piece, {"hem"}, spec.get("cuff", 0.022))}
     V2, T, n_out, owner, tattr = triangulate(piece, bands)
     # the form, to start every point of the cloth clear of it
     from mathutils.bvhtree import BVHTree
     fk.materials()
-    form = fk.hip_form(bpy.context.collection)
+    form = lower_form(bpy.context.collection)
     fbm = bmesh.new()
     fbm.from_mesh(form.data)
     fbm.normal_update()
@@ -2016,7 +2270,7 @@ def build_shorts(kit_id, spec):
     for sx in (1, -1):
         sew(edge_verts[(sx, "inF")], edge_verts[(sx, "inB")][::-1])
     fbm.free()
-    for n in [o.name for o in bpy.data.objects if o.name.startswith(("hip_form", "hip_stand"))]:
+    for n in [o.name for o in bpy.data.objects if o.name.startswith(LOWER_NAMES)]:
         bpy.data.objects.remove(bpy.data.objects[n])
     me = bpy.data.meshes.new(f"{kit_id}_mesh")
     bm.verts.index_update()
@@ -2072,9 +2326,12 @@ def shorts_details(ob):
 
 def make_shorts(kit_id):
     spec = KITS[kit_id]
-    FABRIC.update(bend=float(OPT.get("bend", 4.0)))  # a woven polyester holds its line better than a jersey knit
+    pants = spec.get("garment") == "pants"
+    LOWER["kind"] = "pants" if pants else "hip"
+    FABRIC.update(bend=float(OPT.get("bend", 6.0 if spec.get("garment") == "pants" else 4.0)))  # a woven polyester holds its line better than a jersey knit
     ob, piece = build_shorts(kit_id, spec)
-    simulate(ob, False, frames=120, shorts=True)
+    # (track pants: the rib cuffs are knitted smaller than the leg: they gather it round the ankle)
+    simulate(ob, False, frames=160 if pants else 120, shorts=True, rib_shrink=float(OPT.get("shrink", 0.15)) if pants else 0.0)
     symmetrize(ob)
     gap = weld(ob)
     centre = ob.data.attributes.get("centre")
@@ -2096,9 +2353,17 @@ def make_shorts(kit_id):
 
 def make(kit_id):
     spec = KITS[kit_id]
-    if spec.get("garment") == "shorts":
+    if spec.get("garment") in ("shorts", "pants"):
         return make_shorts(kit_id)
     long = spec["sleeves"] == "long"
+    if "drape" in OPT:
+        # --opt=drape:path/kit_drape.blend: skip the simulation, finish a saved drape
+        # (for working on the finishing details)
+        bpy.ops.wm.open_mainfile(filepath=OPT["drape"])
+        ob = bpy.data.objects["Jersey"]
+        ng = finish(kit_id, ob, None, body_piece(spec, "front"), spec["sleeves"] != "none")
+        export(kit_id, ob)
+        return
     if long:
         # draped as before (arms held out along the sleeve); the sleeves are brought down after
         FABRIC.update(hood_bend=float(OPT.get("hood_bend", 1.0)))
@@ -2129,6 +2394,8 @@ def make(kit_id):
         c2 = ob.data.attributes.new("centre", "INT", "POINT")
         for i, v in enumerate(keep):
             c2.data[i].value = v
+    if "--save-drape" in ARGS:
+        bpy.ops.wm.save_as_mainfile(filepath=str(OUT / f"{kit_id}_drape.blend"))
     ng = finish(kit_id, ob, order, front, sleeved)
     print(f"{kit_id}: seam gap {gap:.4f} m, {ng} stitch verts", flush=True)
     export(kit_id, ob)

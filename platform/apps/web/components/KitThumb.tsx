@@ -18,6 +18,8 @@ export default function KitThumb({
   const p = pattern ?? kit.defaults.pattern;
   if (kit.garment === "shorts") return <ShortsThumb id={kit.id} c={c} p={p} number={number} label={label} style={style} />;
   if (kit.garment === "hoodie") return <HoodieThumb id={kit.id} c={c} p={p} number={number} label={label} style={style} />;
+  if (kit.garment === "pants") return <PantsThumb id={kit.id} c={c} p={p} number={number} label={label} style={style} />;
+  if (kit.garment === "piste" || kit.garment === "piste_zip") return <PisteThumb id={kit.id} c={c} p={p} number={number} label={label} style={style} zip={kit.garment === "piste_zip"} />;
   const sleeved = kit.cut.sleeves === "short";
   const v = kit.cut.neck === "v";
   return (
@@ -96,6 +98,57 @@ function HoodieThumb({ id, c, p, number, label, style }: ThumbProps) {
       <path d="M188 70 L184 176 M212 70 L216 168" stroke={c.trim} strokeWidth="5" strokeLinecap="round" />
       <path d="M200 70 L200 384 L98 384 L98 132 L118 46 L160 36 Q180 56 200 70 Z" fill="#000" opacity="0.1" />
       {number && <text x="250" y="160" textAnchor="middle" fontFamily="Anton, sans-serif" fontSize="40" fill={c.number}>{number}</text>}
+    </svg>
+  );
+}
+
+/** the warm-up top: raglan sleeves running up to the neck, rib cuffs and hem; crew neck or a zip and stand collar */
+function PisteThumb({ id, c, p, number, label, style, zip }: ThumbProps & { zip: boolean }) {
+  const body = "M150 40 Q200 66 250 40 L292 150 L300 384 L100 384 L108 150 Z";
+  const clip = `kt-${id}-body`;
+  return (
+    <svg {...svgProps(label, style)}>
+      <defs><clipPath id={clip}><path d={body} /></clipPath></defs>
+      {/* raglan sleeves: the seam runs from the neck down to the underarm */}
+      <path d="M150 40 L108 150 L94 176 L40 336 L90 346 L120 220 L108 150 Z" fill={c.sleeve} />
+      <path d="M150 40 L96 56 L58 120 L40 336 L94 176 Z" fill={c.sleeve} />
+      <path d="M250 40 L304 56 L342 120 L360 336 L306 176 Z" fill={c.sleeve} />
+      <path d="M250 40 L292 150 L306 176 L360 336 L310 346 L280 220 L292 150 Z" fill={c.sleeve} />
+      <path d="M40 336 L90 346 L86 378 L34 368 Z M360 336 L310 346 L314 378 L366 368 Z" fill={c.trim} />
+      <path d={body} fill={c.body} />
+      <g clipPath={`url(#${clip})`}><Stripes p={p} color={c.stripe} /></g>
+      <path d="M150 40 L108 150 M250 40 L292 150" stroke="#000" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M100 384 L300 384 L298 424 L102 424 Z" fill={c.trim} />
+      {zip ? (
+        <>
+          <path d="M146 22 L254 22 L250 44 Q200 60 150 44 Z" fill={c.trim} />
+          <path d="M200 30 L200 424" stroke="#c9ccd1" strokeWidth="4" />
+          <rect x="194" y="54" width="12" height="22" rx="3" fill="#c9ccd1" />
+        </>
+      ) : (
+        <path d="M150 40 Q200 76 250 40 L240 34 Q200 62 160 34 Z" fill={c.trim} />
+      )}
+      <path d="M200 60 L200 384 L100 384 L108 150 L150 40 Q176 54 200 60 Z" fill="#000" opacity="0.1" />
+      {number && <text x="252" y="150" textAnchor="middle" fontFamily="Anton, sans-serif" fontSize="38" fill={c.number}>{number}</text>}
+    </svg>
+  );
+}
+
+/** track pants: long tapered legs, a gathered waistband with a drawcord, rib cuffs at the ankle */
+function PantsThumb({ id, c, p, number, label, style }: ThumbProps) {
+  const legs = "M118 40 L282 40 L300 120 L262 400 L214 400 L200 132 L186 400 L138 400 L100 120 Z";
+  const clip = `kt-${id}-legs`;
+  return (
+    <svg {...svgProps(label, style)}>
+      <defs><clipPath id={clip}><path d={legs} /></clipPath></defs>
+      <path d={legs} fill={c.body} />
+      <g clipPath={`url(#${clip})`}><Stripes p={p} color={c.stripe} /></g>
+      <path d="M138 400 L186 400 L184 432 L140 432 Z M214 400 L262 400 L260 432 L216 432 Z" fill={c.trim} />
+      <path d="M116 14 L284 14 L282 44 L118 44 Z" fill={c.trim} />
+      <path d="M116 14 L284 14 L282 44 L118 44 Z" fill="#000" opacity="0.08" />
+      <path d="M194 34 Q188 60 182 82 M206 34 Q212 60 220 80" stroke={c.number} strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M200 132 L186 400 L138 400 L100 120 L118 40 L200 40 Z" fill="#000" opacity="0.1" />
+      {number && <text x="246" y="150" textAnchor="middle" fontFamily="Anton, sans-serif" fontSize="30" fill={c.number}>{number}</text>}
     </svg>
   );
 }

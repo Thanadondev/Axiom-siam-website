@@ -195,4 +195,23 @@ describe("garmentOf", () => {
     expect(garmentOf(null)).toBe("jersey");
     expect(garmentOf("warmup")).toBe("jersey");
   });
+
+  it("knows the warm-up suit: the crew and full-zip tops, and the track pants", () => {
+    expect(garmentOf({ kind: "kit-studio", kit: "tempo" })).toBe("piste");
+    expect(garmentOf({ kind: "kit-studio", kit: "tempozip" })).toBe("piste_zip");
+    expect(garmentOf({ kind: "kit-studio", kit: "track" })).toBe("pants");
+  });
+});
+
+describe("priceOrder — warm-up suit", () => {
+  it("prices the zip top above the crew top, and the pants above shorts", () => {
+    const q = { totalQty: 10, fabric: "C1", trim: "full" };
+    const d = DEFAULT_PRICING.garment;
+    expect(d.piste_zip).toBeGreaterThan(d.piste);
+    expect(d.pants).toBeGreaterThan(d.shorts);
+    const base = priceOrder(q, DEFAULT_PRICING).unitPrice;
+    expect(priceOrder({ ...q, garment: "piste" }, DEFAULT_PRICING).unitPrice).toBe(base + d.piste);
+    expect(priceOrder({ ...q, garment: "piste_zip" }, DEFAULT_PRICING).unitPrice).toBe(base + d.piste_zip);
+    expect(priceOrder({ ...q, garment: "pants" }, DEFAULT_PRICING).garmentSurcharge).toBe(d.pants);
+  });
 });

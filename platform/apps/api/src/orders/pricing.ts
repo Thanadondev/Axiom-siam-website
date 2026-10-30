@@ -22,13 +22,18 @@ const signed = (v: string | undefined, fallback: number) => {
   return v !== undefined && v !== "" && Number.isFinite(n) ? n : fallback;
 };
 
-/** what is being made: a jersey (the base price), a hoodie or a pair of shorts */
-export const GARMENTS = ["jersey", "hoodie", "shorts"] as const;
+/**
+ * what is being made: a jersey (the base price), a hoodie, shorts, or the warm-up suit —
+ * a raglan top (crew neck, or zip-up) and track pants
+ */
+export const GARMENTS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants"] as const;
 export type Garment = (typeof GARMENTS)[number];
-export const GARMENT_LABEL: Record<Garment, string> = { jersey: "เสื้อ", hoodie: "เสื้อฮู้ด", shorts: "กางเกง" };
+export const GARMENT_LABEL: Record<Garment, string> = {
+  jersey: "เสื้อ", hoodie: "เสื้อฮู้ด", shorts: "กางเกง", piste: "เสื้อวอร์ม", piste_zip: "เสื้อวอร์มซิป", pants: "กางเกงวอร์ม",
+};
 
 /** the storefront kits that aren't jerseys (apps/web/lib/kits.ts) */
-const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts" };
+const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants" };
 
 /** the garment a design snapshot is for: the kit it was made from, else a jersey */
 export function garmentOf(snap: unknown): Garment {
@@ -79,6 +84,9 @@ export const DEFAULT_PRICING: PricingConfig = {
     jersey: 0,
     hoodie: signed(process.env.PRICE_GARMENT_HOODIE, 250),
     shorts: signed(process.env.PRICE_GARMENT_SHORTS, -80),
+    piste: signed(process.env.PRICE_GARMENT_PISTE, 200),
+    piste_zip: signed(process.env.PRICE_GARMENT_PISTE_ZIP, 280),
+    pants: signed(process.env.PRICE_GARMENT_PANTS, 150),
   },
   reversible: num(process.env.PRICE_REVERSIBLE, 60),
   shippingFlat: num(process.env.PRICE_SHIPPING, 80),

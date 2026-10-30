@@ -6,7 +6,7 @@ const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 export const SIZES = ["S", "M", "L", "XL"] as const;
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
-export const GARMENT_IDS = ["jersey", "hoodie", "shorts"] as const;
+export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants"] as const;
 
 /** one row of the size breakdown, e.g. { size: "L", qty: 12 } */
 export const SizeLineSchema = z.object({

@@ -956,7 +956,7 @@ export default function AdminPage() {
 
             <div style={{ marginTop: 20 }}>
               <h3 className="flabel" style={{ margin: 0 }}>ราคาตามชนิดสินค้า เทียบกับเสื้อ (บาท/ตัว · ติดลบ = ถูกกว่าเสื้อ)</h3>
-              {[["hoodie", "เสื้อฮู้ด"], ["shorts", "กางเกงกีฬา"]].map(([k, label]) => (
+              {[["hoodie", "เสื้อฮู้ด"], ["shorts", "กางเกงกีฬา"], ["piste", "เสื้อวอร์ม (คอกลม)"], ["piste_zip", "เสื้อวอร์มซิป"], ["pants", "กางเกงวอร์ม"]].map(([k, label]) => (
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
                   <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
                   <input className="ainput mini" type="number" style={{ width: 90 }} value={cfg.pricing.garment?.[k] ?? 0} onChange={e => setMap("garment", k, Number(e.target.value))} />

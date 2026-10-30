@@ -11,7 +11,7 @@ import { apiFetch } from "../../../lib/api";
 import { variantQuery } from "../../../lib/garment-options";
 import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
 import {
-  kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
+  kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
   kitParts, kitFabrics, kitTrims, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
   type Kit, type KitConfig, type PartId, type RosterRow, type Size,
 } from "../../../lib/kits";
@@ -395,7 +395,7 @@ function Studio({ kit }: { kit: Kit }) {
               <>
                 <div className="ax-phead"><span className="ax-label" style={{ margin: 0 }}>02 / ลาย</span></div>
                 <div>
-                  <h2>{kit.garment === "shorts" ? "ลายกางเกง" : "ลายเสื้อ"}</h2>
+                  <h2>{isBottom(kit) ? "ลายกางเกง" : "ลายเสื้อ"}</h2>
                   <p className="ax-psub">เลือกลาย แล้วเปลี่ยนสีลายได้ที่แท็บสี → สีลาย</p>
                 </div>
                 <div className="ax-grid2">
@@ -465,7 +465,7 @@ function Studio({ kit }: { kit: Kit }) {
                 <div className="ax-phead"><span className="ax-label" style={{ margin: 0 }}>04 / ชื่อ-เบอร์</span></div>
                 <div>
                   <h2>ชื่อและเบอร์</h2>
-                  <p className="ax-psub">{kit.garment === "shorts" ? "กางเกงพิมพ์เบอร์ที่ขา · ชื่อใช้แยกตัวตอนผลิตและแพ็ก" : "พิมพ์ตัวอย่าง หรือวางรายชื่อทั้งทีม"}</p>
+                  <p className="ax-psub">{isBottom(kit) ? "กางเกงพิมพ์เบอร์ที่ขา · ชื่อใช้แยกตัวตอนผลิตและแพ็ก" : "พิมพ์ตัวอย่าง หรือวางรายชื่อทั้งทีม"}</p>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 10 }}>
                   <label className="ax-label" style={{ margin: 0 }}>ชื่อ

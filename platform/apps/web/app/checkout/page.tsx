@@ -391,7 +391,7 @@ function PriceBox({ bd, totalQty, detailed }: { bd: Breakdown | null; totalQty: 
       {detailed && bd.trimSurcharge > 0 && <div className="ax-price"><span style={{ color: "var(--ax-mute)" }}>รวมค่าขลิบ</span><span>+{baht(bd.trimSurcharge)}/ตัว</span></div>}
       {detailed && !!bd.garmentSurcharge && (
         <div className="ax-price">
-          <span style={{ color: "var(--ax-mute)" }}>{bd.garment === "shorts" ? "กางเกง (จากราคาเสื้อ)" : "เสื้อฮู้ด (จากราคาเสื้อ)"}</span>
+          <span style={{ color: "var(--ax-mute)" }}>{GARMENT_TH[bd.garment ?? ""] ?? "เสื้อฮู้ด"} (จากราคาเสื้อ)</span>
           <span>{bd.garmentSurcharge > 0 ? "+" : "−"}{baht(Math.abs(bd.garmentSurcharge))}/ตัว</span>
         </div>
       )}
@@ -409,6 +409,11 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
     </div>
   );
 }
+
+/** what a non-jersey garment is called on the price breakdown */
+const GARMENT_TH: Record<string, string> = {
+  hoodie: "เสื้อฮู้ด", shorts: "กางเกง", piste: "เสื้อวอร์ม", piste_zip: "เสื้อวอร์มซิป", pants: "กางเกงวอร์ม",
+};
 
 export default function CheckoutPage() {
   return (

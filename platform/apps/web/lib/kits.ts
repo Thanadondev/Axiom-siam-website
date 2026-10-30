@@ -27,8 +27,8 @@ export interface KitColors {
 
 export interface KitCut {
   sleeves: "short" | "none" | "long";
-  /** "hood" = a hoodie, "waist" = shorts (an elastic waistband, no neck) */
-  neck: "crew" | "v" | "polo" | "hood" | "waist";
+  /** "hood" = a hoodie, "waist" = shorts / pants (an elastic waistband, no neck), "zip" = a zip-up warm-up top */
+  neck: "crew" | "v" | "polo" | "hood" | "waist" | "zip";
   /** torso half-width multiplier — basketball runs loose, running tight */
   fit: number;
   /** torso length multiplier */
@@ -46,7 +46,10 @@ export interface KitTheme {
 }
 
 /** what the garment is: drives the display form, the print layout and the price */
-export type GarmentId = "jersey" | "hoodie" | "shorts";
+export type GarmentId = "jersey" | "hoodie" | "shorts" | "piste" | "piste_zip" | "pants";
+
+/** shorts and track pants: an elastic waist, legs, the lower-body form */
+export const isBottom = (k: { garment: GarmentId }) => k.garment === "shorts" || k.garment === "pants";
 
 export interface Kit {
   id: string;
@@ -210,6 +213,78 @@ export const KITS: Kit[] = [
       pattern: "side", trim: "full", fabric: "mesh", number: "10",
     },
   },
+  // ---------- the warm-up suit (piste): a raglan top, crew neck or zip-up, and track pants ----------
+  {
+    id: "tempo",
+    garment: "piste",
+    code: "WU-08",
+    name: "เสื้อวอร์ม",
+    en: "Tempo",
+    note: "แขนรากลัน คอกลม ไม่มีซิป ใส่วอร์มอัพและเดินทาง",
+    deck: "เสื้อวอร์มแขนยาวสำหรับทีม แขนรากลัน คอกลมไม่มีซิป จั๊มปลายแขนและเอว พิมพ์ลายทั้งตัว ชื่อและเบอร์ด้านหลังได้",
+    cutLabel: "แขนยาวรากลัน คอกลม", cutEn: "Raglan long sleeve, crew neck", cutJa: "ラグラン長袖・丸首",
+    cut: { sleeves: "long", neck: "crew", fit: 1.05, length: 1 },
+    theme: { bg: "#1a1517", ink: "#f2f0eb", soft: "#c8bfc2", rail: "#3a2e32", accent: "#ed1c24", accentInk: "#f2f0eb" },
+    paletteLabel: "Black · red · white",
+    fabrics: ["C1", "B1"],
+    trims: [
+      { id: "none", label: "ไม่มีขลิบ" },
+      { id: "neck", label: "ขอบคอ" },
+      { id: "neckarm", label: "ขอบคอ + จั๊มแขน" },
+      { id: "full", label: "ขอบคอ + จั๊มแขน + จั๊มเอว" },
+    ],
+    defaults: {
+      colors: { body: "#231f20", sleeve: "#231f20", trim: "#231f20", stripe: "#ed1c24", number: "#ffffff" },
+      pattern: "diagonal", trim: "full", fabric: "C1", number: "10",
+    },
+  },
+  {
+    id: "tempozip",
+    garment: "piste_zip",
+    code: "WZ-09",
+    name: "เสื้อวอร์มซิป",
+    en: "Tempo Zip",
+    note: "แขนรากลัน คอตั้ง ซิปหน้าตลอดตัว",
+    deck: "แจ็กเก็ตวอร์มแขนยาวสำหรับทีม แขนรากลัน คอตั้งซิปหน้าตลอดตัว จั๊มปลายแขนและเอว พิมพ์ลายทั้งตัว ชื่อและเบอร์ด้านหลังได้",
+    cutLabel: "แขนยาวรากลัน ซิปหน้า", cutEn: "Raglan long sleeve, full zip", cutJa: "ラグラン長袖・フルジップ",
+    cut: { sleeves: "long", neck: "zip", fit: 1.05, length: 1 },
+    theme: { bg: "#111a26", ink: "#f2f0eb", soft: "#b4bfcd", rail: "#24344a", accent: "#00aeef", accentInk: "#111a26" },
+    paletteLabel: "Navy · cyan · white",
+    fabrics: ["C1", "B1"],
+    trims: [
+      { id: "none", label: "ไม่มีขลิบ" },
+      { id: "neck", label: "คอตั้ง" },
+      { id: "neckarm", label: "คอตั้ง + จั๊มแขน" },
+      { id: "full", label: "คอตั้ง + จั๊มแขน + จั๊มเอว" },
+    ],
+    defaults: {
+      colors: { body: "#0054a6", sleeve: "#0054a6", trim: "#231f20", stripe: "#00aeef", number: "#ffffff" },
+      pattern: "side", trim: "full", fabric: "C1", number: "07",
+    },
+  },
+  {
+    id: "track",
+    garment: "pants",
+    code: "TP-10",
+    name: "กางเกงวอร์ม",
+    en: "Track",
+    note: "ขายาว เอวยางยืด ปลายขาจั๊ม เข้าชุดกับเสื้อวอร์ม",
+    deck: "กางเกงวอร์มขายาวสำหรับทีม เอวยางยืดพร้อมเชือกผูก ขาเรียวลงปลายจั๊ม พิมพ์แถบข้าง โลโก้และเบอร์ที่ต้นขาได้",
+    cutLabel: "ขายาว ปลายจั๊ม", cutEn: "Track pants, rib cuffs", cutJa: "ロングパンツ・リブ裾",
+    cut: { sleeves: "none", neck: "waist", fit: 1, length: 1 },
+    theme: { bg: "#151517", ink: "#f2f0eb", soft: "#bdbdc2", rail: "#33333a", accent: "#f2f0eb", accentInk: "#151517" },
+    paletteLabel: "Black · white",
+    fabrics: ["C1", "B1"],
+    trims: [
+      { id: "none", label: "ไม่มีขลิบ" },
+      { id: "neck", label: "ขอบเอว" },
+      { id: "full", label: "ขอบเอว + จั๊มปลายขา" },
+    ],
+    defaults: {
+      colors: { body: "#231f20", sleeve: "#231f20", trim: "#231f20", stripe: "#ffffff", number: "#ffffff" },
+      pattern: "side", trim: "full", fabric: "C1", number: "10",
+    },
+  },
 ];
 
 /** the fabrics a kit is made in (the first is its usual one) */
@@ -225,10 +300,14 @@ export function kitTrims(kit: Kit): { id: TrimId; label: string }[] {
 /** the parts that can be coloured on this garment, named and explained in its own words */
 export function kitParts(kit: Kit): { id: PartId; label: string; hint: string }[] {
   return PARTS.filter(p => p.id !== "sleeve" || kit.cut.sleeves !== "none").map(p => {
-    if (kit.garment === "shorts") {
+    if (isBottom(kit)) {
       if (p.id === "body") return { ...p, label: "ตัวกางเกง" };
-      if (p.id === "trim") return { ...p, label: "ขอบ", hint: "ขอบเอวและปลายขา" };
+      if (p.id === "trim") return { ...p, label: "ขอบ", hint: kit.garment === "pants" ? "ขอบเอวและจั๊มปลายขา" : "ขอบเอวและปลายขา" };
       if (p.id === "number") return { ...p, label: "เบอร์", hint: "เบอร์ที่ขา ต้องอ่านได้ชัด" };
+    }
+    if (kit.garment === "piste" || kit.garment === "piste_zip") {
+      if (p.id === "sleeve") return { ...p, label: "แขน", hint: "แขนรากลัน ต่อขึ้นไปถึงคอ" };
+      if (p.id === "trim") return { ...p, label: kit.garment === "piste_zip" ? "คอตั้ง / จั๊ม" : "ขอบคอ / จั๊ม", hint: "ขอบคอ จั๊มแขนและเอว" };
     }
     if (kit.garment === "hoodie") {
       if (p.id === "trim") return { ...p, label: "ขอบฮู้ด / จั๊ม", hint: "ขอบฮู้ด เชือก จั๊มแขนและเอว" };

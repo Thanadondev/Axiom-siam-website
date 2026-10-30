@@ -75,11 +75,17 @@ const LockerScene = forwardRef<LockerHandle, { kit: Kit; look: JerseyLook; view:
         scene.fog = new THREE.Fog(0x111214, 13, 30);
         const camera = new THREE.PerspectiveCamera(34, el.clientWidth / el.clientHeight, 0.1, 80);
         // shorts sit lower and are shorter than a shirt: frame them closer
+        // (track pants run from the waist to the ankle: frame the whole leg)
         const shorts = jersey.layout === "shorts";
-        const HOME = shorts
+        const pants = jersey.layout === "pants";
+        const HOME = pants
+          ? (onForm ? new THREE.Vector3(0, -0.2, 13.4) : new THREE.Vector3(0, 0.3, 13.4))
+          : shorts
           ? (onForm ? new THREE.Vector3(0, 0.25, 9.6) : new THREE.Vector3(0, 1.1, 9.6))
           : onForm ? new THREE.Vector3(0, 1.25, 11.4) : new THREE.Vector3(0, 0.55, 11.4);
-        const TARGET = shorts
+        const TARGET = pants
+          ? (onForm ? new THREE.Vector3(0, -1.0, 0) : new THREE.Vector3(0, -0.5, 0))
+          : shorts
           ? (onForm ? new THREE.Vector3(0, -0.45, 0) : new THREE.Vector3(0, 0.45, 0))
           : onForm ? new THREE.Vector3(0, 0.45, 0) : new THREE.Vector3(0, -0.25, 0);
         camera.position.copy(HOME);

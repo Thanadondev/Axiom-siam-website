@@ -53,17 +53,21 @@ export function formBaseOf(j: { formBase?: number }) {
  * draped hanging at the sides, where the form's held-out arms would poke through), or the
  * lower-body form (shorts)
  */
-export type FormKind = "arms" | "sleeveless" | "hip";
+export type FormKind = "arms" | "sleeveless" | "hip" | "pants";
 
 export function formKindOf(j: { sleeved?: boolean; longSleeves?: boolean; layout?: string }): FormKind {
-  return j.layout === "shorts" ? "hip" : j.sleeved === false || j.longSleeves ? "sleeveless" : "arms";
+  if (j.layout === "shorts") return "hip";
+  if (j.layout === "pants") return "pants"; // legs down to the ankle
+  return j.sleeved === false || j.longSleeves ? "sleeveless" : "arms";
 }
 
 export function makeDressForm(THREE: any, prims: KitPrims | null, kind: FormKind | boolean = true) {
   const g = new THREE.Group();
   const k: FormKind = kind === true ? "arms" : kind === false ? "sleeveless" : kind;
   const parts =
-    (k === "hip" ? prims?.hip_form : k === "sleeveless" && prims?.dress_form_sleeveless?.length ? prims.dress_form_sleeveless : prims?.dress_form) || [];
+    (k === "pants" ? prims?.pants_form ?? prims?.hip_form
+      : k === "hip" ? prims?.hip_form
+      : k === "sleeveless" && prims?.dress_form_sleeveless?.length ? prims.dress_form_sleeveless : prims?.dress_form) || [];
   parts.forEach(({ geo, mat, local }) => {
     const m = new THREE.Mesh(geo, mat);
     m.applyMatrix4(local);

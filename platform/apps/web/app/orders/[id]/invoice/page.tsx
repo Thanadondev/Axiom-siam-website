@@ -29,8 +29,8 @@ export default function InvoicePage() {
   // a full tax invoice: the seller's tax details and a buyer frozen onto the invoice
   const isTax = Boolean(seller && inv?.buyerTaxId);
   const branchText = (b?: string | null) => (!b || b === "00000" ? "สำนักงานใหญ่" : `สาขาที่ ${b}`);
-  const garment = /^(เสื้อฮู้ด|กางเกง) · /.exec(o.fabricSummary ?? "")?.[1];
-  const itemLabel = garment ? `${garment}กีฬาสั่งผลิต`.replace("เสื้อฮู้ดกีฬา", "เสื้อฮู้ด") : "เสื้อกีฬาสั่งผลิต";
+  const garment = /^(เสื้อฮู้ด|กางเกงวอร์ม|กางเกง|เสื้อวอร์มซิป|เสื้อวอร์ม) · /.exec(o.fabricSummary ?? "")?.[1];
+  const itemLabel = !garment ? "เสื้อกีฬาสั่งผลิต" : garment === "กางเกง" ? "กางเกงกีฬาสั่งผลิต" : `${garment}สั่งผลิต`;
   const deposit = o.depositAmount > 0 && o.depositAmount < o.total;
   const vatRate = 0.07;
   const beforeVat = Math.round((o.total / (1 + vatRate)) * 100) / 100;

@@ -152,7 +152,7 @@ export default function CheckoutScene({
         }
         x.fillStyle = c.trim;
         x.beginPath();
-        if (kit.garment === "shorts") {
+        if (kit.garment === "shorts" || kit.garment === "pants") {
           // folded shorts: the waistband across the top, the drawcord at the front
           x.rect(0, 0, 256, 30);
           x.fill();

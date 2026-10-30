@@ -637,7 +637,7 @@ def trolley(col):
 HIP_WAIST = 1.05  # height of the hip form's waist (metres) — the shorts are built to it
 
 
-def hip_form(col, name="hip_form"):
+def hip_form(col, name="hip_form", long=False):
     """a lower-body form (waist to above the knee) on a chrome pole, for shorts.
     Floor at the origin, waist at HIP_WAIST, faces -Y like the dress form."""
     W = HIP_WAIST
@@ -673,8 +673,12 @@ def hip_form(col, name="hip_form"):
     for sx in (1, -1):
         bm = bmesh.new()
         loops = []
-        for k, (h, r) in enumerate([(W - 0.17, 0.086), (W - 0.24, 0.09), (W - 0.33, 0.083), (W - 0.45, 0.07), (W - 0.56, 0.06)]):
-            cx = sx * (0.086 + 0.014 * k / 4)
+        ring = [(W - 0.17, 0.086), (W - 0.24, 0.09), (W - 0.33, 0.083), (W - 0.45, 0.07), (W - 0.56, 0.06)]
+        if long:
+            # on down to the ankle (track pants): knee, calf, ankle, legs straight below the thigh
+            ring += [(W - 0.66, 0.053), (W - 0.74, 0.055), (W - 0.82, 0.05), (W - 0.9, 0.039), (W - 0.95, 0.036)]
+        for k, (h, r) in enumerate(ring):
+            cx = sx * (0.086 + 0.014 * min(k, 4) / 4)
             loop = [bm.verts.new((cx + r * cos(2 * pi * i / 28), r * 1.02 * sin(2 * pi * i / 28) + 0.006, h)) for i in range(28)]
             loops.append(loop)
         for l1, l2 in zip(loops, loops[1:]):
@@ -716,12 +720,20 @@ def hip_form(col, name="hip_form"):
     p.cyl(0.03, 0.08, (0, 0, 0.3), "Chrome", n=16, bevel=0.006)           # height collar
     p.cyl(0.19, 0.03, (0, 0, 0.015), "SteelDark", n=40, bevel=0.01)       # weighted base
     p.cyl(0.05, 0.02, (0, 0, 0.04), "Chrome", n=20)
-    for sx in (1, -1):  # chrome caps on the cut thighs
-        p.cyl(0.058, 0.008, (sx * 0.1, 0.006, W - 0.564), "Chrome", n=24, bevel=0.003)
+    for sx in (1, -1):  # chrome caps on the cut thighs (on the ankles, with long legs)
+        if long:
+            p.cyl(0.034, 0.008, (sx * 0.1, 0.006, W - 0.954), "Chrome", n=24, bevel=0.003)
+        else:
+            p.cyl(0.058, 0.008, (sx * 0.1, 0.006, W - 0.564), "Chrome", n=24, bevel=0.003)
     st = p.build(col)
     ob = _join(pelvis, [st])
     ob.name = name
     return ob
+
+
+def pants_form(col):
+    """the lower-body form with legs down to the ankle, for track pants"""
+    return hip_form(col, name="pants_form", long=True)
 
 
 def dress_form_sleeveless(col):
@@ -729,7 +741,7 @@ def dress_form_sleeveless(col):
     return dress_form(col, arms=False, name="dress_form_sleeveless")
 
 
-PROPS = [sewing_station, work_cloth, highbay, roll_rack, fabric_roll, shirt_hanging, dress_form, dress_form_sleeveless, hip_form, garment_rack,
+PROPS = [sewing_station, work_cloth, highbay, roll_rack, fabric_roll, shirt_hanging, dress_form, dress_form_sleeveless, hip_form, pants_form, garment_rack,
          calender, cut_table, column, truss, wall_fan, carton, pallet, trolley]
 
 
