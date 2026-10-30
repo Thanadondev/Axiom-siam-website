@@ -268,9 +268,9 @@ export const KITS: Kit[] = [
     code: "TP-10",
     name: "กางเกงวอร์ม",
     en: "Track",
-    note: "ขายาว เอวยางยืด ปลายขาจั๊ม เข้าชุดกับเสื้อวอร์ม",
-    deck: "กางเกงวอร์มขายาวสำหรับทีม เอวยางยืดพร้อมเชือกผูก ขาเรียวลงปลายจั๊ม พิมพ์แถบข้าง โลโก้และเบอร์ที่ต้นขาได้",
-    cutLabel: "ขายาว ปลายจั๊ม", cutEn: "Track pants, rib cuffs", cutJa: "ロングパンツ・リブ裾",
+    note: "ขายาวทรงเรียว เอวยางยืด เข้าชุดกับเสื้อวอร์ม",
+    deck: "กางเกงวอร์มขายาวสำหรับทีม เอวยางยืดพร้อมเชือกผูก ขาเรียวเข้ารูปลงถึงข้อเท้า ปลายขาเย็บพับ พิมพ์แถบข้าง โลโก้และเบอร์ที่ต้นขาได้",
+    cutLabel: "ขายาว ทรงเรียว", cutEn: "Slim tapered track pants", cutJa: "ロングパンツ・テーパード",
     cut: { sleeves: "none", neck: "waist", fit: 1, length: 1 },
     theme: { bg: "#151517", ink: "#f2f0eb", soft: "#bdbdc2", rail: "#33333a", accent: "#f2f0eb", accentInk: "#151517" },
     paletteLabel: "Black · white",
@@ -278,7 +278,7 @@ export const KITS: Kit[] = [
     trims: [
       { id: "none", label: "ไม่มีขลิบ" },
       { id: "neck", label: "ขอบเอว" },
-      { id: "full", label: "ขอบเอว + จั๊มปลายขา" },
+      { id: "full", label: "ขอบเอว + ขอบปลายขา" },
     ],
     defaults: {
       colors: { body: "#231f20", sleeve: "#231f20", trim: "#231f20", stripe: "#ffffff", number: "#ffffff" },
@@ -302,7 +302,7 @@ export function kitParts(kit: Kit): { id: PartId; label: string; hint: string }[
   return PARTS.filter(p => p.id !== "sleeve" || kit.cut.sleeves !== "none").map(p => {
     if (isBottom(kit)) {
       if (p.id === "body") return { ...p, label: "ตัวกางเกง" };
-      if (p.id === "trim") return { ...p, label: "ขอบ", hint: kit.garment === "pants" ? "ขอบเอวและจั๊มปลายขา" : "ขอบเอวและปลายขา" };
+      if (p.id === "trim") return { ...p, label: "ขอบ", hint: "ขอบเอวและขอบปลายขา" };
       if (p.id === "number") return { ...p, label: "เบอร์", hint: "เบอร์ที่ขา ต้องอ่านได้ชัด" };
     }
     if (kit.garment === "piste" || kit.garment === "piste_zip") {

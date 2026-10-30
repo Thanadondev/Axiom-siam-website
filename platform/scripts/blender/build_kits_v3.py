@@ -72,10 +72,10 @@ KITS = {
     # (cut with room at the hip and a wide leg: training shorts hang loose, they don't hug the seat)
     "stride": dict(sleeves="none", neck="waist", garment="shorts", cw=0.272, L=0.485, nd=0.0),
     # track pants (the warm-up suit's bottoms): the shorts' cut carried on down to the ankle,
-    # a straight, slightly tapered leg and a rib cuff gathered round the ankle
-    "track": dict(sleeves="none", neck="waist", garment="pants", cw=0.272, L=float(OPT.get("L", 0.985)), nd=0.0,
-                  vc=float(OPT.get("vc", 0.69)), lf=float(OPT.get("lf", 0.135)), lb=float(OPT.get("lb", 0.155)),
-                  rise=0.0, cuff=0.065, ef=0.045, eb=0.08,
+    # a slim leg tapering to a plain hemmed ankle (like a Grand Sport / Warrix training pant)
+    "track": dict(sleeves="none", neck="waist", garment="pants", cw=0.272, L=float(OPT.get("L", 0.98)), nd=0.0,
+                  vc=float(OPT.get("vc", 0.715)), lf=float(OPT.get("lf", 0.135)), lb=float(OPT.get("lb", 0.155)),
+                  rise=0.0, cuff=float(OPT.get("cuff", 0.025)), ef=float(OPT.get("ef", 0.04)), eb=float(OPT.get("eb", 0.07)),
                   # the leg narrows through the thigh to the knee, then runs on gently to the ankle
                   knee=(float(OPT.get("kv", 0.42)), float(OPT.get("kf", 0.19)), float(OPT.get("kb", 0.22)))),
 }
@@ -2025,7 +2025,7 @@ def bridge_crotch(ob, half=0.13):
     V = np.array([v.co[:] for v in me.vertices])
     # the form's crotch (the inseams meet just below it; lower down the legs touch anyway)
     zc = Z_WAIST - 0.275 + float(OPT.get("zc", 0.0))
-    z_lo, z_hi = zc - 0.005, Z_WAIST - 0.07
+    z_lo, z_hi = zc + float(OPT.get("zlo", -0.005)), Z_WAIST - 0.07
     moved = 0
     newV = V.copy()
     step, win = 0.005, 0.012
@@ -2056,30 +2056,10 @@ def bridge_crotch(ob, half=0.13):
                 w *= min(max((DEEP - d) / 0.015, 0.0), 1.0)
                 newV[i, 1] = V[i, 1] + side * d * w
                 moved += 1
-    # the folds that gather where the four panels meet under the crotch read as a lump:
-    # smooth them out, strongest at the crotch and fading over ~10 cm (clear_of_form, later,
-    # keeps the smoothed cloth off the form)
-    R = float(OPT.get("csr", 0.13))
-    it = int(OPT.get("csi", 60))
-    if it:
-        n = len(V)
-        adj = [[] for _ in range(n)]
-        for e in me.edges:
-            a_, b_ = e.vertices
-            adj[a_].append(b_)
-            adj[b_].append(a_)
-        dist = np.sqrt(newV[:, 0] ** 2 + ((newV[:, 2] - (zc - 0.02)) * 0.8) ** 2)
-        sel = np.nonzero((dist < R) & (np.abs(newV[:, 1]) < 0.2))[0]
-        wt = (0.5 + 0.5 * np.cos(np.pi * dist[sel] / R))[:, None] * 0.5
-        co = newV
-        for _ in range(it):
-            avg = np.array([co[adj[i]].mean(0) for i in sel])
-            co[sel] += (avg - co[sel]) * wt
-        moved += len(sel)
     for i, v in enumerate(me.vertices):
         v.co = newV[i]
     me.update()
-    print(f"bridge_crotch: crotch at {zc:.3f}, {moved} points laid across / smoothed", flush=True)
+    print(f"bridge_crotch: crotch at {zc:.3f}, {moved} points laid across", flush=True)
 
 
 def finish(kit_id, ob, order, front, sleeved):
@@ -2253,6 +2233,9 @@ def shorts_piece(spec):
 
 def place_leg(V2, piece, sx):
     """the leg piece round the hip form: half the pelvis above the crotch, a tube round the thigh below"""
+    global LEG_D, LEG_X, LEG_RX, LEG_RY
+    sec = fk.leg_sections(long=LOWER["kind"] == "pants")
+    LEG_D, LEG_X, LEG_RX, LEG_RY = (np.array(c) for c in zip(*sec))
     vc = piece.meta["vc"]
     zc = Z_WAIST - 0.275            # the form's crotch
     out = []
@@ -2269,10 +2252,15 @@ def place_leg(V2, piece, sx):
         e = 2.4
         c_, s_ = math.cos(th), math.sin(th)
         P1 = Vector((sx * a * abs(c_) ** (2 / e), b * math.copysign(abs(s_) ** (2 / e), s_), z))
-        # thigh tube, at the cloth's own size (stretched cloth would creep down the tapering thigh)
+        # leg tube round the form's leg, at the cloth's own size where it can be: the cloth's
+        # rest shape is the shape it's placed in, so a tube placed wider than its pattern stays
+        # that wide (track pants hung as straight 19 cm tubes from thigh to ankle); just clear
+        # of the leg where the pattern is closer-fitting than that
         ph = (-math.pi * (u / uF)) if u < 0 else (math.pi * (u / uB))
-        R = max((uB - uF) / (2 * math.pi), 0.1)
-        P2 = Vector((sx * (fk.THIGH_X0 + 0.016 + R * math.cos(ph)), 0.006 + R * math.sin(ph), z))
+        depth = Z_WAIST - z
+        cx, rx, ry = (float(np.interp(depth, LEG_D, c)) for c in (LEG_X, LEG_RX, LEG_RY))
+        R = max((uB - uF) / (2 * math.pi), max(rx, ry) + 0.008)
+        P2 = Vector((sx * (cx + R * math.cos(ph)), 0.006 + R * math.sin(ph), z))
         w = min(max((v - (vc - 0.03)) / 0.12, 0.0), 1.0)
         w = w * w * (3 - 2 * w)
         out.append(tuple(P2.lerp(P1, w)))
@@ -2423,7 +2411,7 @@ def make_shorts(kit_id):
     FABRIC.update(bend=float(OPT.get("bend", 6.0 if spec.get("garment") == "pants" else 4.0)))  # a woven polyester holds its line better than a jersey knit
     ob, piece = build_shorts(kit_id, spec)
     # (track pants: the rib cuffs are knitted smaller than the leg: they gather it round the ankle)
-    simulate(ob, False, frames=160 if pants else 120, shorts=True, rib_shrink=float(OPT.get("shrink", 0.15)) if pants else 0.0)
+    simulate(ob, False, frames=160 if pants else 120, shorts=True, rib_shrink=float(OPT.get("shrink", 0.0)) if pants else 0.0)
     symmetrize(ob)
     gap = weld(ob)
     centre = ob.data.attributes.get("centre")

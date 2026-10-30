@@ -156,7 +156,7 @@ describe("the warm-up suit", () => {
 
   it("names the parts for each piece", () => {
     expect(kitParts(pants).map(p => p.id)).not.toContain("sleeve");
-    expect(kitParts(pants).find(p => p.id === "trim")?.hint).toContain("จั๊มปลายขา");
+    expect(kitParts(pants).find(p => p.id === "trim")?.hint).toContain("ปลายขา");
     expect(kitParts(crew).find(p => p.id === "sleeve")?.hint).toContain("รากลัน");
     expect(kitParts(zip).find(p => p.id === "trim")?.label).toContain("คอตั้ง");
   });

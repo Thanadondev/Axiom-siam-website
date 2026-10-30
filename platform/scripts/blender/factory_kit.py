@@ -638,6 +638,28 @@ HIP_WAIST = 1.05  # height of the hip form's waist (metres) — the shorts are b
 THIGH_X0 = 0.09      # thigh centres off the middle: at the top,
 THIGH_X1 = 0.122     # and above the knee (the long-legged form for track pants)
 THIGH_X1_SHORT = 0.145   # (wide-legged shorts need the legs a little further apart to hang free)
+# the leg's sections: (depth below the waist, radius), thigh to above the knee, then on to the ankle
+THIGH_RING = [(0.17, 0.086), (0.24, 0.09), (0.33, 0.083), (0.45, 0.07), (0.56, 0.06)]
+SHIN_RING = [(0.66, 0.053), (0.74, 0.055), (0.82, 0.05), (0.9, 0.039), (0.95, 0.036)]
+# the tops of the thighs are as deep as the bottom of the pelvis (front to back), so
+# there's no ledge where they meet for cloth to sink under: draped shorts showed the
+# pelvis's round underside front and back, like a seat
+THIGH_DEEP = [1.3, 1.24, 1.12, 1.04]
+
+
+def leg_sections(long=False):
+    """the leg's sections: [(depth below the waist, centre x, half-width, half-depth)] (right leg)"""
+    x1 = THIGH_X1 if long else THIGH_X1_SHORT
+    ring = THIGH_RING + (SHIN_RING if long else [])
+    out = []
+    for k, (h, r) in enumerate(ring):
+        # legs a little apart (an A stance), so the crotch is a narrow V and each leg of
+        # the shorts hangs on its own; with the thighs touching, the cloth showed a round
+        # U between them and two lobes down the front
+        cx = THIGH_X0 + (x1 - THIGH_X0) * min(k, 4) / 4 + (0.012 * (k - 4) / 5 if k > 4 else 0.0)
+        dy = r * 1.02 * (THIGH_DEEP[k] if k < len(THIGH_DEEP) else 1.0)
+        out.append((h, cx, r, dy))
+    return out
 
 
 def hip_form(col, name="hip_form", long=False):
@@ -678,20 +700,8 @@ def hip_form(col, name="hip_form", long=False):
     for sx in (1, -1):
         bm = bmesh.new()
         loops = []
-        ring = [(W - 0.17, 0.086), (W - 0.24, 0.09), (W - 0.33, 0.083), (W - 0.45, 0.07), (W - 0.56, 0.06)]
-        if long:
-            # on down to the ankle (track pants): knee, calf, ankle, legs straight below the thigh
-            ring += [(W - 0.66, 0.053), (W - 0.74, 0.055), (W - 0.82, 0.05), (W - 0.9, 0.039), (W - 0.95, 0.036)]
-        # the tops of the thighs are as deep as the bottom of the pelvis (front to back), so
-        # there's no ledge where they meet for cloth to sink under: draped shorts showed the
-        # pelvis's round underside front and back, like a seat
-        deep = [1.3, 1.24, 1.12, 1.04]
-        for k, (h, r) in enumerate(ring):
-            # legs a little apart (an A stance), so the crotch is a narrow V and each leg of
-            # the shorts hangs on its own; with the thighs touching, the cloth showed a round
-            # U between them and two lobes down the front
-            cx = sx * (THIGH_X0 + (x1 - THIGH_X0) * min(k, 4) / 4 + (0.012 * (k - 4) / 5 if k > 4 else 0.0))
-            dy = r * 1.02 * (deep[k] if k < len(deep) else 1.0)
+        for h, cx, r, dy in leg_sections(long):
+            h, cx = W - h, sx * cx
             loop = [bm.verts.new((cx + r * cos(2 * pi * i / 28), dy * sin(2 * pi * i / 28) + 0.006 + (dy - r) * 0.25 * max(sin(2 * pi * i / 28), 0), h)) for i in range(28)]
             loops.append(loop)
         for l1, l2 in zip(loops, loops[1:]):
