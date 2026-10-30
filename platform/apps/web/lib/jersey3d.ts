@@ -54,8 +54,11 @@ export interface Jersey {
   dispose(): void;
 }
 
-/** "top" a shirt; "hoodie" the back print sits below the hood; "shorts" a number low on the leg */
-export type PrintLayout = "top" | "hoodie" | "shorts";
+/**
+ * "top" a shirt; "hoodie" the back print sits below the hood; "shorts" a number low on
+ * the leg; "pants" track pants — a small logo and number high on the thigh
+ */
+export type PrintLayout = "top" | "hoodie" | "shorts" | "pants";
 
 /** torso width the print sizes were set against; other widths scale to keep real size */
 const REF_WIDTH = 2.6;
@@ -414,6 +417,28 @@ vec4 diffuseColor = vec4( col, opacity );`,
 }
 
 /** fabric feel: mesh gets the weave bump, B1 is soft matte, C1 a tighter sheen */
+/**
+ * An elastic waistband's gathers: soft ridges running down the band, where the fabric
+ * is bunched onto the elastic. A bump map across the band's pattern u (metres).
+ */
+function gatherTexture(THREE: any) {
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 4;
+  const x = c.getContext("2d")!;
+  for (let i = 0; i < 64; i++) {
+    // uneven ridges, as real gathers are: two waves of different width
+    const v = 0.5 + 0.32 * Math.sin((i / 64) * Math.PI * 2 * 3) + 0.18 * Math.sin((i / 64) * Math.PI * 2 * 5 + 1.3);
+    const g = Math.round(255 * Math.min(1, Math.max(0, v)));
+    x.fillStyle = `rgb(${g},${g},${g})`;
+    x.fillRect(i, 0, 1, 4);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(16, 1); // u runs once round the waist (≈ 0.95 m): ≈ 2 cm between ridges
+  return t;
+}
+
 function applyFabric(mats: any[], fabric: FabricId, weave: any) {
   const rough = fabric === "mesh" ? 0.88 : fabric === "B1" ? 0.78 : 0.6;
   for (const m of mats) {
@@ -783,7 +808,7 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
   let info: any = null;
   root.traverse((o: any) => { if (!info && o.userData && typeof o.userData.top === "number") info = o.userData; });
   if (!info) throw new Error("model has no measurements");
-  const layout: PrintLayout = info.layout === "hoodie" || info.layout === "shorts" ? info.layout : "top";
+  const layout: PrintLayout = ["hoodie", "shorts", "pants"].includes(info.layout) ? info.layout : "top";
   const dims: Dims = { W: info.W, top: info.top, hem: info.hem, nw: info.nw, layout };
   const sleeved = info.sleeves === "short" || info.sleeves === "long";
 
@@ -821,6 +846,12 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
   };
   for (const m of body) m.material = skin.material;
   for (const [name, mat] of Object.entries(mats)) for (const m of byName[name] ?? []) m.material = mat;
+  // an elastic waistband is gathered (shorts, track pants): ridges down the band
+  if (layout === "shorts" || layout === "pants") {
+    mats.Waistband.bumpMap = keep(gatherTexture(THREE));
+    mats.Waistband.bumpScale = 0.025;
+    mats.Waistband.roughness = 0.9;
+  }
 
   let hook: { hookTop: number; hookZ: number } | undefined;
   if (opts.hanger) {

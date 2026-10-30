@@ -1665,6 +1665,31 @@ def sleeve_print_coords(ob):
         rn.data[v.index].vector = rn.data[j].vector
 
 
+def band_round_uv(ob):
+    """
+    An elastic waistband's texture coordinates run round the waist (u = the angle round
+    the body, v = height), so the web's gathers stand upright. The flat-pattern u slants
+    once the leg is wrapped round the hips (the seat seams aren't vertical).
+    """
+    me = ob.data
+    idx = {i for i, m in enumerate(me.materials) if m.name.split(".")[0] == "Waistband"}
+    if not idx or not me.uv_layers:
+        return
+    uv = me.uv_layers.active.data
+    for p in me.polygons:
+        if p.material_index not in idx:
+            continue
+        us = []
+        for li in p.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            us.append(math.atan2(co.x, -co.y) / (2 * math.pi) + 0.5)
+        # a face straddling the back seam (u wraps 1 → 0) stays on one side
+        if max(us) - min(us) > 0.5:
+            us = [u + 1 if u < 0.5 else u for u in us]
+        for li, u in zip(p.loop_indices, us):
+            uv[li].uv = (u, me.vertices[me.loops[li].vertex_index].co.z)
+
+
 def clear_of_form(ob, kind, clearance):
     """
     Keep the finished cloth off the display form the web shows it on. The smoothing and
@@ -1802,6 +1827,7 @@ def finish(kit_id, ob, order, front, sleeved):
     # (shorts: the waist at y = TOP)
     zref = Z_WAIST if shorts else Z_HPS
     M = Matrix.Translation((0, 0, TOP)) @ Matrix.Scale(1 / S, 4) @ Matrix.Translation((0, 0, -zref))
+    band_round_uv(ob)
     ob.data.transform(M)
     ob.data.update()
     m = front.meta
@@ -1857,12 +1883,12 @@ def shorts_piece(spec):
     #                                  waistband is cut smaller than the waist (0.79 m) it grips
     hf, hb = spec["cw"], spec["cw"] + 0.02    # at the hip
     ef, eb = 0.055, 0.09             # crotch extensions
-    lf, lb = 0.31, 0.35              # leg opening
+    lf, lb = float(OPT.get("lf", 0.34)), float(OPT.get("lb", 0.38))   # leg opening: wide, straight legs
     nin = count(0.18)
     p = Piece("leg", "Body")
     # the hem rises toward the side seam line (a running short's curved hem): on the form the
     # thigh splays out, and a straight hem rode up into a V at the crotch
-    rise = 0.032
+    rise = float(OPT.get("rise", 0.015))
     hu = np.linspace(-lf, lb, 400)
     hv = rise * (1 - np.where(hu < 0, hu / lf, hu / lb) ** 2) ** 1.5
     p.add("hem", even(np.stack([hu, hv], 1), count(lf + lb, 0.01)))
@@ -2046,7 +2072,7 @@ def shorts_details(ob):
 
 def make_shorts(kit_id):
     spec = KITS[kit_id]
-    FABRIC.update(bend=2.5)  # a woven polyester holds its line better than a jersey knit
+    FABRIC.update(bend=float(OPT.get("bend", 4.0)))  # a woven polyester holds its line better than a jersey knit
     ob, piece = build_shorts(kit_id, spec)
     simulate(ob, False, frames=120, shorts=True)
     symmetrize(ob)
