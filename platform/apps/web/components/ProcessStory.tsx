@@ -40,8 +40,13 @@ const ease = (t: number) => { const x = clamp01(t); return x * x * (3 - 2 * x); 
 const easeIO = (t: number) => { const x = clamp01(t); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
 const span = (u: number, a: number, b: number) => clamp01((u - a) / (b - a));
 const bell = (p: number, c: number, w = 0.3) => ease((p - (c - w - 0.12)) / 0.12) * (1 - ease((p - (c + w)) / 0.12));
-/** scroll position → camera position along the keyframes: hold at each chapter, travel between */
-const camParam = (p: number) => { const k = Math.floor(p); return k + easeIO((p - k - 0.22) / 0.56); };
+/**
+ * scroll position → camera position along the keyframes: hold at each chapter, travel between.
+ * The travel takes 70% of the scroll between two stations on a gentle sine curve, so the camera
+ * never moves faster than about twice its average speed (motion comfort).
+ */
+const easeSine = (t: number) => (1 - Math.cos(Math.PI * clamp01(t))) / 2;
+const camParam = (p: number) => { const k = Math.floor(p); return k + easeSine((p - k - 0.15) / 0.7); };
 
 /** one order on the line (the /tracking page): its step and the factory's dates */
 export interface TrackView {
@@ -53,12 +58,27 @@ export interface TrackView {
   dueDate?: string | null;
 }
 
-/** scroll the walk to chapter i (0 overview, 1–10 the stations, 11 the end) */
+/**
+ * Scroll the walk to chapter i (0 overview, 1–10 the stations, 11 the end). The next station
+ * is a short walk; anything further is a cut — a quick fade through black, not a fly-past of
+ * every station in between, which is what makes people queasy.
+ */
 export function walkTo(i: number) {
   const el = document.querySelector<HTMLElement>(".ax-proc");
   if (!el) return;
   const sp = el.offsetHeight - window.innerHeight;
-  window.scrollTo({ top: el.offsetTop + (sp * i) / (CHAPTERS - 1) + 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+  const top = el.offsetTop + (sp * i) / (CHAPTERS - 1) + 2;
+  const from: number = (window as any).__axProcess ?? 0;
+  if (Math.abs(i - from) <= 1.05 && !prefersReducedMotion()) { window.scrollTo({ top, behavior: "smooth" }); return; }
+  const fade = el.querySelector<HTMLElement>(".ax-proc-fade");
+  const land = () => {
+    window.scrollTo({ top, behavior: "auto" });
+    (window as any).__axSnap = true; // the camera lands without travelling
+    requestAnimationFrame(() => requestAnimationFrame(() => fade?.removeAttribute("data-on")));
+  };
+  if (!fade) { land(); return; }
+  fade.setAttribute("data-on", "");
+  window.setTimeout(land, 230);
 }
 
 /** "2026-10-21" (or an ISO time) → "21 ต.ค." */
@@ -129,7 +149,11 @@ export default function ProcessStory({ lang, hero, track, finale }: {
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const target = read();
-      shown += (target - shown) * (still || (window as any).__axProcU !== undefined ? 1 : 0.085);
+      const w = window as any;
+      if (w.__axSnap) { w.__axSnap = false; shown = target; }
+      // a fast fling across several stations: cut to the last one rather than fly past them all
+      if (Math.abs(target - shown) > 1.6 && !still) shown = target - Math.sign(target - shown) * 0.9;
+      shown += (target - shown) * (still || w.__axProcU !== undefined ? 1 : 0.085);
       if (Math.abs(target - shown) < 0.0005) shown = target;
       const p = shown;
       (window as any).__axProcess = p;
@@ -829,6 +853,7 @@ export default function ProcessStory({ lang, hero, track, finale }: {
         V(SX(6) + 0.6, 1.0, 0), V(SX(7), 1.2, 0), V(SX(8), 0.95, 0.05), V(SX(9), 0.86, 0), V(61.5, 1.2, -0.3),
         V(22, 0.6, -1),
       ];
+      const fadeEl = root.current?.querySelector<HTMLElement>(".ax-proc-fade") ?? null;
       const keyAt = (arr: any[], p: number, out: any) => {
         const i = Math.max(0, Math.min(arr.length - 2, Math.floor(p)));
         return out.copy(arr[i]).lerp(arr[i + 1], clamp01(p - i));
@@ -889,16 +914,23 @@ export default function ProcessStory({ lang, hero, track, finale }: {
         const W = el.clientWidth, Hh = el.clientHeight;
         const portrait = W < Hh;
 
-        // camera: hold at each station, travel between
-        const cp = camParam(P);
+        // camera: hold at each station, travel between. With reduced motion there is no
+        // travel at all: the view cuts at the midpoint, through a short fade
+        const k0 = Math.floor(P), u0 = P - k0;
+        const cp = still ? (u0 < 0.5 ? k0 : k0 + 1) : camParam(P);
+        if (still && fadeEl) fadeEl.style.opacity = (k0 >= 1 && k0 < N ? clamp01(1 - Math.abs(u0 - 0.5) / 0.14) : 0).toFixed(3);
         keyAt(CAM, cp, cam);
         keyAt(LOOK, cp, look);
-        if (portrait) {
-          // narrower screens: step back along the view so the machine still fits
-          tmp.copy(cam).sub(look).multiplyScalar(1.45);
+        // between stations, ease back from the machines (less of the scene rushing past),
+        // and on narrower screens step back so the machine still fits
+        const between = still ? 0 : Math.sin(Math.PI * (cp - Math.floor(cp)));
+        const back = (portrait ? 1.45 : 1) * (1 + 0.35 * between);
+        if (back !== 1) {
+          tmp.copy(cam).sub(look).multiplyScalar(back);
           cam.copy(look).add(tmp);
         }
-        if (!still) { px += (mx - px) * 0.04; py += (my - py) * 0.04; }
+        // the mouse sway rests while the camera travels
+        if (!still) { const calm = 1 - between; px += (mx * calm - px) * 0.04; py += (my * calm - py) * 0.04; }
         camera.position.set(cam.x + px * 0.25, cam.y - py * 0.15, cam.z);
         camera.lookAt(look);
         // keep the machine clear of the text: to the right on wide screens, up on tall ones
@@ -1139,12 +1171,7 @@ export default function ProcessStory({ lang, hero, track, finale }: {
     return () => { disposed = true; cleanup?.(); };
   }, []);
 
-  const go = (i: number) => {
-    const el = root.current;
-    if (!el) return;
-    const sp = el.offsetHeight - window.innerHeight;
-    window.scrollTo({ top: el.offsetTop + (sp * i) / (CHAPTERS - 1) + 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
-  };
+  const go = walkTo;
   const P = (i: number) => (e: HTMLDivElement | null) => { panels.current[i] = e; };
   const names = [L("ภาพรวม", "Overview", "全体"), ...STEPS.map(s => L(s.th, s.en, s.ja)), L("เริ่มเลย", "Start", "スタート")];
 
@@ -1152,6 +1179,7 @@ export default function ProcessStory({ lang, hero, track, finale }: {
     <section ref={root} className="ax-story ax-proc" style={{ height: `${CHAPTERS * 100}vh` }} aria-label={L("ขั้นตอนการผลิตเสื้อ 10 ขั้น", "How a kit is made, in ten steps", "ユニフォームができるまでの10工程")}>
       <div className="ax-story-pin">
         <div ref={mount} className="ax-story-canvas" role="img" aria-label={L("สายการผลิตเสื้อแบบ 3D ที่เลื่อนไปตามการเลื่อนหน้า", "A 3D production line that follows your scroll", "スクロールに合わせて進む3D生産ライン")} />
+        <div className="ax-proc-fade" aria-hidden="true" />
         <div className="ax-story-vignette" aria-hidden="true" />
         <div className="ax-story-grain" aria-hidden="true" />
 

@@ -852,3 +852,8 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
   .ax:lang(ja) .ax-story-panel h2, .ax:lang(ja) .ax-proc-step h2 { font-size: 38px; }
   .ax:lang(ja) .ax-story-panel.hero h1 { font-size: 52px; }
 }
+
+/* /tracking: the cut between far-apart stations (and every move, with reduced motion) */
+.ax-proc-fade { position: absolute; inset: 0; z-index: 1; background: #0d0e10; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+.ax-proc-fade[data-on] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ax-proc-fade { transition: none; } }
