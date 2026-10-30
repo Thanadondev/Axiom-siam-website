@@ -1999,8 +1999,93 @@ def clear_of_form(ob, kind, clearance):
     return moved
 
 
+def _upper_envelope(P):
+    """the upper convex hull of 2-D points, as (xs, ys) increasing in x"""
+    P = sorted(map(tuple, P))
+    hull = []
+    for p in P:
+        while len(hull) >= 2 and (hull[-1][0] - hull[-2][0]) * (p[1] - hull[-2][1]) - (hull[-1][1] - hull[-2][1]) * (p[0] - hull[-2][0]) >= 0:
+            hull.pop()
+        hull.append(p)
+    H = np.array(hull)
+    return H[:, 0], H[:, 1]
+
+
+def bridge_crotch(ob, half=0.13):
+    DEEP = float(OPT.get("deep", 0.04))
+    """
+    Lay the cloth straight across the front and back of the crotch. On the form the
+    cloth sank into the groove where the thighs meet the pelvis: the front showed two
+    round lobes with a crease down the middle and the back seam was drawn in between the
+    seat, like a nappy. Real fabric bridges those hollows, so each horizontal slice of
+    the front (and back) is pushed out to its convex outline, fading out to the sides,
+    from the crotch up to below the waistband.
+    """
+    me = ob.data
+    V = np.array([v.co[:] for v in me.vertices])
+    # the form's crotch (the inseams meet just below it; lower down the legs touch anyway)
+    zc = Z_WAIST - 0.275 + float(OPT.get("zc", 0.0))
+    z_lo, z_hi = zc - 0.005, Z_WAIST - 0.07
+    moved = 0
+    newV = V.copy()
+    step, win = 0.005, 0.012
+    for side in (-1, 1):
+        S = (np.sign(V[:, 1]) == side) & (np.abs(V[:, 0]) < half + 0.04) & (V[:, 2] > z_lo - win) & (V[:, 2] < z_hi + win)
+        idx = np.nonzero(S)[0]
+        if not len(idx):
+            continue
+        for z in np.arange(z_lo, z_hi + step, step):
+            sl = idx[np.abs(V[idx, 2] - z) < win]
+            if len(sl) < 6:
+                continue
+            # outward is -y at the front, +y at the back: the envelope of (x, outwardness)
+            xs, ys = _upper_envelope(np.stack([V[sl, 0], V[sl, 1] * side], 1))
+            tgt = idx[np.abs(V[idx, 2] - z) <= step / 2]
+            for i in tgt:
+                x = V[i, 0]
+                if abs(x) > half:
+                    continue
+                env = float(np.interp(x, xs, ys))
+                d = env - V[i, 1] * side          # how far the point lies inside the outline
+                if d <= 0:
+                    continue
+                wx = 0.5 + 0.5 * math.cos(math.pi * min(abs(x) / half, 1.0))
+                tz = min((V[i, 2] - z_lo) / 0.02, (z_hi - V[i, 2]) / 0.03, 1.0)
+                w = wx * max(tz, 0.0) ** 2 * (3 - 2 * max(min(tz, 1.0), 0.0))
+                # (much deeper than a hollow is the cloth turning under, between the legs: leave it)
+                w *= min(max((DEEP - d) / 0.015, 0.0), 1.0)
+                newV[i, 1] = V[i, 1] + side * d * w
+                moved += 1
+    # the folds that gather where the four panels meet under the crotch read as a lump:
+    # smooth them out, strongest at the crotch and fading over ~10 cm (clear_of_form, later,
+    # keeps the smoothed cloth off the form)
+    R = float(OPT.get("csr", 0.13))
+    it = int(OPT.get("csi", 60))
+    if it:
+        n = len(V)
+        adj = [[] for _ in range(n)]
+        for e in me.edges:
+            a_, b_ = e.vertices
+            adj[a_].append(b_)
+            adj[b_].append(a_)
+        dist = np.sqrt(newV[:, 0] ** 2 + ((newV[:, 2] - (zc - 0.02)) * 0.8) ** 2)
+        sel = np.nonzero((dist < R) & (np.abs(newV[:, 1]) < 0.2))[0]
+        wt = (0.5 + 0.5 * np.cos(np.pi * dist[sel] / R))[:, None] * 0.5
+        co = newV
+        for _ in range(it):
+            avg = np.array([co[adj[i]].mean(0) for i in sel])
+            co[sel] += (avg - co[sel]) * wt
+        moved += len(sel)
+    for i, v in enumerate(me.vertices):
+        v.co = newV[i]
+    me.update()
+    print(f"bridge_crotch: crotch at {zc:.3f}, {moved} points laid across / smoothed", flush=True)
+
+
 def finish(kit_id, ob, order, front, sleeved):
     shorts = KITS[kit_id].get("garment") in ("shorts", "pants")   # (bottoms)
+    if shorts and not int(OPT.get("nobridge", 0)):
+        bridge_crotch(ob)
     face_outward(ob, legs=shorts)
     soften_seams(ob, plain=KITS[kit_id]["neck"] in ("hood", "waist"))
     sm = ob.modifiers.new("settle", "CORRECTIVE_SMOOTH")
@@ -2123,7 +2208,7 @@ def shorts_piece(spec):
     wf, wb = 0.18, 0.19              # half the waist each side of the side line: an elastic
     #                                  waistband is cut smaller than the waist (0.79 m) it grips
     hf, hb = spec["cw"], spec["cw"] + 0.02    # at the hip
-    ef, eb = spec.get("ef", 0.055), spec.get("eb", 0.09)   # crotch extensions
+    ef, eb = float(OPT.get("ef", spec.get("ef", 0.055))), float(OPT.get("eb", spec.get("eb", 0.09)))   # crotch extensions
     lf, lb = float(OPT.get("lf", spec.get("lf", 0.34))), float(OPT.get("lb", spec.get("lb", 0.38)))   # leg opening: wide, straight legs
     nin = count(vc + 0.01)
     p = Piece("leg", "Body")
@@ -2187,7 +2272,7 @@ def place_leg(V2, piece, sx):
         # thigh tube, at the cloth's own size (stretched cloth would creep down the tapering thigh)
         ph = (-math.pi * (u / uF)) if u < 0 else (math.pi * (u / uB))
         R = max((uB - uF) / (2 * math.pi), 0.1)
-        P2 = Vector((sx * (0.1 + R * math.cos(ph)), 0.006 + R * math.sin(ph), z))
+        P2 = Vector((sx * (fk.THIGH_X0 + 0.016 + R * math.cos(ph)), 0.006 + R * math.sin(ph), z))
         w = min(max((v - (vc - 0.03)) / 0.12, 0.0), 1.0)
         w = w * w * (3 - 2 * w)
         out.append(tuple(P2.lerp(P1, w)))
@@ -2328,6 +2413,13 @@ def make_shorts(kit_id):
     spec = KITS[kit_id]
     pants = spec.get("garment") == "pants"
     LOWER["kind"] = "pants" if pants else "hip"
+    if "drape" in OPT:
+        # --opt=drape:path/kit_pre.blend (saved with --pre): finish a saved drape
+        bpy.ops.wm.open_mainfile(filepath=OPT["drape"])
+        ob = bpy.data.objects["Jersey"]
+        finish(kit_id, ob, None, shorts_piece(spec), False)
+        export(kit_id, ob)
+        return
     FABRIC.update(bend=float(OPT.get("bend", 6.0 if spec.get("garment") == "pants" else 4.0)))  # a woven polyester holds its line better than a jersey knit
     ob, piece = build_shorts(kit_id, spec)
     # (track pants: the rib cuffs are knitted smaller than the leg: they gather it round the ankle)

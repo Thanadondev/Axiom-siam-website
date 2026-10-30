@@ -635,17 +635,22 @@ def trolley(col):
 
 
 HIP_WAIST = 1.05  # height of the hip form's waist (metres) — the shorts are built to it
+THIGH_X0 = 0.09      # thigh centres off the middle: at the top,
+THIGH_X1 = 0.122     # and above the knee (the long-legged form for track pants)
+THIGH_X1_SHORT = 0.145   # (wide-legged shorts need the legs a little further apart to hang free)
 
 
 def hip_form(col, name="hip_form", long=False):
     """a lower-body form (waist to above the knee) on a chrome pole, for shorts.
     Floor at the origin, waist at HIP_WAIST, faces -Y like the dress form."""
     W = HIP_WAIST
+    x1 = THIGH_X1 if long else THIGH_X1_SHORT
     parts = []
     # pelvis: (height, half-width, half-depth, squareness), closed at the crotch
     rings = [(W + 0.05, 0.138, 0.098, 2.4), (W, 0.142, 0.1, 2.4), (W - 0.07, 0.16, 0.112, 2.4),
-             (W - 0.15, 0.176, 0.12, 2.5), (W - 0.21, 0.177, 0.118, 2.5), (W - 0.25, 0.168, 0.11, 2.4),
-             (W - 0.275, 0.14, 0.095, 2.2)]
+             (W - 0.15, 0.176, 0.12, 2.5), (W - 0.21, 0.177, 0.118, 2.5), (W - 0.25, 0.15, 0.108, 2.2),
+             # (narrowing to the crotch: between the thighs the form meets in a V, not a flat shelf)
+             (W - 0.275, 0.07, 0.085, 2.0)]
     bm = bmesh.new()
     N = 40
     loops = []
@@ -677,9 +682,17 @@ def hip_form(col, name="hip_form", long=False):
         if long:
             # on down to the ankle (track pants): knee, calf, ankle, legs straight below the thigh
             ring += [(W - 0.66, 0.053), (W - 0.74, 0.055), (W - 0.82, 0.05), (W - 0.9, 0.039), (W - 0.95, 0.036)]
+        # the tops of the thighs are as deep as the bottom of the pelvis (front to back), so
+        # there's no ledge where they meet for cloth to sink under: draped shorts showed the
+        # pelvis's round underside front and back, like a seat
+        deep = [1.3, 1.24, 1.12, 1.04]
         for k, (h, r) in enumerate(ring):
-            cx = sx * (0.086 + 0.014 * min(k, 4) / 4)
-            loop = [bm.verts.new((cx + r * cos(2 * pi * i / 28), r * 1.02 * sin(2 * pi * i / 28) + 0.006, h)) for i in range(28)]
+            # legs a little apart (an A stance), so the crotch is a narrow V and each leg of
+            # the shorts hangs on its own; with the thighs touching, the cloth showed a round
+            # U between them and two lobes down the front
+            cx = sx * (THIGH_X0 + (x1 - THIGH_X0) * min(k, 4) / 4 + (0.012 * (k - 4) / 5 if k > 4 else 0.0))
+            dy = r * 1.02 * (deep[k] if k < len(deep) else 1.0)
+            loop = [bm.verts.new((cx + r * cos(2 * pi * i / 28), dy * sin(2 * pi * i / 28) + 0.006 + (dy - r) * 0.25 * max(sin(2 * pi * i / 28), 0), h)) for i in range(28)]
             loops.append(loop)
         for l1, l2 in zip(loops, loops[1:]):
             for i in range(28):
@@ -722,9 +735,9 @@ def hip_form(col, name="hip_form", long=False):
     p.cyl(0.05, 0.02, (0, 0, 0.04), "Chrome", n=20)
     for sx in (1, -1):  # chrome caps on the cut thighs (on the ankles, with long legs)
         if long:
-            p.cyl(0.034, 0.008, (sx * 0.1, 0.006, W - 0.954), "Chrome", n=24, bevel=0.003)
+            p.cyl(0.034, 0.008, (sx * (THIGH_X1 + 0.012), 0.006, W - 0.954), "Chrome", n=24, bevel=0.003)
         else:
-            p.cyl(0.058, 0.008, (sx * 0.1, 0.006, W - 0.564), "Chrome", n=24, bevel=0.003)
+            p.cyl(0.058, 0.008, (sx * x1, 0.006, W - 0.564), "Chrome", n=24, bevel=0.003)
     st = p.build(col)
     ob = _join(pelvis, [st])
     ob.name = name
