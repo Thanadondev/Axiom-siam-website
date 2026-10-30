@@ -63,7 +63,7 @@ const SPOTS: { href: string; th: string; en: string; subTh: string; subEn: strin
   { href: "/shop", th: "ออกแบบเสื้อ", en: "Design a kit", subTh: "เลือกทรง เปลี่ยนสี ใส่ชื่อ", subEn: "Cut, colours, names", at: [2.3, 1.8, 15] },
   { href: "/design", th: "ออกแบบขั้นสูง", en: "Advanced designer", subTh: "วางลายเองทุกจุด", subEn: "Lay out every panel", at: [0, 1.5, 0.3] },
   { href: "/templates", th: "ตลาดลาย", en: "Template market", subTh: "ลายจากดีไซเนอร์", subEn: "Designs from designers", at: [10, 3.6, -9] },
-  { href: "/account", th: "ติดตามออเดอร์", en: "Track my order", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", at: [9.5, 1.6, -2] },
+  { href: "/tracking", th: "ติดตามออเดอร์", en: "Track my order", subTh: "สถานะการผลิตและจัดส่ง", subEn: "Production & delivery", at: [9.5, 1.6, -2] },
 ];
 
 const WORK = [
@@ -771,6 +771,11 @@ export default function ScrollStory({ th }: { th: boolean }) {
       const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });
       io.observe(el);
 
+      // the menu labels: measured size (per language) and how far each is nudged to clear the others
+      let spotLang = thRef.current, spotW = 0;
+      const spotSize: ({ w: number; h: number } | null)[] = SPOTS.map(() => null);
+      const spotDy = SPOTS.map(() => 0);
+      const spotFlip: (boolean | null)[] = SPOTS.map(() => null);
       let raf = 0;
       let last = performance.now();
       let t = 0;
@@ -865,23 +870,81 @@ export default function ScrollStory({ th }: { th: boolean }) {
         // the menu pins: project each station onto the screen
         const pinA = Math.max(1 - ease((P0 - 0.25) / 0.3), ease((P0 - (CHAPTERS - 1.55)) / 0.35));
         const W = el.clientWidth, H = el.clientHeight;
+        if (spotLang !== thRef.current || spotW !== W) { spotLang = thRef.current; spotW = W; spotSize.fill(null); }
+        // the chapter text on screen now (the heading at the door, the call from the roof): pins keep off it
+        const textEl = pinA > 0.05 ? panels.current[P0 < 1 ? 0 : CHAPTERS - 1] : null;
+        // measured on the words themselves (the panel's box is wider than its text)
+        const text: { x0: number; x1: number; top: number; bottom: number }[] = [];
+        if (textEl) {
+          const o = el.getBoundingClientRect();
+          // each word of the heading (its lines are full-width blocks), the paragraph, the buttons
+          textEl.querySelectorAll<HTMLElement>(".wm, p, a, button, .ax-kicker").forEach(n => {
+            const r = n.getBoundingClientRect();
+            if (r.width && r.height) text.push({ x0: r.left - o.left - 10, x1: r.right - o.left + 10, top: r.top - o.top - 8, bottom: r.bottom - o.top + 8 });
+          });
+        }
+        const shown: { i: number; a: HTMLAnchorElement; lbl: HTMLElement; sx: number; sy: number; w: number; h: number }[] = [];
         SPOTS.forEach((sp, i) => {
           const a = spots.current[i];
           if (!a) return;
           tmp.set(sp.at[0], sp.at[1], sp.at[2]).project(camera);
           // keep clear of the chapter text: the heading on the left at the door, the call at the top from the roof
           const clear = P0 < 1 ? tmp.x > -0.2 : tmp.y < 0.16;
-          const inView = !portrait && clear && tmp.z < 1 && Math.abs(tmp.x) < 0.96 && Math.abs(tmp.y) < 0.92;
+          const dx = (tmp.x + 1) / 2 * W, dy = (1 - tmp.y) / 2 * H;
+          const onText = text.some(t => dx > t.x0 && dx < t.x1 && dy > t.top && dy < t.bottom);
+          const inView = !portrait && clear && !onText && tmp.z < 1 && Math.abs(tmp.x) < 0.96 && Math.abs(tmp.y) < 0.92;
           const op = inView ? pinA : 0;
           a.style.opacity = op.toFixed(3);
           a.style.visibility = op < 0.05 ? "hidden" : "visible";
-          if (op >= 0.05) {
-            const sx = (tmp.x + 1) / 2 * W, sy = (1 - tmp.y) / 2 * H;
-            const flip = sx > W * 0.62; // label on the side with room
-            a.toggleAttribute("data-flip", flip);
-            a.style.transform = flip ? `translate(${(sx + 22).toFixed(1)}px, ${sy.toFixed(1)}px) translateX(-100%)` : `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
-          }
+          const lbl = a.querySelector("span") as HTMLElement | null;
+          if (op < 0.05 || !lbl) return;
+          const sz = spotSize[i] ?? (spotSize[i] = { w: lbl.offsetWidth, h: lbl.offsetHeight });
+          shown.push({ i, a, lbl, sx: dx, sy: dy, w: sz.w, h: sz.h });
         });
+        // place the labels so none covers another label or another station's dot: the dot stays
+        // on the station, the label tries its usual side, then the other side, then a little up or down
+        shown.sort((p1, p2) => p1.sy - p2.sy);
+        type Box = { x0: number; x1: number; top: number; bottom: number };
+        const placed: Box[] = shown.map(d => ({ x0: d.sx - 13, x1: d.sx + 13, top: d.sy - 13, bottom: d.sy + 13 }));
+        // and off the chapter text (the same areas the dots keep clear of)
+        const textZone = (b: Box) => text.some(t => b.x0 < t.x1 && b.x1 > t.x0 && b.top < t.bottom && b.bottom > t.top);
+        const hits = (b: Box) => b.x0 < 8 || b.x1 > W - 8 || textZone(b) || placed.some(q => b.x0 < q.x1 + 6 && b.x1 > q.x0 - 6 && b.top < q.bottom + 5 && b.bottom > q.top - 5);
+        const boxOf = (d: (typeof shown)[number], flip: boolean, dy: number): Box => ({
+          x0: flip ? d.sx - 21 - d.w : d.sx + 21, x1: flip ? d.sx - 21 : d.sx + 21 + d.w,
+          top: d.sy + dy - d.h / 2, bottom: d.sy + dy + d.h / 2,
+        });
+        for (const d of shown) {
+          const usual = d.sx > W * 0.62; // the side with room
+          const first = spotFlip[d.i] ?? usual; // keep last frame's side while it still fits (no flicker)
+          const step = d.h * 0.6;
+          let pick: { flip: boolean; dy: number } | null = null;
+          for (const dy of [0, step, -step, 2 * step, -2 * step]) {
+            for (const flip of [first, !first]) {
+              if (!hits(boxOf(d, flip, dy))) { pick = { flip, dy }; break; }
+            }
+            if (pick) break;
+          }
+          if (!pick) {
+            // nothing clear nearby: below whatever it meets
+            let dy = 0;
+            for (let pass = 0; pass < 8; pass++) {
+              const b = boxOf(d, usual, dy);
+              const q = placed.find(q => b.x0 < q.x1 + 6 && b.x1 > q.x0 - 6 && b.top < q.bottom + 5 && b.bottom > q.top - 5);
+              if (!q) break;
+              dy = q.bottom + 5 + d.h / 2 - d.sy;
+            }
+            pick = { flip: usual, dy };
+          }
+          placed.push(boxOf(d, pick.flip, pick.dy));
+          spotFlip[d.i] = pick.flip;
+          d.a.toggleAttribute("data-flip", pick.flip);
+          d.a.style.transform = pick.flip
+            ? `translate(${(d.sx + 22).toFixed(1)}px, ${d.sy.toFixed(1)}px) translateX(-100%)`
+            : `translate(${d.sx.toFixed(1)}px, ${d.sy.toFixed(1)}px)`;
+          spotDy[d.i] += (pick.dy - spotDy[d.i]) * (still ? 1 : 0.25);
+          d.lbl.style.transform = Math.abs(spotDy[d.i]) < 0.5 ? "" : `translateY(${spotDy[d.i].toFixed(1)}px)`;
+        }
+        SPOTS.forEach((_, i) => { if (!shown.some(d => d.i === i)) spotFlip[i] = null; });
       };
       raf = requestAnimationFrame(loop);
 
@@ -1031,7 +1094,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
           </div>
           <div className="ax-row" style={{ justifyContent: "center" }}>
             <Link href="/tracking" className="ax-story-go">{th ? "ดูทั้ง 10 ขั้น และติดตามงานของคุณ" : "See all ten steps, track your order"} <span aria-hidden="true">→</span></Link>
-            <Link href="/account" className="ax-story-go">{th ? "ติดตามออเดอร์ของฉัน" : "Track my order"} <span aria-hidden="true">→</span></Link>
+            <Link href="/account" className="ax-story-go">{th ? "ออเดอร์ของฉัน" : "My orders"} <span aria-hidden="true">→</span></Link>
           </div>
         </div>
 
