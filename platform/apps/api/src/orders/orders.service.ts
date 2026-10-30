@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
@@ -10,6 +10,7 @@ import { kitLook } from "./kit-look";
 import { ledger } from "../payments/ledger";
 import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 import { ErpSyncService } from "../erp/erp-sync.service";
+import { snapshot as erpSnapshot } from "../erp/production-status";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -173,9 +174,22 @@ export class OrdersService {
    */
   async track(raw: string) {
     const no = raw.replace(/\s+/g, "").toUpperCase();
-    if (!no || no.length > 40) throw new NotFoundException("ไม่พบออเดอร์นี้ — ตรวจเลขออเดอร์อีกครั้ง");
+    const notFound = () => new NotFoundException("ไม่พบออเดอร์นี้ — ตรวจเลขออเดอร์อีกครั้ง");
+    if (!no || no.length > 40) throw notFound();
+    // the web's number (AX-…), or the factory's (HJ-…) on an order linked to it
+    const hit = await this.prisma.order.findFirst({
+      where: { OR: [{ orderNo: no }, { erpOrderNo: { equals: no, mode: "insensitive" } }] },
+      select: { id: true },
+    });
+    if (!hit) {
+      // not a web order at all: the factory's ERP may still know the job
+      const r = await this.erp?.lookup(no);
+      if (r?.ok) return this.trackFromErp(r.status);
+      if (r && !r.ok && !r.notFound) throw new ServiceUnavailableException("ติดต่อระบบโรงงานไม่ได้ชั่วคราว — ลองใหม่อีกครั้ง");
+      throw notFound();
+    }
     const find = () => this.prisma.order.findUnique({
-      where: { orderNo: no },
+      where: { id: hit.id },
       select: {
         id: true, orderNo: true, status: true, productionStep: true, fabricSummary: true, createdAt: true, updatedAt: true,
         erpOrderNo: true, erpStatus: true, erpSyncedAt: true,
@@ -185,7 +199,7 @@ export class OrdersService {
       },
     });
     let o = await find();
-    if (!o) throw new NotFoundException("ไม่พบออเดอร์นี้ — ตรวจเลขออเดอร์อีกครั้ง");
+    if (!o) throw notFound();
     if (this.erp && (await this.erp.refreshIfStale(o))) o = (await find()) ?? o;
 
     const erp = (o.erpStatus ?? null) as { dueDate?: string | null; steps?: { no: number; startedOn: string | null; finishedOn: string | null }[] } | null;
@@ -211,6 +225,31 @@ export class OrdersService {
       }),
       shipment: shipped && s ? { courier: s.courier, trackingNo: s.trackingNo, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt } : null,
       updatedAt: o.erpSyncedAt && o.erpSyncedAt > o.updatedAt ? o.erpSyncedAt : o.updatedAt,
+    };
+  }
+
+  /** a job only the ERP knows (ordered outside the web): the same view, from the ERP's answer */
+  private trackFromErp(e: Parameters<typeof erpSnapshot>[0]) {
+    const snap = erpSnapshot(e);
+    const shipped = snap.step >= SHIP_STEP;
+    const status = shipped ? "shipped" : snap.step > 0 ? "in_production" : "approved";
+    return {
+      orderNo: e.order_no,
+      status,
+      statusLabel: e.status_label || STATUS_TH[status],
+      step: snap.step,
+      stepName: stepName(snap.step),
+      qty: e.total_qty ?? 0,
+      product: e.product,
+      orderedAt: null,
+      dueDate: snap.dueDate,
+      steps: Array.from({ length: SHIP_STEP }, (_, i) => {
+        const s = snap.steps.find(x => x.no === i + 1);
+        return { no: i + 1, name: stepName(i + 1), startedOn: s?.startedOn ?? null, finishedOn: s?.finishedOn ?? null };
+      }),
+      shipment: null,
+      updatedAt: snap.updatedAt ? new Date(snap.updatedAt) : new Date(),
+      source: "erp" as const,
     };
   }
 

@@ -82,6 +82,12 @@ export class ErpSyncService implements OnModuleInit, OnModuleDestroy {
     return this.apply(o, r.status, by);
   }
 
+  /** ask the ERP about a job by its number (null when no ERP is set up) */
+  async lookup(no: string) {
+    if (!this.cfg) return null;
+    return fetchErpStatus(this.cfg, normalizeErpNo(no), this.fetchImpl);
+  }
+
   /** when an order is opened: a quick refresh if its copy is old (errors only logged) */
   async refreshIfStale(o: { id: string; status: string; erpOrderNo?: string | null; erpSyncedAt?: Date | null }) {
     if (!this.cfg || !o.erpOrderNo || !ON_FLOOR.includes(o.status)) return false;

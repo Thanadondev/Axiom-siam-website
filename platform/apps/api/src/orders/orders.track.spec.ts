@@ -19,13 +19,36 @@ const base = {
 let row: any;
 const prisma: any = {
   order: {
+    findFirst: async ({ where }: any) => {
+      const [byNo, byErp] = where.OR;
+      const hit = row.orderNo === byNo.orderNo || (row.erpOrderNo && row.erpOrderNo.toUpperCase() === byErp.erpOrderNo.equals.toUpperCase());
+      return hit ? { id: row.id } : null;
+    },
     findUnique: async ({ where, select }: any) => {
-      if (where.orderNo !== row.orderNo) return null;
+      if (where.id !== row.id) return null;
       return Object.fromEntries(Object.keys(select).map(k => [k, row[k]]));
     },
   },
 };
 const svc = new OrdersService(prisma, {} as any, {} as any);
+// the ERP knows HJ-137, which was never ordered on the web
+let erpUp = true;
+const erp: any = {
+  refreshIfStale: async () => false,
+  lookup: async (no: string) => {
+    if (!erpUp) return { ok: false, notFound: false, error: "เชื่อมต่อ ERP ไม่ได้" };
+    if (no !== "HJ-137") return { ok: false, notFound: true, error: "ไม่พบ" };
+    return {
+      ok: true,
+      status: {
+        order_no: "HJ-137", status: "in_production", status_label: "กำลังผลิต", product: "Shirt เสื้อแขนสั้น", total_qty: 24, due_date: "2026-11-20",
+        current_step: null, updated_at: "2026-10-29T10:00:00",
+        steps: [1, 2, 3, 4].map(n => ({ no: n, name: `s${n}`, status: n < 4 ? "done" : "in_progress", status_label: null, started_on: `2026-10-2${n}`, finished_on: n < 4 ? `2026-10-2${n}` : null })),
+      },
+    };
+  },
+};
+const withErp = new OrdersService(prisma, {} as any, {} as any, erp);
 
 describe("tracking an order by its number", () => {
   it("finds it however the number is typed, and shows the step with the factory's dates", async () => {
@@ -51,6 +74,23 @@ describe("tracking an order by its number", () => {
     row = { ...base, status: "shipped", shipments: [{ courier: "Flash", trackingNo: "TH123", shippedAt: new Date(), deliveredAt: null }] };
     const t = await svc.track("AX-261029-K7QZ");
     expect(t).toMatchObject({ step: 10, stepName: "จัดส่ง", shipment: { courier: "Flash", trackingNo: "TH123" } });
+  });
+
+  it("the factory's number finds the web order it's linked to", async () => {
+    row = { ...base };
+    const t = await withErp.track("hj-447");
+    expect(t).toMatchObject({ orderNo: "AX-261029-K7QZ", step: 6 });
+  });
+
+  it("a job only the ERP knows is shown from the ERP", async () => {
+    row = { ...base };
+    const t = await withErp.track("HJ-137");
+    expect(t).toMatchObject({ orderNo: "HJ-137", step: 4, stepName: "ตัดเลเซอร์", qty: 24, product: "Shirt เสื้อแขนสั้น", dueDate: "2026-11-20", source: "erp" });
+    expect(t.steps[2]).toMatchObject({ startedOn: "2026-10-23", finishedOn: "2026-10-23" });
+    await expect(withErp.track("HJ-999")).rejects.toThrow(/ไม่พบออเดอร์นี้/);
+    erpUp = false;
+    await expect(withErp.track("HJ-137")).rejects.toThrow(/ติดต่อระบบโรงงานไม่ได้/);
+    erpUp = true;
   });
 
   it("an unknown number is just not found", async () => {

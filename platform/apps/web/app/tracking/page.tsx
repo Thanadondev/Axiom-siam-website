@@ -75,7 +75,7 @@ export default function TrackingPage() {
       <h1 className="ax-display"><Words text={th ? "งานของคุณ\n*อยู่ตรงไหน" : "Where's\n*your *kit"} /></h1>
       <form className="ax-track-form" onSubmit={e => { e.preventDefault(); lookup(no); }}>
         <input ref={input} className="ax-field" value={no} onChange={e => setNo(e.target.value)} maxLength={40}
-          placeholder={th ? "เลขออเดอร์ เช่น AX-261029-K7QZ" : "Order number, e.g. AX-261029-K7QZ"}
+          placeholder={th ? "เลขออเดอร์ เช่น AX-261029-K7QZ หรือ HJ-447" : "Order number, e.g. AX-261029-K7QZ or HJ-447"}
           aria-label={th ? "เลขออเดอร์" : "Order number"} autoComplete="off" spellCheck={false} />
         <button type="submit" className="ax-btn solid sq" disabled={busy}>{busy ? "…" : th ? "ติดตาม" : "Track"}</button>
       </form>
