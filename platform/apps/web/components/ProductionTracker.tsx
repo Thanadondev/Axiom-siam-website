@@ -21,9 +21,10 @@ export interface ErpTrack {
 
 /**
  * Where the customer's job is on the production line: the ten steps, the one
- * it's on now, and a link to that station in the 3D walk-through (/process).
+ * it's on now, and a link to that station in the 3D walk-through (/tracking).
  */
-export default function ProductionTracker({ status, productionStep, history, erp }: {
+export default function ProductionTracker({ orderNo, status, productionStep, history, erp }: {
+  orderNo?: string;
   status: string;
   productionStep?: number | null;
   history?: { step?: number | null; createdAt: string }[];
@@ -66,7 +67,7 @@ export default function ProductionTracker({ status, productionStep, history, erp
             </div>
           )}
         </div>
-        <Link className="minibtn" href={`/process?step=${peek}`} target="_blank">
+        <Link className="minibtn" href={orderNo && step > 0 ? `/tracking?no=${encodeURIComponent(orderNo)}` : `/tracking?step=${peek}`} target="_blank">
           {step > 0 ? "ดูขั้นนี้ในไลน์ผลิต 3D" : "ดูขั้นตอนผลิต 3D"} →
         </Link>
       </div>

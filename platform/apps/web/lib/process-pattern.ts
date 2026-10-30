@@ -1,5 +1,5 @@
 /**
- * The pattern sheet that travels down the production line on /process:
+ * The pattern sheet that travels down the production line on /tracking:
  * one football shirt (front, back, two sleeves, collar) laid out on a print
  * sheet of 1000 × 600 px, which is 1.8 × 1.08 m of fabric (0.0018 m/px).
  *

@@ -3,7 +3,7 @@ import Link from "next/link";
 const CONTACT_EMAIL = "techkairos241@gmail.com";
 const CONTACT_LINE = "@axiomsiam";
 
-/** the footer of the dark storefront pages (/, /process) */
+/** the footer of the dark storefront pages (/, /tracking) */
 export default function SiteFooter({ th }: { th: boolean }) {
   return (
     <footer className="ax-foot">
@@ -21,7 +21,7 @@ export default function SiteFooter({ th }: { th: boolean }) {
           <h4>{th ? "เมนู" : "Menu"}</h4>
           <Link href="/shop">{th ? "ออกแบบเสื้อ" : "Design a kit"}</Link>
           <Link href="/design">{th ? "ออกแบบขั้นสูง" : "Advanced designer"}</Link>
-          <Link href="/process">{th ? "ขั้นตอนผลิต" : "How it's made"}</Link>
+          <Link href="/tracking">{th ? "ติดตามงาน" : "Track order"}</Link>
           <Link href="/templates">{th ? "ตลาดลาย" : "Templates"}</Link>
           <Link href="/account">{th ? "ติดตามออเดอร์" : "Track an order"}</Link>
         </div>

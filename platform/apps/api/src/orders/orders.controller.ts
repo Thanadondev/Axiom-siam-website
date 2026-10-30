@@ -10,6 +10,7 @@ import {
   type ErpLinkDto,
 } from "./orders.dto";
 import { ErpSyncService } from "../erp/erp-sync.service";
+import { RateLimitGuard, RateLimit } from "../common/rate-limit.guard";
 
 @Controller("orders")
 export class OrdersController {
@@ -26,6 +27,15 @@ export class OrdersController {
   @Get("quote")
   quote(@Query(new ZodValidationPipe(PriceQuerySchema)) q: PriceQueryDto) {
     return this.orders.quote(q);
+  }
+
+  /** the public tracking page: the order number is enough (no names, prices or addresses) */
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 30, windowMs: 10 * 60_000 }) // slows walking through order numbers
+  @Get("track/:no")
+  track(@Param("no") no: string) {
+    return this.orders.track(no);
   }
 
   // ---------- customer ----------

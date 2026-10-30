@@ -167,6 +167,54 @@ export class OrdersService {
   }
 
   /**
+   * The public tracking page (/tracking): anyone with the order number sees
+   * where the job is on the line — the step, the factory's dates, the parcel.
+   * Nothing about who ordered it, the price or the address.
+   */
+  async track(raw: string) {
+    const no = raw.replace(/\s+/g, "").toUpperCase();
+    if (!no || no.length > 40) throw new NotFoundException("ไม่พบออเดอร์นี้ — ตรวจเลขออเดอร์อีกครั้ง");
+    const find = () => this.prisma.order.findUnique({
+      where: { orderNo: no },
+      select: {
+        id: true, orderNo: true, status: true, productionStep: true, fabricSummary: true, createdAt: true, updatedAt: true,
+        erpOrderNo: true, erpStatus: true, erpSyncedAt: true,
+        items: { select: { qty: true } },
+        statusHistory: { where: { step: { not: null } }, select: { step: true, createdAt: true }, orderBy: { createdAt: "asc" } },
+        shipments: { select: { courier: true, trackingNo: true, shippedAt: true, deliveredAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    });
+    let o = await find();
+    if (!o) throw new NotFoundException("ไม่พบออเดอร์นี้ — ตรวจเลขออเดอร์อีกครั้ง");
+    if (this.erp && (await this.erp.refreshIfStale(o))) o = (await find()) ?? o;
+
+    const erp = (o.erpStatus ?? null) as { dueDate?: string | null; steps?: { no: number; startedOn: string | null; finishedOn: string | null }[] } | null;
+    const shipped = ["shipped", "delivered", "completed"].includes(o.status);
+    const step = shipped ? SHIP_STEP : Math.max(0, Math.min(o.productionStep, SHIP_STEP - 1));
+    const s = o.shipments[0];
+    return {
+      orderNo: o.orderNo,
+      status: o.status,
+      statusLabel: STATUS_TH[o.status] ?? o.status,
+      step,
+      stepName: stepName(step),
+      qty: o.items.reduce((n, i) => n + i.qty, 0),
+      product: o.fabricSummary,
+      orderedAt: o.createdAt,
+      dueDate: erp?.dueDate ?? null,
+      // the factory's dates when the ERP has them, otherwise when the web moved the step
+      steps: Array.from({ length: SHIP_STEP }, (_, i) => {
+        const n = i + 1;
+        const e = erp?.steps?.find(x => x.no === n);
+        const h = o!.statusHistory.find(x => x.step === n)?.createdAt ?? null;
+        return { no: n, name: stepName(n), startedOn: e?.startedOn ?? h, finishedOn: e?.finishedOn ?? null };
+      }),
+      shipment: shipped && s ? { courier: s.courier, trackingNo: s.trackingNo, shippedAt: s.shippedAt, deliveredAt: s.deliveredAt } : null,
+      updatedAt: o.erpSyncedAt && o.erpSyncedAt > o.updatedAt ? o.erpSyncedAt : o.updatedAt,
+    };
+  }
+
+  /**
    * The customer's details for a full tax invoice. Once a tax invoice has been
    * issued with them it can't change (a correction needs a credit note).
    */

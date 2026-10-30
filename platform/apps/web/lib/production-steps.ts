@@ -1,5 +1,5 @@
 /**
- * The ten steps of the production line — the /process walk-through and the
+ * The ten steps of the production line — the /tracking walk-through and the
  * tracker on each order use the same list (the API's production-steps.ts has
  * the names too, for notifications).
  *

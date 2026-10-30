@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { loadThreeWithGltf, loadThreePost, hasWebGL, prefersReducedMotion } from "../lib/three-cdn";
 import { loadJersey, type Jersey } from "../lib/jersey3d";
@@ -10,7 +10,7 @@ import { STEPS } from "../lib/production-steps";
 import { PIECES, SHEET_W, SHEET_H, M_PER_PX, drawSheet, paintPiece, tracePiece, cutPath, pathAt, type Piece, type PrintColors } from "../lib/process-pattern";
 
 /**
- * /process — how a kit is made, as one walk down the production line.
+ * /tracking — how a kit is made, as one walk down the production line.
  *
  * Ten stations stand in a row in the hall, one per step. Scrolling moves the
  * camera from station to station (it holds at each one, then travels); the
@@ -42,7 +42,40 @@ const bell = (p: number, c: number, w = 0.3) => ease((p - (c - w - 0.12)) / 0.12
 /** scroll position → camera position along the keyframes: hold at each chapter, travel between */
 const camParam = (p: number) => { const k = Math.floor(p); return k + easeIO((p - k - 0.22) / 0.56); };
 
-export default function ProcessStory({ th }: { th: boolean }) {
+/** one order on the line (the /tracking page): its step and the factory's dates */
+export interface TrackView {
+  orderNo: string;
+  /** 0 not started, 1–9 on the floor, 10 shipped */
+  step: number;
+  steps: { no: number; startedOn: string | null; finishedOn: string | null }[];
+  shipment?: { courier: string | null; trackingNo: string | null } | null;
+  dueDate?: string | null;
+}
+
+/** scroll the walk to chapter i (0 overview, 1–10 the stations, 11 the end) */
+export function walkTo(i: number) {
+  const el = document.querySelector<HTMLElement>(".ax-proc");
+  if (!el) return;
+  const sp = el.offsetHeight - window.innerHeight;
+  window.scrollTo({ top: el.offsetTop + (sp * i) / (CHAPTERS - 1) + 2, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+
+/** "2026-10-21" (or an ISO time) → "21 ต.ค." */
+export const shortDay = (s: string, th = true) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  const d = m && s.length <= 10 ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(th ? "th-TH" : "en-GB", { day: "numeric", month: "short" });
+};
+
+export default function ProcessStory({ th, hero, track, finale }: {
+  th: boolean;
+  /** replaces the opening panel's text (the tracking page puts its search there) */
+  hero?: ReactNode;
+  /** an order being tracked: its station is marked, and the walk goes there */
+  track?: TrackView | null;
+  /** replaces the closing panel */
+  finale?: ReactNode;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const mount = useRef<HTMLDivElement>(null);
   const panels = useRef<(HTMLDivElement | null)[]>([]);
@@ -52,8 +85,19 @@ export default function ProcessStory({ th }: { th: boolean }) {
   const [flat, setFlat] = useState(false);
   const thRef = useRef(th);
   thRef.current = th;
+  /** the tracked order's station, read by the 3D loop */
+  const mineRef = useRef(0);
+  mineRef.current = track ? Math.min(track.step, N) : 0;
 
-  // /process?step=4 opens at that station (the order tracker links here)
+  // a looked-up order: a moment to read the result, then walk to its station
+  useEffect(() => {
+    if (!track || track.step < 1) return;
+    const t = window.setTimeout(() => { if (window.scrollY < window.innerHeight * 0.5) walkTo(Math.min(track.step, N)); }, 1600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.orderNo, track?.step]);
+
+  // /tracking?step=4 opens at that station
   useEffect(() => {
     const n = Number(new URLSearchParams(window.location.search).get("step"));
     if (!Number.isInteger(n) || n < 1 || n > N) return;
@@ -244,6 +288,25 @@ export default function ProcessStory({ th }: { th: boolean }) {
         b.position.set(SX(i), LAMP_Y, 0.2);
         scene.add(b);
       }
+
+      // ---------- the tracked order's station: a tag under its sign and a ring on the floor ----------
+      const mineTex = keep(canvasTex(THREE, 1024, 160, x => {
+        x.fillStyle = "#f26522"; x.fillRect(0, 0, 1024, 160);
+        x.fillStyle = "#0d0e10"; x.textAlign = "center"; x.textBaseline = "middle";
+        x.font = thRef.current ? '700 84px "Noto Sans Thai", sans-serif' : '700 76px "Sora", sans-serif';
+        x.fillText(thRef.current ? "● งานของคุณอยู่ที่นี่" : "● YOUR ORDER IS HERE", 512, 86);
+      }));
+      const mineTag = new THREE.Mesh(unit, keep(new THREE.MeshBasicMaterial({ map: mineTex, toneMapped: false })));
+      mineTag.scale.set(1.9, 0.3, 1);
+      mineTag.position.set(0, 3.43, -2.27);
+      mineTag.visible = false;
+      scene.add(mineTag);
+      const mineRingMat = keep(new THREE.MeshBasicMaterial({ color: 0xf26522, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+      const mineRing = new THREE.Mesh(keep(new THREE.RingGeometry(1.75, 1.92, 72)), mineRingMat);
+      mineRing.rotation.x = -Math.PI / 2;
+      mineRing.position.set(0, 0.015, 0.25);
+      mineRing.visible = false;
+      scene.add(mineRing);
 
       // ---------- the station signs, hung over each step ----------
       for (let i = 1; i <= N; i++) {
@@ -844,6 +907,18 @@ export default function ProcessStory({ th }: { th: boolean }) {
         key.position.copy(look).add(tmp.set(3.5, 8, 6));
         rim.position.copy(look).add(tmp.set(-1.4, 1.6, -1.8));
 
+        // the tracked order's station
+        {
+          const m = mineRef.current;
+          mineTag.visible = mineRing.visible = m >= 1;
+          if (m >= 1) {
+            mineTag.position.x = mineRing.position.x = SX(m);
+            const pulse = still ? 0.5 : 0.5 + 0.5 * Math.sin(t * 2.6);
+            mineRingMat.opacity = 0.35 + 0.35 * pulse;
+            mineRing.scale.setScalar(1 + 0.05 * pulse);
+          }
+        }
+
         // station clocks: the one in front of the camera plays; leaving resets it
         for (let i = 1; i <= N; i++) {
           const d = Math.abs(P - i);
@@ -1074,7 +1149,7 @@ export default function ProcessStory({ th }: { th: boolean }) {
         <div className="ax-story-grain" aria-hidden="true" />
 
         <div ref={P(0)} className="ax-story-panel hero" data-on>
-          <div className="lede">
+          {hero ? <div className="lede">{hero}</div> : <div className="lede">
             <span className="ax-kicker">{th ? "ขั้นตอนผลิต · 10 ขั้น" : "How it's made · 10 steps"}</span>
             <h1 className="ax-display"><Words text={th ? "จากไฟล์\nถึง*มือคุณ" : "From file\nto *your *team"} /></h1>
             <p>{th
@@ -1088,30 +1163,56 @@ export default function ProcessStory({ th }: { th: boolean }) {
                 {STEPS.map((s, i) => <li key={s.en}><b>{String(i + 1).padStart(2, "0")}</b> {th ? s.th : s.en}</li>)}
               </ol>
             )}
-          </div>
+          </div>}
         </div>
 
-        {STEPS.map((s, i) => (
-          <div key={s.en} ref={P(i + 1)} className="ax-story-panel left ax-proc-step">
+        {STEPS.map((s, i) => {
+          const n = i + 1;
+          const shippedNow = !!track && track.step >= N;
+          const mine = track ? (shippedNow ? (n === N ? "now" : "done") : n < track.step ? "done" : n === track.step ? "now" : "todo") : null;
+          const e = track?.steps.find(x => x.no === n);
+          const when = mine === "done" ? e?.finishedOn ?? e?.startedOn : mine === "now" ? e?.finishedOn ?? e?.startedOn : null;
+          return (
+          <div key={s.en} ref={P(n)} className="ax-story-panel left ax-proc-step">
             <span className="no ax-display" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
             <span className="ax-kicker">{th ? `ขั้นที่ ${i + 1} จาก ${N}` : `Step ${i + 1} of ${N}`} · {s.en}</span>
             <h2 className="ax-display"><Words text={th ? s.h : s.hEn} /></h2>
             <span className="rule" />
             <p>{th ? s.p : s.pEn}</p>
+            {mine && track && (
+              <div className="ax-proc-mine" data-state={mine}>
+                <b className="ax-mono">{track.orderNo}</b>
+                <span>
+                  {mine === "done" && (th ? "ผ่านขั้นนี้แล้ว" : "Done")}
+                  {mine === "now" && (n === N ? (th ? "จัดส่งแล้ว" : "Shipped") : th ? "งานของคุณอยู่ขั้นนี้" : "Your order is here")}
+                  {mine === "todo" && (th ? "ยังไม่ถึงขั้นนี้" : "Not here yet")}
+                  {when && ` · ${mine === "now" && !e?.finishedOn ? (th ? "เริ่ม " : "since ") : ""}${shortDay(when, th)}`}
+                  {n === N && shippedNow && track.shipment?.trackingNo && ` · ${th ? "พัสดุ" : "parcel"} ${track.shipment.courier ? `${track.shipment.courier} ` : ""}${track.shipment.trackingNo}`}
+                </span>
+              </div>
+            )}
             <ol className="ax-proc-bar" aria-hidden="true">
-              {STEPS.map((_, k) => <li key={k} data-done={k < i ? "" : undefined} data-now={k === i ? "" : undefined} />)}
+              {/* tracking: the order's progress; otherwise where this panel is on the line */}
+              {STEPS.map((_, k) => {
+                const at = track ? Math.min(track.step, N) - 1 : i;
+                const done = track && track.step >= N ? k <= at : k < at;
+                return <li key={k} data-done={done ? "" : undefined} data-now={k === at && !(track && track.step >= N) ? "" : undefined} />;
+              })}
             </ol>
           </div>
-        ))}
+          );
+        })}
 
         <div ref={P(CHAPTERS - 1)} className="ax-story-panel top center">
+          {finale ?? <>
           <span className="ax-kicker">{th ? "พร้อมแล้ว" : "Your turn"}</span>
           <h2 className="ax-display"><Words text={th ? "ถึงคิว*ทีมคุณ" : "Your *team *next"} /></h2>
           <p>{th ? "ออกแบบเสื้อบนโมเดล 3D แล้วโรงงานจะผลิตตามขั้นตอนทั้ง 10 ขั้นนี้" : "Design your kit in 3D, and the factory makes it through these ten steps."}</p>
           <div className="ax-row" style={{ justifyContent: "center" }}>
             <Link href="/shop" className="ax-btn solid">{th ? "เริ่มออกแบบเสื้อ" : "Start designing"}</Link>
-            <Link href="/account" className="ax-btn ghost">{th ? "ติดตามออเดอร์" : "Track my order"}</Link>
+            <Link href="/tracking" className="ax-btn ghost">{th ? "ติดตามออเดอร์" : "Track my order"}</Link>
           </div>
+          </>}
         </div>
 
         <nav className="ax-story-nav" aria-label={th ? "ขั้นตอน" : "Steps"}>

@@ -18,7 +18,7 @@ export default function Home() {
         onLang={setLang}
         nav={[
           { href: "#collection", label: th ? "คอลเลกชัน" : "Collection" },
-          { href: "/process", label: th ? "ขั้นตอนผลิต" : "How it's made" },
+          { href: "/tracking", label: th ? "ติดตามงาน" : "Track order" },
           { href: "#work", label: th ? "ผลงาน" : "Our work" },
           { href: "#contact", label: th ? "ติดต่อ" : "Contact" },
         ]}

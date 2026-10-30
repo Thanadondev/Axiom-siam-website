@@ -815,3 +815,27 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
 .ax-pb-steps button[data-state="now"] { border-color: var(--ax-accent); background: rgba(242,101,34,.14); color: var(--ax-ink); }
 .ax-pb-steps button[data-state="now"] b { color: var(--ax-accent); }
 .ax-pb-steps button:disabled:not([data-state="now"]) { opacity: .45; cursor: default; }
+
+/* ---------- /tracking: the order lookup on the production line ---------- */
+.ax-track-form { display: flex; gap: 8px; width: min(520px, 100%); pointer-events: auto; }
+.ax-track-form .ax-field { flex: 1; min-width: 0; background: rgba(13,14,16,.72); backdrop-filter: blur(6px); font-family: var(--ax-mono); letter-spacing: .02em; }
+.ax-track-form .ax-btn { flex: none; }
+.ax-track-card { display: flex; flex-direction: column; gap: 10px; width: min(520px, 100%); padding: 16px 18px; border: 1px solid var(--ax-line-2); background: rgba(13,14,16,.78); backdrop-filter: blur(8px); pointer-events: auto; }
+.ax-track-card .top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--ax-mute); }
+.ax-track-card .top b { color: var(--ax-ink); font-weight: 400; font-size: 14px; }
+.ax-track-card .now { font-size: 22px; font-weight: 700; color: var(--ax-accent); line-height: 1.3; }
+.ax-track-card .ax-proc-bar { width: 100%; margin: 0; }
+.ax-track-card .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ax-ink-2); }
+.ax-track-card .meta b { font-weight: 400; color: var(--ax-ink); }
+.ax-track-card .hint { margin: 0; font-size: 12.5px; color: var(--ax-mute); }
+.ax-proc-mine { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; align-self: flex-start; padding: 8px 12px; border: 1px solid var(--ax-line-2); background: rgba(13,14,16,.7); font-size: 14px; color: var(--ax-ink-2); }
+.ax-proc-mine b { font-weight: 400; font-size: 12px; color: var(--ax-mute); }
+.ax-proc-mine[data-state="now"] { border-color: var(--ax-accent); color: var(--ax-ink); box-shadow: 0 0 0 4px rgba(242,101,34,.14); }
+.ax-proc-mine[data-state="now"] span { color: var(--ax-accent); font-weight: 700; }
+.ax-proc-mine[data-state="done"] span::before { content: "✓ "; color: var(--ax-accent); }
+.ax-proc-mine[data-state="todo"] { opacity: .7; }
+@media (max-width: 720px) {
+  .ax-track-card .now { font-size: 18px; }
+  .ax-track-card { padding: 12px 14px; gap: 8px; }
+}
+.ax-track-card .ax-story-link { align-self: flex-start; min-height: 40px; font-size: 14px; padding: 0 2px; }

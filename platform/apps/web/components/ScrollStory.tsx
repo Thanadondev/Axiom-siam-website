@@ -1030,7 +1030,7 @@ export default function ScrollStory({ th }: { th: boolean }) {
             <div><b>QC</b><span>{th ? "ทุกขั้นตอน" : "Every step"}</span></div>
           </div>
           <div className="ax-row" style={{ justifyContent: "center" }}>
-            <Link href="/process" className="ax-story-go">{th ? "ดูขั้นตอนผลิตทั้ง 10 ขั้น" : "See all ten steps"} <span aria-hidden="true">→</span></Link>
+            <Link href="/tracking" className="ax-story-go">{th ? "ดูทั้ง 10 ขั้น และติดตามงานของคุณ" : "See all ten steps, track your order"} <span aria-hidden="true">→</span></Link>
             <Link href="/account" className="ax-story-go">{th ? "ติดตามออเดอร์ของฉัน" : "Track my order"} <span aria-hidden="true">→</span></Link>
           </div>
         </div>
