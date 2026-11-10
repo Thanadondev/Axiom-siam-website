@@ -315,7 +315,8 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
 .ax-pb-drawer { width: min(560px, 100%); height: 100%; overflow-y: auto; background: #0f1012; border-left: 1px solid var(--ax-line); padding: 22px 26px 30px; display: flex; flex-direction: column; gap: 20px; }
 .ax-pb-dhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .ax-pb-dhead h2 { margin: 4px 0 0; font-size: 24px; letter-spacing: 0.04em; }
-.ax-pb-3d { position: relative; height: 340px; display: flex; background: radial-gradient(circle at 50% 55%, #24262a, #111214 70%); border: 1px solid var(--ax-line); }
+/* flex: none — the drawer is a scrolling flex column: without it a box holding only text shrank to one line */
+.ax-pb-3d { position: relative; height: 340px; flex: none; display: flex; background: radial-gradient(circle at 50% 55%, #24262a, #111214 70%); border: 1px solid var(--ax-line); }
 .ax-pb-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
 .ax-pb-facts div { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
 .ax-pb-facts span { font-size: 12px; color: var(--ax-mute); }
