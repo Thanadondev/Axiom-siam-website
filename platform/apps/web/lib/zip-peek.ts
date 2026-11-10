@@ -117,6 +117,15 @@ async function extract(file: Blob, e: CdEntry): Promise<Blob | null> {
 
 const PREVIEW_MAX = 20 * 1024 * 1024;
 
+/** one file inside a zip, read on demand */
+export interface ZipFileRef extends ZipEntry { read: () => Promise<Blob | null> }
+
+/** the zip's files (folders included, junk not filtered), each readable on its own. Throws when it isn't a zip. */
+export async function openZip(file: Blob): Promise<ZipFileRef[]> {
+  const all = await centralDirectory(file);
+  return all.filter(e => !e.dir).map(e => ({ name: e.name, size: e.size, kind: e.kind, read: () => extract(file, e) }));
+}
+
 /** what's in the zip, and its picture. Throws (in Thai) when it isn't a readable zip. */
 export async function peekZip(file: Blob): Promise<ZipPeek> {
   const all = await centralDirectory(file);

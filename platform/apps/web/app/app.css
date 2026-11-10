@@ -295,3 +295,9 @@ a.noteitem:hover{background:var(--soft)}
 .ofile img { width: 140px; max-height: 200px; object-fit: contain; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .ofile .name { font-weight: 700; overflow-wrap: anywhere; }
 @media (max-width: 520px) { .ofile { grid-template-columns: minmax(0, 1fr); } .ofile img { width: 100%; } }
+/* /order/upload: the counts read from the order list in the zip, offered with one click */
+.ou-fromlist { display: grid; gap: 8px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 13.5px; justify-items: start; }
+.ou-fromlist[data-applied] { border-color: var(--brand); }
+.ou-fromlist .nums { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.ou-fromlist .nums b { color: var(--brand); font-size: 15px; }
+.ou-fromlist .dim { overflow-wrap: anywhere; }

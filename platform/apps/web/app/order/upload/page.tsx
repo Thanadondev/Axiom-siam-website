@@ -8,6 +8,7 @@ import { useAuth } from "../../../lib/auth-context";
 import { apiFetch, type ApiError } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
 import { peekZip, type ZipPeek } from "../../../lib/zip-peek";
+import { sizesFromZip, type SizeCount } from "../../../lib/xlsx-sizes";
 import { uploadZip, previewDataUrl, ZIP_MAX_BYTES, mb, UploadError, type UploadedZip } from "../../../lib/order-upload";
 
 /**
@@ -45,6 +46,10 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [pic, setPic] = useState("");
   const [drag, setDrag] = useState(false);
   const [qty, setQty] = useState<Record<string, number>>({ S: 0, M: 0, L: 0, XL: 0 });
+  /** the counts read from the order list (.xlsx) in the zip, offered — never filled in unasked */
+  const [fromList, setFromList] = useState<SizeCount | null>(null);
+  const [listState, setListState] = useState<"" | "reading" | "done" | "unreadable">("");
+  const chosen = useRef<File | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addrId, setAddrId] = useState("");
   const [note, setNote] = useState("");
@@ -85,7 +90,8 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   useEffect(() => () => { if (pic) URL.revokeObjectURL(pic); }, [pic]);
 
   async function choose(f: File | undefined | null) {
-    setErr(""); setPeekErr(""); setPeek(null); setPic("");
+    setErr(""); setPeekErr(""); setPeek(null); setPic(""); setFromList(null); setListState("");
+    chosen.current = f ?? null;
     if (!f) return;
     if (!/\.zip$/i.test(f.name)) { setFile(null); setPeekErr(L("เลือกไฟล์ .zip เท่านั้น", "Please choose a .zip file", ".zipファイルを選択してください")); return; }
     if (f.size > ZIP_MAX_BYTES) {
@@ -109,6 +115,12 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
       const p = await peekZip(f);
       setPeek(p);
       if (p.preview) setPic(URL.createObjectURL(p.preview));
+      if (p.counts.sheet > 0) {
+        setListState("reading");
+        sizesFromZip(f)
+          .then(r => { if (chosen.current !== f) return; setFromList(r); setListState(r ? "done" : "unreadable"); })
+          .catch(() => { if (chosen.current === f) setListState("unreadable"); });
+      }
     } catch {
       setPeekErr(L(
         "อ่านรายการไฟล์ใน zip ไม่ได้ — ยังส่งได้ ทีมงานจะเปิดตรวจให้",
@@ -291,6 +303,41 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             <p className="asub">
               {L(`รวม ${totalQty} ตัว`, `${totalQty} in total`, `合計${totalQty}枚`)} · {L("ถ้ามีรายชื่อใน Excel ให้กรอกจำนวนตามไซส์ในรายชื่อ", "if your zip has a name list, enter the counts from it", "名簿がある場合は、名簿のサイズ別枚数を入力してください")}
             </p>
+            {listState === "reading" && <p className="dim" style={{ margin: "10px 0 0" }}>{L("กำลังอ่านจำนวนจากรายชื่อใน Excel…", "Reading the counts from the Excel name list…", "Excelの名簿から枚数を読み取り中…")}</p>}
+            {listState === "unreadable" && (
+              <p className="dim" style={{ margin: "10px 0 0" }}>
+                {L("มีรายชื่อ Excel ใน zip แต่อ่านจำนวนอัตโนมัติไม่ได้ — กรอกจำนวนตามรายชื่อเองได้เลย", "There's an Excel name list in the zip, but its counts couldn't be read automatically — please enter them from the list", "zip内にExcelの名簿がありますが、枚数を自動で読み取れませんでした。名簿を見て枚数を入力してください")}
+              </p>
+            )}
+            {fromList && (() => {
+              const same = SIZES.every(z => qty[z] === fromList.counts[z]);
+              const unknown = Object.entries(fromList.unknown);
+              return (
+                <div className="ou-fromlist" data-applied={same ? "" : undefined}>
+                  <div>
+                    <b>{L("จากรายชื่อใน Excel", "From the Excel name list", "Excelの名簿より")}</b>
+                    <span className="dim"> · {fromList.file}{fromList.sheet ? ` · ${fromList.sheet}` : ""}</span>
+                  </div>
+                  <div className="nums">
+                    {SIZES.map(z => <span key={z}>{z} <b>{fromList.counts[z]}</b></span>)}
+                    <span>= <b>{L(`${fromList.total} ตัว`, `${fromList.total} pieces`, `${fromList.total}枚`)}</b></span>
+                  </div>
+                  {unknown.length > 0 && (
+                    <p className="ou-warn" style={{ margin: 0 }}>
+                      ⚠ {L("ในรายชื่อมีไซส์ที่เราไม่ได้ผลิต", "The list has sizes we don't make", "名簿に当社で製作していないサイズがあります")}: {unknown.map(([t, n]) => `${t} × ${n}`).join(", ")}
+                      {" — "}{L("ไม่ได้นับรวม ระบุในหมายเหตุหรือติดต่อทีมงาน", "not counted; add a note or contact us", "合計に含めていません。備考に記入するか、お問い合わせください")}
+                    </p>
+                  )}
+                  {same
+                    ? <span className="dim">✓ {L("ใช้จำนวนนี้แล้ว · แก้ไขด้านล่างได้", "Using these counts · you can still edit them below", "この枚数を入力済み · 下で修正できます")}</span>
+                    : fromList.total > 0 && (
+                      <button type="button" className="minibtn" onClick={() => setQty({ ...fromList.counts })}>
+                        {L("ใช้จำนวนนี้", "Use these counts", "この枚数を使う")}
+                      </button>
+                    )}
+                </div>
+              );
+            })()}
             <div className="ou-sizes">
               {SIZES.map(z => (
                 <div key={z}>
