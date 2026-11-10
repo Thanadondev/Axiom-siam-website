@@ -367,6 +367,7 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
               </div>
             )}
+            {zips.length > 0 && <NasLine o={o} zips={zips} token={token} onChanged={fetchOne} />}
             {!["cancelled", "refunded"].includes(o.status) && (
               <ErpPanel o={o} token={token} onChanged={() => { fetchOne(); onChanged(); }} />
             )}
@@ -552,6 +553,41 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
           <button type="submit" className="ax-btn solid sq" disabled={busy || !tracking.trim()}>บันทึกการจัดส่ง</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Where the customer's zip sits in the team's job folders on the NAS (copied
+ * once the order is paid, retried every couple of minutes), with a button to
+ * send it now.
+ */
+function NasLine({ o, zips, token, onChanged }: { o: any; zips: OrderFileView[]; token: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const paid = !["pending", "cancelled", "refunded"].includes(o.status);
+  const onNas = zips.filter(z => z.nas?.path);
+  async function send() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<{ ok: boolean; message: string }>(`/admin/orders/${o.id}/nas`, { method: "POST", token });
+      setMsg({ ok: r.ok, text: r.message });
+      if (r.ok) onChanged();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <span className="ax-label">NAS · โฟลเดอร์งาน (_webjobs)</span>
+      {onNas.length === zips.length ? (
+        onNas.map(z => <p key={z.id} className="ax-psub ax-mono" style={{ margin: "4px 0 0", fontSize: 12.5, overflowWrap: "anywhere" }}>{z.nas!.path}</p>)
+      ) : (
+        <div className="row" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+          <span className="ax-psub" style={{ margin: 0, fontSize: 13 }}>{paid ? "ยังไม่อยู่บน NAS — ระบบลองส่งให้ทุก 2 นาที" : "ส่งเข้า NAS เมื่อลูกค้าชำระเงินแล้ว"}</span>
+          {paid && <button type="button" className="ax-sq" disabled={busy} onClick={send}>{busy ? "…" : "ส่งเข้า NAS ตอนนี้"}</button>}
+        </div>
+      )}
+      {msg && <p className={msg.ok ? "ax-psub" : "ax-err"} style={{ margin: "6px 0 0", fontSize: 13 }}>{msg.text}</p>}
     </div>
   );
 }

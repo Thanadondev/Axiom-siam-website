@@ -11,6 +11,8 @@ export interface OrderFileView {
   createdAt: string;
   downloadUrl: string | null;
   previewUrl: string | null;
+  /** admins only: the copy in the job folders on the NAS (relative to NAS_JOBS_DIR) */
+  nas?: { path: string; at: string | null } | null;
 }
 
 /**

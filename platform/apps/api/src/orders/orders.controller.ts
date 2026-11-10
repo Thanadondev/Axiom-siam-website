@@ -10,6 +10,7 @@ import {
   type ErpLinkDto,
 } from "./orders.dto";
 import { ErpSyncService } from "../erp/erp-sync.service";
+import { NasExportService } from "./nas-export";
 import { RateLimitGuard, RateLimit } from "../common/rate-limit.guard";
 
 @Controller("orders")
@@ -83,7 +84,7 @@ export class OrdersController {
 @Roles("admin")
 @Controller("admin/orders")
 export class AdminOrdersController {
-  constructor(private readonly orders: OrdersService, private readonly erp: ErpSyncService) {}
+  constructor(private readonly orders: OrdersService, private readonly erp: ErpSyncService, private readonly nas: NasExportService) {}
 
   @Get()
   list(@Query(new ZodValidationPipe(OrderListQuerySchema)) q: OrderListQueryDto) {
@@ -113,6 +114,15 @@ export class AdminOrdersController {
   }
 
   /** the same job's order number in the ERP; from then on the step follows the ERP */
+  /** copy a paid order's zip into its job folder on the NAS now (it's also tried every couple of minutes) */
+  @Post(":id/nas")
+  async sendToNas(@Param("id") id: string) {
+    const r = await this.nas.exportOrder(id);
+    return r.ok
+      ? { ok: true, message: `ส่งเข้า NAS แล้ว: ${r.folder}${r.copied ? "" : " (มีอยู่แล้ว)"}`, folder: r.folder }
+      : { ok: false, message: r.error };
+  }
+
   @Put(":id/erp")
   linkErp(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(ErpLinkSchema)) dto: ErpLinkDto) {
     return this.erp.link(id, user.id, dto.erpOrderNo, dto.force === true);
