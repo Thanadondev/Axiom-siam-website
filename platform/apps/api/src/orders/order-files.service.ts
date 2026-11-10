@@ -127,6 +127,11 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
     return { id, preview: true };
   }
 
+  /** a stored file's bytes, wherever it lives (to copy into the job folder on the NAS) */
+  openStored(path: string) {
+    return this.storeOf(path).open(keyOf(path));
+  }
+
   /** how to hand one part of a stored file to the browser that holds a valid signed link */
   async target(id: string, kind: "zip" | "preview") {
     const f = await this.prisma.orderFile.findUnique({ where: { id }, select: { id: true, name: true, path: true, previewPath: true } });
@@ -155,8 +160,14 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
 }
 
 /** what an order shows of its files: name, size and signed links */
-export function orderFileView(f: { id: string; name: string; bytes: number; createdAt: Date; previewPath: string | null }, now = Date.now()) {
+export function orderFileView(
+  f: { id: string; name: string; bytes: number; createdAt: Date; previewPath: string | null; nasPath?: string | null; nasAt?: Date | null },
+  now = Date.now(),
+  admin = false,
+) {
   return {
+    // for the team: where the copy sits in the job folders on the NAS (relative to NAS_JOBS_DIR)
+    ...(admin ? { nas: f.nasPath ? { path: f.nasPath, at: f.nasAt ?? null } : null } : {}),
     id: f.id,
     name: f.name,
     bytes: f.bytes,

@@ -1,4 +1,4 @@
-import { createWriteStream, promises as fs } from "fs";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { dirname, resolve } from "path";
 import type { Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -22,6 +22,8 @@ export interface BlobStore {
   putStream(key: string, body: Readable, contentType: string): Promise<void>;
   putBuffer(key: string, buf: Buffer, contentType: string): Promise<void>;
   remove(key: string): Promise<void>;
+  /** the stored bytes, to copy elsewhere (the job folder on the NAS) */
+  open(key: string): Promise<Readable>;
   /** how to hand it to a browser: a file to send, or a short-lived URL to redirect to */
   serve(key: string, opts: { downloadName?: string; contentType: string }): Promise<{ path: string } | { url: string }>;
 }
@@ -57,6 +59,11 @@ export class LocalStore implements BlobStore {
     const abs = this.abs(key);
     await fs.rm(abs, { force: true });
     await fs.rm(`${abs}.part`, { force: true });
+  }
+  async open(key: string) {
+    const abs = this.abs(key);
+    await fs.access(abs);
+    return createReadStream(abs);
   }
   async serve(key: string) { return { path: this.abs(key) }; }
 }
@@ -109,6 +116,10 @@ export class S3Store implements BlobStore {
   }
   async remove(key: string) {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.cfg.bucket, Key: this.key(key) }));
+  }
+  async open(key: string) {
+    const out = await this.client.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: this.key(key) }));
+    return out.Body as Readable;
   }
   async serve(key: string, opts: { downloadName?: string; contentType: string }) {
     const cmd = new GetObjectCommand({

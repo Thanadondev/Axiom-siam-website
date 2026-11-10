@@ -507,6 +507,9 @@ model OrderFile {
   path        String
   /// a picture of the job taken from the .jpg inside the zip, when there was one
   previewPath String?  @map("preview_path")
+  /// the copy in the team's job folder on the NAS (NAS_JOBS_DIR), once the order was paid
+  nasPath     String?  @map("nas_path")
+  nasAt       DateTime? @map("nas_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
   user  User   @relation(fields: [userId], references: [id])

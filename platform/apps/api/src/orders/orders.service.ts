@@ -169,7 +169,7 @@ export class OrdersService {
     return {
       ...rest,
       // the customer's own print files, by signed links (owner and admins only reach here)
-      files: (files ?? []).map(f => orderFileView(f)),
+      files: (files ?? []).map(f => orderFileView(f, Date.now(), isAdmin)),
       balance: ledger(o, o.payments, o.refunds),
       taxInfo: readTaxInfo(taxInvoice),
       // the company's own details for printing a tax invoice (null until set in .env)
@@ -201,7 +201,7 @@ export class OrdersService {
         },
         taxInvoice: true,
         erpOrderNo: true, erpStatus: true, erpSyncedAt: true,
-        files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true }, orderBy: { createdAt: "asc" } },
+        files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true, nasPath: true, nasAt: true }, orderBy: { createdAt: "asc" } },
       },
     });
   }
@@ -358,7 +358,7 @@ export class OrdersService {
           items: { select: { size: true, qty: true } },
           payments: { select: { status: true, type: true, amount: true } },
           refunds: { select: { amount: true } },
-          files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true }, orderBy: { createdAt: "asc" }, take: 1 },
+          files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true, nasPath: true, nasAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
         },
       }),
       this.prisma.order.count({ where }),
@@ -377,7 +377,7 @@ export class OrdersService {
       items: items.map(({ payments, refunds, files, ...o }) => ({
         ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null,
         // a bib order by file: the board shows the job's picture and the zip instead of a 3D shirt
-        file: files?.[0] ? orderFileView(files[0]) : null,
+        file: files?.[0] ? orderFileView(files[0], Date.now(), true) : null,
       })),
       total,
     };
