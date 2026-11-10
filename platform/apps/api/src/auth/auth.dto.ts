@@ -57,7 +57,7 @@ export const UpdateProfileSchema = z.object({
   phone: z.string().max(40).optional(),
   companyName: z.string().max(160).optional(),
   bio: z.string().max(500).optional(), // public blurb on the designer profile
-  locale: z.enum(["th", "en"]).optional(),
+  locale: z.enum(["th", "en", "ja"]).optional(), // the language of their notifications (and emails, later)
 });
 export type UpdateProfileDto = z.infer<typeof UpdateProfileSchema>;
 

@@ -12,6 +12,7 @@ import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
 import { orderFileView } from "./order-files.service";
+import { tri, statusTitle, stepTitle } from "../notify/text";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -443,12 +444,13 @@ export class OrdersService {
     }
 
     // tell the customer
-    const label = STATUS_TH[dto.status] ?? dto.status;
+    // in the customer's language; a note the team typed goes as they wrote it
+    const parcel = dto.trackingNo ? `${dto.trackingNo}${dto.courier ? ` (${dto.courier})` : ""}` : "";
     await this.notify.push({
       userId: o.userId,
-      title: `ออเดอร์ ${o.orderNo}: ${label}`,
-      body: dto.status === "shipped" && dto.trackingNo
-        ? `เลขพัสดุ ${dto.trackingNo}${dto.courier ? ` (${dto.courier})` : ""}`
+      title: statusTitle(o.orderNo, dto.status),
+      body: dto.status === "shipped" && parcel
+        ? tri(`เลขพัสดุ ${parcel}`, `Tracking no. ${parcel}`, `追跡番号 ${parcel}`)
         : dto.note || undefined,
       link: `/orders/${id}`,
       email: true,
@@ -480,7 +482,7 @@ export class OrdersService {
 
     await this.notify.push({
       userId: o.userId,
-      title: `ออเดอร์ ${o.orderNo}: ขั้นที่ ${plan.step}/${SHIP_STEP} · ${stepName(plan.step)}`,
+      title: stepTitle(o.orderNo, plan.step, SHIP_STEP),
       body: dto.note || undefined,
       link: `/orders/${id}`,
     });

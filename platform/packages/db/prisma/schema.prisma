@@ -24,6 +24,7 @@ enum Role {
 enum Locale {
   th
   en
+  ja
 }
 
 enum TokenType {

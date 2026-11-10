@@ -8,6 +8,7 @@ import { buildPromptPayPayload } from "./promptpay";
 import { judgeSlip, ManualSlipReader, type SlipReader, type SlipFacts } from "./slip-policy";
 import { MIN_CHARGE_BAHT } from "./money";
 import { ledger, upfrontCovered, DUE_TH, type Ledger } from "./ledger";
+import { tri, baht, DUE } from "../notify/text";
 import { signSlipUrl } from "./slip-link";
 import { issueInvoice, issueCreditNote } from "./invoices";
 import { readTaxInfo } from "../orders/tax-invoice";
@@ -152,8 +153,8 @@ export class PaymentsService {
     );
     await this.notify.push({
       userId: order.userId,
-      title: `ได้รับสลิปแล้ว — ${order.orderNo}`,
-      body: "ทีมงานกำลังตรวจสอบ ปกติไม่เกิน 1 วันทำการ",
+      title: tri(`ได้รับสลิปแล้ว — ${order.orderNo}`, `Slip received — ${order.orderNo}`, `振込明細を受け取りました — ${order.orderNo}`),
+      body: tri("ทีมงานกำลังตรวจสอบ ปกติไม่เกิน 1 วันทำการ", "We're checking it — usually within one working day", "確認しております。通常1営業日以内です"),
       link: `/orders/${orderId}`,
     });
 
@@ -206,6 +207,7 @@ export class PaymentsService {
     const starts = order.status === "pending" && upfrontCovered(order, after);
     const l = ledger({ ...order, status: starts ? "paid" : order.status }, after);
     const what = DUE_TH[(payment.type as "deposit" | "full" | "balance")] ?? "ยอด";
+    const dueWord = DUE[payment.type] ?? tri("ยอด", "amount", "お支払い");
     await this.prisma.$transaction([
       this.prisma.payment.update({
         where: { id: paymentId },
@@ -235,10 +237,10 @@ export class PaymentsService {
 
     await this.notify.push({
       userId: order.userId,
-      title: `ยืนยันการชำระ${what}แล้ว — ${order.orderNo}`,
+      title: tri(`ยืนยันการชำระ${what}แล้ว — ${order.orderNo}`, `Payment of the ${dueWord.en} confirmed — ${order.orderNo}`, `${dueWord.ja}のお支払いを確認しました — ${order.orderNo}`),
       body: l.outstanding
-        ? `฿${payment.amount.toLocaleString()} · เริ่มผลิตแล้ว · ส่วนที่เหลือ ฿${l.outstanding.toLocaleString()} ชำระก่อนจัดส่ง`
-        : `฿${payment.amount.toLocaleString()} · ชำระครบแล้ว${starts ? " · เริ่มกระบวนการผลิตแล้ว" : ""}`,
+        ? tri(`${baht(payment.amount)} · เริ่มผลิตแล้ว · ส่วนที่เหลือ ${baht(l.outstanding)} ชำระก่อนจัดส่ง`, `${baht(payment.amount)} · production has started · the balance of ${baht(l.outstanding)} is due before shipping`, `${baht(payment.amount)} · 制作を開始しました · 残額 ${baht(l.outstanding)} は発送前にお支払いください`)
+        : tri(`${baht(payment.amount)} · ชำระครบแล้ว${starts ? " · เริ่มกระบวนการผลิตแล้ว" : ""}`, `${baht(payment.amount)} · paid in full${starts ? " · production has started" : ""}`, `${baht(payment.amount)} · 全額お支払い済み${starts ? " · 制作を開始しました" : ""}`),
       link: `/orders/${order.id}`,
       email: true,
     });
@@ -263,8 +265,9 @@ export class PaymentsService {
     // the order stays `pending`, so the customer can simply upload a better slip
     await this.notify.push({
       userId: payment.order.userId,
-      title: `สลิปไม่ผ่านการตรวจสอบ — ${payment.order.orderNo}`,
-      body: `${reason} — กรุณาแนบสลิปใหม่ในหน้าออเดอร์`,
+      title: tri(`สลิปไม่ผ่านการตรวจสอบ — ${payment.order.orderNo}`, `Slip not accepted — ${payment.order.orderNo}`, `振込明細が承認されませんでした — ${payment.order.orderNo}`),
+      // the reason is what the team typed (in Thai): kept for Thai readers, the others are asked to look at the order
+      body: tri(`${reason} — กรุณาแนบสลิปใหม่ในหน้าออเดอร์`, "Please check the transfer and attach a new slip on the order page, or contact us", "お振込内容をご確認のうえ、注文ページから新しい振込明細を添付するか、お問い合わせください"),
       link: `/orders/${payment.order.id}`,
       email: true,
     });
@@ -384,8 +387,12 @@ export class PaymentsService {
     if (starts || !l.outstanding) await this.issueInvoice(order.id, order.total);
     await this.notify.push({
       userId: order.userId,
-      title: `ได้รับชำระเงินแล้ว — ${order.orderNo}`,
-      body: `฿${dto.amount.toLocaleString()}${l.outstanding ? ` · ค้างชำระ ฿${l.outstanding.toLocaleString()}` : " · ชำระครบแล้ว"}${starts ? " · เริ่มกระบวนการผลิตแล้ว" : ""}`,
+      title: tri(`ได้รับชำระเงินแล้ว — ${order.orderNo}`, `Payment received — ${order.orderNo}`, `お支払いを受け付けました — ${order.orderNo}`),
+      body: tri(
+        `${baht(dto.amount)}${l.outstanding ? ` · ค้างชำระ ${baht(l.outstanding)}` : " · ชำระครบแล้ว"}${starts ? " · เริ่มกระบวนการผลิตแล้ว" : ""}`,
+        `${baht(dto.amount)}${l.outstanding ? ` · ${baht(l.outstanding)} still due` : " · paid in full"}${starts ? " · production has started" : ""}`,
+        `${baht(dto.amount)}${l.outstanding ? ` · 残額 ${baht(l.outstanding)}` : " · 全額お支払い済み"}${starts ? " · 制作を開始しました" : ""}`,
+      ),
       link: `/orders/${order.id}`,
       email: true,
     });
@@ -446,8 +453,8 @@ export class PaymentsService {
 
     await this.notify.push({
       userId: order.userId,
-      title: `คืนเงินแล้ว — ${order.orderNo}`,
-      body: `฿${dto.amount.toLocaleString()} · ${dto.reason}${cn ? ` · ใบลดหนี้ ${cn.creditNo}` : ""}`,
+      title: tri(`คืนเงินแล้ว — ${order.orderNo}`, `Refunded — ${order.orderNo}`, `返金しました — ${order.orderNo}`),
+      body: tri(`${baht(dto.amount)} · ${dto.reason}${cn ? ` · ใบลดหนี้ ${cn.creditNo}` : ""}`, `${baht(dto.amount)}${cn ? ` · credit note ${cn.creditNo}` : ""}`, `${baht(dto.amount)}${cn ? ` · クレジットノート ${cn.creditNo}` : ""}`),
       link: `/orders/${order.id}`,
       email: true,
     });
