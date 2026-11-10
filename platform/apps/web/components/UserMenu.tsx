@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import { tri, type Lang } from "../lib/i18n";
 
 /** Header avatar + dropdown (account / designer profile / admin / logout).
  *  Shared by AppShell and the landing page nav so logout is reachable everywhere. */
-export default function UserMenu({ loginClass = "", dropUp = false }: { loginClass?: string; dropUp?: boolean }) {
+export default function UserMenu({ loginClass = "", dropUp = false, lang = "th" }: { loginClass?: string; dropUp?: boolean; lang?: Lang }) {
+  const L = tri(lang);
   const { user, logout } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -23,7 +25,7 @@ export default function UserMenu({ loginClass = "", dropUp = false }: { loginCla
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
-  if (!user) return <Link className={loginClass} href="/login">เข้าสู่ระบบ</Link>;
+  if (!user) return <Link className={loginClass} href="/login">{L("เข้าสู่ระบบ", "Sign in", "ログイン")}</Link>;
 
   const label = user.fullName?.trim() || user.email.split("@")[0];
   const initial = (label[0] ?? "?").toUpperCase();
@@ -50,12 +52,12 @@ export default function UserMenu({ loginClass = "", dropUp = false }: { loginCla
             <b>{label}</b>
             <span className="dim">{user.email}</span>
           </div>
-          <Link href="/account" role="menuitem" onClick={() => setOpen(false)}>👤 บัญชีของฉัน</Link>
+          <Link href="/account" role="menuitem" onClick={() => setOpen(false)}>👤 {L("บัญชีของฉัน", "My account", "マイアカウント")}</Link>
           <Link href={`/designers/${user.id}`} role="menuitem" onClick={() => setOpen(false)}>🎨 โปรไฟล์ดีไซเนอร์</Link>
           {user.role === "admin" && <Link href="/admin" role="menuitem" onClick={() => setOpen(false)}>🛠 ผู้ดูแลระบบ</Link>}
           <hr />
           <button className="logoutitem" role="menuitem" onClick={doLogout} disabled={busy}>
-            {busy ? "กำลังออก…" : "🚪 ออกจากระบบ"}
+            {busy ? L("กำลังออก…", "Signing out…", "ログアウト中…") : `🚪 ${L("ออกจากระบบ", "Sign out", "ログアウト")}`}
           </button>
         </div>
       )}

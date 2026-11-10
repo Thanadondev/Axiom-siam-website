@@ -33,6 +33,10 @@ export interface BankConfig {
   note: string;
   /** false = ordering still works, but the pay panel says "ยังไม่เปิดรับชำระ" */
   enabled: boolean;
+  /** for a transfer from abroad (teams in Japan pay into this account): the names in English and the SWIFT code */
+  bankNameEn?: string;
+  accountNameEn?: string;
+  swift?: string;
 }
 
 export const DEFAULT_BANK: BankConfig = {

@@ -63,5 +63,8 @@ export const BankConfigSchema = z.object({
   promptpayType: z.enum(["phone", "natid", "ewallet"]).optional(),
   note: z.string().trim().max(300).optional(),
   enabled: z.boolean().optional(),
+  bankNameEn: z.string().trim().max(80).optional(),
+  accountNameEn: z.string().trim().max(120).optional(),
+  swift: z.string().trim().toUpperCase().regex(/^([A-Z0-9]{8}|[A-Z0-9]{11})?$/, "SWIFT code มี 8 หรือ 11 ตัวอักษร").optional(),
 });
 export type BankConfigDto = z.infer<typeof BankConfigSchema>;

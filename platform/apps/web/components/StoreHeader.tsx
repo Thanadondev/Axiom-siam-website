@@ -34,7 +34,7 @@ export default function StoreHeader({
         )}
         <div className="ax-tools">
           {bell && <NotifyBell />}
-          <UserMenu loginClass="ax-login" />
+          <UserMenu loginClass="ax-login" lang={lang} />
           {onLang && (
             <div className="ax-pill" role="group" aria-label="ภาษา / Language">
               {LANGS.map(l => (

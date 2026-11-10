@@ -83,7 +83,11 @@ export class PaymentsService {
       outstanding: l.outstanding,
       orderNo: order.orderNo,
       qrPayload: qr,
-      bank: { bankName: bank.bankName, accountNo: bank.accountNo, accountName: bank.accountName, note: bank.note },
+      bank: {
+        bankName: bank.bankName, accountNo: bank.accountNo, accountName: bank.accountName, note: bank.note,
+        // for a transfer from abroad (teams in Japan): blank until an admin fills them in
+        bankNameEn: bank.bankNameEn ?? "", accountNameEn: bank.accountNameEn ?? "", swift: bank.swift ?? "",
+      },
     };
   }
 

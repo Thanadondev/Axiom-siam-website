@@ -1053,6 +1053,23 @@ export default function AdminPage() {
                 <input className="ainput" value={cfg.bank.note ?? ""} onChange={e => setB("note", e.target.value)} />
               </div>
 
+              <h3 className="flabel" style={{ margin: "18px 0 0" }}>สำหรับลูกค้าที่โอนจากต่างประเทศ (หน้าชำระเงินภาษาอังกฤษ / ญี่ปุ่น)</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14, marginTop: 8 }}>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ชื่อธนาคาร (อังกฤษ)</label>
+                  <input className="ainput" placeholder="เช่น Kasikornbank" value={cfg.bank.bankNameEn ?? ""} onChange={e => setB("bankNameEn", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ชื่อบัญชี (อังกฤษ)</label>
+                  <input className="ainput" placeholder="ตามที่ธนาคารสะกด" value={cfg.bank.accountNameEn ?? ""} onChange={e => setB("accountNameEn", e.target.value)} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>SWIFT code</label>
+                  <input className="ainput" placeholder="8 หรือ 11 ตัว" maxLength={11} value={cfg.bank.swift ?? ""} onChange={e => setB("swift", e.target.value.toUpperCase())} />
+                </div>
+              </div>
+              <p className="dim" style={{ marginTop: 8 }}>เว้นว่างได้ — หน้าภาษาอังกฤษ/ญี่ปุ่นจะแสดงเท่าที่กรอกไว้ ตรวจ SWIFT กับธนาคารก่อนบันทึก</p>
+
               <p className="dim" style={{ marginTop: 10 }}>
                 เว้นพร้อมเพย์ว่างได้ ถ้าไม่อยากให้มี QR — ลูกค้าจะโอนเข้าเลขบัญชีแทน
               </p>
