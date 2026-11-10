@@ -1,33 +1,46 @@
-import { Injectable, BadRequestException, NotFoundException, PayloadTooLargeException, Logger, type OnModuleInit, type OnModuleDestroy } from "@nestjs/common";
+import { Injectable, Inject, Optional, BadRequestException, NotFoundException, PayloadTooLargeException, Logger, type OnModuleInit, type OnModuleDestroy } from "@nestjs/common";
 import { createHash, randomUUID } from "crypto";
-import { createWriteStream, promises as fs } from "fs";
-import { join, resolve } from "path";
-import { Transform, type Readable } from "stream";
+import { resolve } from "path";
+import { PassThrough, Transform, type Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../payments/storage.service";
 import { cleanZipName, isZipStart, signOrderFileUrl } from "./order-file-link";
+import { LocalStore, S3Store, s3ConfigFromEnv, pathFor, keyOf, inBucket, type BlobStore } from "./blob-store";
 
 /** the biggest job in the factory's own folder was a 378 MB zip */
 export const ORDER_ZIP_MAX_BYTES = 500 * 1024 * 1024;
+/** a store handed in (tests); without one, the bucket from .env or the disk */
+export const BLOB_STORE = Symbol("BLOB_STORE");
 /** uploaded but never ordered: cleared after this long */
 const ORPHAN_AFTER_MS = 7 * 24 * 60 * 60_000;
 
 /**
- * The customer's print files (a .zip of Illustrator artwork) on disk, under
- * UPLOAD_DIR/order-files/<user>/<file id>.zip — paths are built from ids only,
- * never from anything the customer sent. The zip is stored as it came: the
- * server never opens it (the factory's team does, in Illustrator).
+ * The customer's print files (a .zip of Illustrator artwork) and the job's
+ * picture. Stored by blob-store.ts: an S3-compatible bucket when one is set up
+ * in .env (R2 / S3 / MinIO), otherwise UPLOAD_DIR/order-files on disk. Keys are
+ * built from ids only, never from anything the customer sent. The zip is stored
+ * as it came: the server never opens it (the factory's team does, in Illustrator).
  */
 @Injectable()
 export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger("OrderFiles");
-  private readonly root = resolve(process.env.UPLOAD_DIR ?? "./uploads", "order-files");
   private sweep: NodeJS.Timeout | null = null;
+  /** where new files go */
+  readonly store: BlobStore;
+  /** files saved on disk before a bucket was set up are still read from disk */
+  private readonly disk: LocalStore;
+  private readonly bucket: S3Store | null;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, @Optional() @Inject(BLOB_STORE) store?: BlobStore) {
+    this.disk = new LocalStore(resolve(process.env.UPLOAD_DIR ?? "./uploads", "order-files"));
+    const s3 = s3ConfigFromEnv();
+    this.bucket = store?.kind === "s3" ? (store as S3Store) : s3 ? new S3Store(s3) : null;
+    this.store = store ?? this.bucket ?? this.disk;
+  }
 
   onModuleInit() {
+    this.log.log(this.store.kind === "s3" ? "print files go to the S3 bucket" : "print files go to disk (UPLOAD_DIR/order-files)");
     if (process.env.NODE_ENV === "test") return;
     const run = () => this.sweepOrphans().catch(e => this.log.warn(`sweep failed: ${e?.message ?? e}`));
     setTimeout(run, 60_000).unref?.();
@@ -36,28 +49,22 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
   }
   onModuleDestroy() { if (this.sweep) clearInterval(this.sweep); }
 
-  private dirFor(userId: string) {
-    const dir = join(this.root, userId.replace(/[^a-zA-Z0-9-]/g, ""));
-    if (!resolve(dir).startsWith(this.root)) throw new BadRequestException("เส้นทางไฟล์ไม่ถูกต้อง");
-    return dir;
-  }
-
-  /** the absolute path of a stored file (paths in the DB are relative to the root) */
-  abs(rel: string): string | null {
-    const p = resolve(this.root, rel);
-    return p.startsWith(this.root + "/") || p.startsWith(this.root + "\\") ? p : null;
+  /** the store a saved path lives in */
+  private storeOf(path: string): BlobStore {
+    if (!inBucket(path)) return this.store.kind === "local" ? this.store : this.disk;
+    const s = this.store.kind === "s3" ? this.store : this.bucket;
+    if (!s) throw new NotFoundException("ไฟล์นี้อยู่ใน S3 แต่ API ยังไม่ได้ตั้งค่า S3");
+    return s;
   }
 
   /**
-   * Streams the request body to disk: never the whole file in memory. It must be a zip
+   * Streams the request body to storage: never the whole file in memory. It must be a zip
    * (by its first bytes, not its name or type) and at most ORDER_ZIP_MAX_BYTES.
    */
   async saveZip(userId: string, body: Readable, rawName: unknown, declaredBytes?: number) {
     if (declaredBytes !== undefined && declaredBytes > ORDER_ZIP_MAX_BYTES) throw new PayloadTooLargeException("ไฟล์ใหญ่เกิน 500 MB");
     const id = randomUUID();
-    const dir = this.dirFor(userId);
-    await fs.mkdir(dir, { recursive: true });
-    const part = join(dir, `${id}.part`);
+    const key = `${userId.replace(/[^a-zA-Z0-9-]/g, "")}/${id}.zip`;
 
     let bytes = 0;
     let head = Buffer.alloc(0);
@@ -74,28 +81,32 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
         cb(null, chunk);
       },
     });
-    try {
-      await pipeline(body, guard, createWriteStream(part));
-    } catch (e) {
-      await fs.rm(part, { force: true });
-      throw e instanceof BadRequestException || e instanceof PayloadTooLargeException ? e : new BadRequestException("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง");
+    // the checks run as the bytes go through; storage reads what passes
+    const checked = new PassThrough();
+    const [reading, writing] = await Promise.allSettled([
+      pipeline(body, guard, checked),
+      this.store.putStream(key, checked, "application/zip"),
+    ]);
+    const fail = async (e: unknown) => {
+      await this.store.remove(key).catch(() => {});
+      throw e;
+    };
+    if (reading.status === "rejected") {
+      const e = reading.reason;
+      return fail(e instanceof BadRequestException || e instanceof PayloadTooLargeException ? e : new BadRequestException("อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง"));
     }
-    if (!isZipStart(head) || bytes < 22) {
-      await fs.rm(part, { force: true });
-      throw new BadRequestException("ไฟล์นี้ไม่ใช่ .zip");
+    if (writing.status === "rejected") {
+      this.log.error(`storing ${key} failed: ${writing.reason?.message ?? writing.reason}`);
+      return fail(new BadRequestException("บันทึกไฟล์ไม่สำเร็จ ลองใหม่อีกครั้ง"));
     }
-    if (declaredBytes !== undefined && declaredBytes !== bytes) {
-      await fs.rm(part, { force: true });
-      throw new BadRequestException("ไฟล์มาไม่ครบ ลองอัปโหลดใหม่อีกครั้ง");
-    }
-    const rel = `${dir.slice(this.root.length + 1)}/${id}.zip`.replace(/\\/g, "/");
-    await fs.rename(part, join(this.root, rel));
+    if (!isZipStart(head) || bytes < 22) return fail(new BadRequestException("ไฟล์นี้ไม่ใช่ .zip"));
+    if (declaredBytes !== undefined && declaredBytes !== bytes) return fail(new BadRequestException("ไฟล์มาไม่ครบ ลองอัปโหลดใหม่อีกครั้ง"));
 
     const row = await this.prisma.orderFile.create({
-      data: { id, userId, name: cleanZipName(rawName), bytes, sha256: hash.digest("hex"), path: rel },
+      data: { id, userId, name: cleanZipName(rawName), bytes, sha256: hash.digest("hex"), path: pathFor(this.store, key) },
       select: { id: true, name: true, bytes: true, createdAt: true },
     });
-    this.log.log(`saved ${rel} (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
+    this.log.log(`saved ${pathFor(this.store, key)} (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
     return row;
   }
 
@@ -106,18 +117,25 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
     const mime = StorageService.validate(buf);
     const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : mime === "image/jpeg" ? "jpg" : null;
     if (!ext) throw new BadRequestException("ภาพตัวอย่างต้องเป็น JPG, PNG หรือ WEBP");
-    const rel = f.path.replace(/\.zip$/, `-preview.${ext}`);
-    const abs = this.abs(rel);
-    if (!abs) throw new BadRequestException("เส้นทางไฟล์ไม่ถูกต้อง");
-    await fs.writeFile(abs, buf);
-    if (f.previewPath && f.previewPath !== rel) { const old = this.abs(f.previewPath); if (old) await fs.rm(old, { force: true }); }
-    await this.prisma.orderFile.update({ where: { id }, data: { previewPath: rel } });
+    // beside its zip, in the same store
+    const store = this.storeOf(f.path);
+    const key = keyOf(f.path).replace(/\.zip$/, `-preview.${ext}`);
+    await store.putBuffer(key, buf, mime);
+    const path = pathFor(store, key);
+    if (f.previewPath && f.previewPath !== path) await this.storeOf(f.previewPath).remove(keyOf(f.previewPath)).catch(() => {});
+    await this.prisma.orderFile.update({ where: { id }, data: { previewPath: path } });
     return { id, preview: true };
   }
 
-  /** a stored file's row, for serving a signed link */
-  find(id: string) {
-    return this.prisma.orderFile.findUnique({ where: { id }, select: { id: true, name: true, path: true, previewPath: true } });
+  /** how to hand one part of a stored file to the browser that holds a valid signed link */
+  async target(id: string, kind: "zip" | "preview") {
+    const f = await this.prisma.orderFile.findUnique({ where: { id }, select: { id: true, name: true, path: true, previewPath: true } });
+    const path = f && (kind === "zip" ? f.path : f.previewPath);
+    if (!f || !path) throw new NotFoundException("ไม่พบไฟล์");
+    const contentType = kind === "zip" ? "application/zip"
+      : path.endsWith(".png") ? "image/png" : path.endsWith(".webp") ? "image/webp" : "image/jpeg";
+    const how = await this.storeOf(path).serve(keyOf(path), { downloadName: kind === "zip" ? f.name : undefined, contentType });
+    return { ...how, name: f.name, contentType };
   }
 
   /** files left behind by an upload that never became an order */
@@ -128,7 +146,7 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
       take: 200,
     });
     for (const f of old) {
-      for (const rel of [f.path, f.previewPath]) { const p = rel && this.abs(rel); if (p) await fs.rm(p, { force: true }); }
+      for (const p of [f.path, f.previewPath]) if (p) await this.storeOf(p).remove(keyOf(p)).catch(e => this.log.warn(`couldn't remove ${p}: ${e?.message ?? e}`));
       await this.prisma.orderFile.delete({ where: { id: f.id } });
     }
     if (old.length) this.log.log(`cleared ${old.length} upload(s) that never became an order`);
