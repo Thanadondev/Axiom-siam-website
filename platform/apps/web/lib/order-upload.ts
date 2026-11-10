@@ -10,6 +10,16 @@ export const ZIP_MAX_BYTES = 500 * 1024 * 1024;
 
 export interface UploadedZip { id: string; name: string; bytes: number }
 
+/**
+ * Why an upload failed, as a code the page puts into the customer's language
+ * (the API's own messages are in Thai): too_large (413), rejected (400: not a
+ * zip, or it arrived incomplete), network, aborted, or other.
+ */
+export type UploadFailure = "too_large" | "rejected" | "network" | "aborted" | "other";
+export class UploadError extends Error {
+  constructor(public code: UploadFailure, message: string, public status = 0) { super(message); }
+}
+
 /** an absolute link to an API path such as a signed file link ("/api/v1/order-files/…") */
 export const apiHref = (path: string | null | undefined) => (path ? (/^https?:/.test(path) ? path : `${API_BASE}${path}`) : "");
 
@@ -25,11 +35,12 @@ export function uploadZip(file: File, token: string, onProgress: (sent: number, 
     xhr.onload = () => {
       let body: any = {};
       try { body = JSON.parse(xhr.responseText || "{}"); } catch { /* not JSON */ }
-      if (xhr.status >= 200 && xhr.status < 300 && body.id) resolve(body);
-      else reject(new Error(body.message || (xhr.status === 413 ? "ไฟล์ใหญ่เกิน 500 MB" : `อัปโหลดไม่สำเร็จ (${xhr.status})`)));
+      if (xhr.status >= 200 && xhr.status < 300 && body.id) return resolve(body);
+      const code: UploadFailure = xhr.status === 413 ? "too_large" : xhr.status === 400 ? "rejected" : "other";
+      reject(new UploadError(code, body.message || `อัปโหลดไม่สำเร็จ (${xhr.status})`, xhr.status));
     };
-    xhr.onerror = () => reject(new Error("อัปโหลดไม่สำเร็จ — ตรวจการเชื่อมต่อแล้วลองใหม่"));
-    xhr.onabort = () => reject(new Error("ยกเลิกการอัปโหลดแล้ว"));
+    xhr.onerror = () => reject(new UploadError("network", "อัปโหลดไม่สำเร็จ — ตรวจการเชื่อมต่อแล้วลองใหม่"));
+    xhr.onabort = () => reject(new UploadError("aborted", "ยกเลิกการอัปโหลดแล้ว"));
     xhr.send(file);
   });
   return { done, abort: () => xhr.abort() };

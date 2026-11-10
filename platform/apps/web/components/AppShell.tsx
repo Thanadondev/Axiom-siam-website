@@ -5,14 +5,18 @@ import StoreHeader from "./StoreHeader";
 import StoreFooter from "./StoreFooter";
 import JerseyStage from "./JerseyStage";
 import { KITS, defaultConfig } from "../lib/kits";
+import { tri, type Lang } from "../lib/i18n";
 import "../app/app.css";
 import "../app/home.css";
 
-const NAV = [
-  { href: "/shop", label: "ออกแบบเสื้อ" },
-  { href: "/templates", label: "ตลาดลาย" },
-  { href: "/design", label: "ออกแบบขั้นสูง" },
-];
+const nav = (lang: Lang) => {
+  const L = tri(lang);
+  return [
+    { href: "/shop", label: L("ออกแบบเสื้อ", "Design", "デザイン") },
+    { href: "/templates", label: L("ตลาดลาย", "Designs market", "デザインマーケット") },
+    { href: "/design", label: L("ออกแบบขั้นสูง", "Advanced designer", "上級デザイナー") },
+  ];
+};
 
 /**
  * Frame for the account-side pages (account, orders, admin, terms…): the
@@ -21,17 +25,20 @@ const NAV = [
  * a kit turning in 3D beside the form.
  */
 export default function AppShell({
-  children, narrow = false, wide = false, auth = false,
+  children, narrow = false, wide = false, auth = false, lang, onLang,
 }: {
   children: ReactNode;
   narrow?: boolean;
   wide?: boolean;
   /** sign-in / sign-up style page: form on the right, brand stage on the left */
   auth?: boolean;
+  /** a page written in Thai / English / Japanese passes its language: the header gets the switch */
+  lang?: Lang;
+  onLang?: (l: Lang) => void;
 }) {
   return (
-    <div className="app ax">
-      <StoreHeader nav={NAV} bell cta={!auth} />
+    <div className="app ax" lang={lang}>
+      <StoreHeader nav={nav(lang ?? "th")} bell cta={!auth} lang={lang} onLang={onLang} />
       {auth ? (
         <div className="ax-auth">
           <AuthStage />
@@ -40,7 +47,7 @@ export default function AppShell({
       ) : (
         <main className={`app-main${narrow ? " app-narrow" : ""}${wide ? " app-wide" : ""}`}>{children}</main>
       )}
-      {!auth && <StoreFooter />}
+      {!auth && <StoreFooter lang={lang} />}
     </div>
   );
 }
