@@ -114,14 +114,6 @@ export default function ProcessStory({ lang, hero, track, finale }: {
   const mineRef = useRef(0);
   mineRef.current = track ? Math.min(track.step, N) : 0;
 
-  // a looked-up order: a moment to read the result, then walk to its station
-  useEffect(() => {
-    if (!track || track.step < 1) return;
-    const t = window.setTimeout(() => { if (window.scrollY < window.innerHeight * 0.5) walkTo(Math.min(track.step, N)); }, 1600);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.orderNo, track?.step]);
-
   // /tracking?step=4 opens at that station
   useEffect(() => {
     const n = Number(new URLSearchParams(window.location.search).get("step"));
@@ -138,7 +130,7 @@ export default function ProcessStory({ lang, hero, track, finale }: {
   // scroll → panels
   useEffect(() => {
     const still = prefersReducedMotion();
-    let shown = 0, raf = 0, lastActive = -1;
+    let shown = 0, raf = 0, lastActive = -1, lastMs = performance.now();
     const read = () => {
       const el = root.current;
       if (!el) return 0;
@@ -146,14 +138,17 @@ export default function ProcessStory({ lang, hero, track, finale }: {
       const sp = r.height - window.innerHeight;
       return sp > 0 ? clamp01(-r.top / sp) * (CHAPTERS - 1) : 0;
     };
-    const tick = () => {
+    const tick = (ms: number) => {
       raf = requestAnimationFrame(tick);
+      const dt = Math.min(0.1, Math.max(0, (ms - lastMs) / 1000));
+      lastMs = ms;
       const target = read();
       const w = window as any;
       if (w.__axSnap) { w.__axSnap = false; shown = target; }
       // a fast fling across several stations: cut to the last one rather than fly past them all
       if (Math.abs(target - shown) > 1.6 && !still) shown = target - Math.sign(target - shown) * 0.9;
-      shown += (target - shown) * (still || w.__axProcU !== undefined ? 1 : 0.085);
+      // follow the scroll by time, not by frame (8.5% a frame at 60fps), so a slow GPU doesn't slow the walk down
+      shown += (target - shown) * (still || w.__axProcU !== undefined ? 1 : 1 - Math.exp(-dt / 0.19));
       if (Math.abs(target - shown) < 0.0005) shown = target;
       const p = shown;
       (window as any).__axProcess = p;

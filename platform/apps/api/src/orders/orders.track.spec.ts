@@ -76,6 +76,13 @@ describe("tracking an order by its number", () => {
     expect(t).toMatchObject({ step: 10, stepName: "จัดส่ง", shipment: { courier: "Flash", trackingNo: "TH123" } });
   });
 
+  it("delivered shows when it arrived", async () => {
+    const arrivedAt = new Date("2026-10-27T05:00:00Z");
+    row = { ...base, status: "delivered", shipments: [{ courier: "Flash", trackingNo: "TH123", shippedAt: new Date("2026-10-25T05:00:00Z"), deliveredAt: arrivedAt }] };
+    const t = await svc.track("AX-261029-K7QZ");
+    expect(t).toMatchObject({ status: "delivered", statusLabel: "ได้รับแล้ว", step: 10, shipment: { deliveredAt: arrivedAt } });
+  });
+
   it("the factory's number finds the web order it's linked to", async () => {
     row = { ...base };
     const t = await withErp.track("hj-447");
@@ -87,10 +94,27 @@ describe("tracking an order by its number", () => {
     const t = await withErp.track("HJ-137");
     expect(t).toMatchObject({ orderNo: "HJ-137", step: 4, stepName: "ตัดเลเซอร์", qty: 24, product: "Shirt เสื้อแขนสั้น", dueDate: "2026-11-20", source: "erp" });
     expect(t.steps[2]).toMatchObject({ startedOn: "2026-10-23", finishedOn: "2026-10-23" });
+    expect(t.shipment).toBeNull();
     await expect(withErp.track("HJ-999")).rejects.toThrow(/ไม่พบออเดอร์นี้/);
     erpUp = false;
     await expect(withErp.track("HJ-137")).rejects.toThrow(/ติดต่อระบบโรงงานไม่ได้/);
     erpUp = true;
+  });
+
+  it("a job the ERP has sent: the send date from its last step, no parcel number to show", async () => {
+    const all = (status: string) => ({
+      ok: true,
+      status: {
+        order_no: "HJ-200", status, status_label: null, product: null, total_qty: 2, due_date: null, current_step: null, updated_at: null,
+        steps: Array.from({ length: 10 }, (_, i) => ({ no: i + 1, name: "", status: "done", status_label: null, started_on: "2026-10-22", finished_on: i === 9 ? "2026-10-23" : "2026-10-22" })),
+      },
+    });
+    let answer: any = all("shipped");
+    const sent = new OrdersService(prisma, {} as any, {} as any, { refreshIfStale: async () => false, lookup: async () => answer } as any);
+    row = { ...base };
+    expect(await sent.track("HJ-200")).toMatchObject({ status: "shipped", step: 10, shipment: { courier: null, trackingNo: null, shippedAt: "2026-10-23", deliveredAt: null } });
+    answer = all("delivered");
+    expect(await sent.track("HJ-200")).toMatchObject({ status: "delivered", statusLabel: "ได้รับแล้ว", step: 10 });
   });
 
   it("an unknown number is just not found", async () => {

@@ -853,6 +853,45 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
   .ax:lang(ja) .ax-story-panel.hero h1 { font-size: 52px; }
 }
 
+/* /tracking: a looked-up order lists all ten steps, so the heading gives up the room */
+.ax-track-card { width: min(760px, calc(100vw - 40px)); }
+.ax .ax-story-panel.hero h1.ax-track-compact { font-size: clamp(40px, 4.2vw, 64px); line-height: 1; }
+.ax-track-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px 22px; max-height: 44vh; overflow-y: auto; }
+.ax-track-steps li { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--ax-line-2); font-size: 13px; color: var(--ax-ink-2); }
+.ax-track-steps .mark { flex: none; width: 20px; font-size: 12px; color: var(--ax-mute); }
+.ax-track-steps .name { flex: 1; min-width: 0; color: var(--ax-ink); }
+.ax-track-steps .when { flex: none; font-size: 12px; text-align: right; }
+.ax-track-steps li[data-state="done"] .mark { color: var(--ax-accent); }
+.ax-track-steps li[data-state="now"] .mark, .ax-track-steps li[data-state="now"] .name, .ax-track-steps li[data-state="now"] .when { color: var(--ax-accent); font-weight: 700; }
+.ax-track-steps li[data-state="todo"] { opacity: .6; }
+.ax-track-ship { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 10px 12px; border: 1px solid var(--ax-line-2); font-size: 13px; color: var(--ax-ink-2); }
+.ax-track-ship .lbl { font-size: 12px; color: var(--ax-mute); }
+.ax-track-ship .state { font-size: 14px; font-weight: 700; color: var(--ax-ink); }
+.ax-track-ship[data-state="sent"] { border-color: var(--ax-accent); }
+.ax-track-ship[data-state="sent"] .state { color: var(--ax-accent); }
+.ax-track-ship[data-state="arrived"] .state::before { content: "✓ "; color: var(--ax-accent); }
+.ax-track-ship .parcel { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; }
+.ax-track-ship .parcel b { font-weight: 400; color: var(--ax-ink); }
+.ax-track-ship .parcel a { color: var(--ax-ink); text-decoration: underline; text-underline-offset: 3px; }
+.ax-track-ship .copy { min-height: 28px; padding: 0 10px; border: 1px solid var(--ax-line-2); background: none; color: var(--ax-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.ax-track-ship .copy:hover { border-color: var(--ax-accent); }
+@media (max-width: 720px) {
+  .ax-track-steps { grid-template-rows: none; grid-auto-flow: row; gap: 0; max-height: none; }
+  .ax-track-steps li { padding: 4px 0; }
+}
+@media (max-width: 720px), (max-height: 860px) {
+  .ax .ax-story-panel.hero h1.ax-track-compact { display: none; }
+}
+@media (max-height: 760px) { .ax-track-preview { display: none; } }
+@media (max-width: 720px), (max-height: 700px) {
+  .ax-story-panel.hero:has(.ax-track-card) .ax-kicker { display: none; }
+  .ax-story-panel.hero:has(.ax-track-card) .lede { gap: 12px; }
+}
+@media (max-height: 700px) {
+  .ax-story-panel.hero:has(.ax-track-card) { bottom: 20px; }
+  .ax-track-steps { max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
+}
+
 /* /tracking: the cut between far-apart stations (and every move, with reduced motion) */
 .ax-proc-fade { position: absolute; inset: 0; z-index: 1; background: #0d0e10; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
 .ax-proc-fade[data-on] { opacity: 1; }

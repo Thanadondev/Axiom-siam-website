@@ -232,7 +232,10 @@ export class OrdersService {
   private trackFromErp(e: Parameters<typeof erpSnapshot>[0]) {
     const snap = erpSnapshot(e);
     const shipped = snap.step >= SHIP_STEP;
-    const status = shipped ? "shipped" : snap.step > 0 ? "in_production" : "approved";
+    const arrived = ["delivered", "completed"].includes(e.status.toLowerCase());
+    const status = arrived ? "delivered" : shipped ? "shipped" : snap.step > 0 ? "in_production" : "approved";
+    // the ERP has no courier or parcel number: only when its last step (packed and sent) was done
+    const last = snap.steps.find(x => x.no === SHIP_STEP);
     return {
       orderNo: e.order_no,
       status,
@@ -247,7 +250,7 @@ export class OrdersService {
         const s = snap.steps.find(x => x.no === i + 1);
         return { no: i + 1, name: stepName(i + 1), startedOn: s?.startedOn ?? null, finishedOn: s?.finishedOn ?? null };
       }),
-      shipment: null,
+      shipment: shipped ? { courier: null, trackingNo: null, shippedAt: last?.finishedOn ?? last?.startedOn ?? null, deliveredAt: null } : null,
       updatedAt: snap.updatedAt ? new Date(snap.updatedAt) : new Date(),
       source: "erp" as const,
     };
