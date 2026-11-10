@@ -803,6 +803,12 @@ textarea.ax-field { min-height: 132px; padding: 10px 12px; font-size: 14px; line
 .ax-pb-erp .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ax-pb-erp .row .ax-field { flex: 1 1 160px; min-height: 44px; font-size: 14px; font-family: var(--ax-mono); }
 .ax-pb-erp tr[data-state="done"] td { color: var(--ax-ink); }
+/* the ERP job doesn't look like this order: the reasons, and the admin's call */
+.ax-pb-doubt { margin-top: 10px; padding: 12px 14px; border: 1px solid #ff8a73; background: rgba(255, 138, 115, .08); font-size: 13.5px; color: var(--ax-ink); }
+.ax-pb-doubt b { color: #ff8a73; }
+.ax-pb-doubt ul { margin: 8px 0; padding-left: 18px; }
+.ax-pb-doubt li { margin: 2px 0; }
+.ax-pb-doubt p { margin: 0 0 10px; color: var(--ax-mute); font-size: 12.5px; }
 .ax-pb-erp tr[data-state="now"] td { color: var(--ax-accent); font-weight: 600; }
 .ax-pb-card .meta .erp { font-family: var(--ax-mono); font-size: 10.5px; color: var(--ax-mute); letter-spacing: .02em; }
 .ax-pb-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }

@@ -143,6 +143,17 @@ describe("following the ERP on a web order", () => {
     await expect(svc.link("o2", "admin", "HJ-447")).rejects.toThrow(/ผูกกับออเดอร์ AX-1 อยู่แล้ว/);
   });
 
+  it("a job that doesn't look like the order is not linked until the admin confirms", async () => {
+    // AX-1 was ordered on 10 Nov for 15 pieces; HJ-447 is 2 pieces made in October
+    Object.assign(orders[0], { createdAt: new Date("2026-11-10T04:00:00Z"), items: [{ qty: 10 }, { qty: 5 }] });
+    const err: any = await svc.link("o1", "admin", "HJ-447").catch(e => e);
+    expect(err.getStatus()).toBe(409);
+    expect(err.getResponse()).toMatchObject({ needsConfirm: true, warnings: [expect.stringMatching(/จำนวนใน ERP 2 ตัว/), expect.stringMatching(/เริ่มผลิตตั้งแต่/)] });
+    expect(orders[0]).toMatchObject({ erpOrderNo: null, productionStep: 0, status: "paid" });
+    expect(pushed).toEqual([]); // the customer heard nothing
+    expect(await svc.link("o1", "admin", "HJ-447", true)).toMatchObject({ ok: true, erpOrderNo: "HJ-447", step: 3 });
+  });
+
   it("an unpaid order keeps the ERP's dates but doesn't move", async () => {
     const r = await svc.link("o2", "admin", "HJ-447");
     expect(r).toMatchObject({ ok: true, moved: false, step: 0 });

@@ -423,16 +423,22 @@ function ErpPanel({ o, token, onChanged }: { o: any; token: string; onChanged: (
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => { setNo(linked ?? ""); }, [linked]);
 
-  async function call(path: string, init: RequestInit) {
-    setBusy(true); setMsg(null);
+  /** the ERP job doesn't look like this order: the API's reasons, waiting for the admin's word */
+  const [doubt, setDoubt] = useState<{ no: string; message: string; warnings: string[] } | null>(null);
+  async function call(path: string, init: RequestInit, linking?: string) {
+    setBusy(true); setMsg(null); setDoubt(null);
     try {
       const r = await apiFetch<{ ok?: boolean; message: string }>(path, { ...init, token });
       setMsg({ ok: r.ok !== false, text: r.message });
       onChanged();
-    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    } catch (e: any) {
+      if (linking && e.status === 409 && e.body?.needsConfirm) setDoubt({ no: linking, message: e.message, warnings: e.body.warnings ?? [] });
+      else setMsg({ ok: false, text: e.message });
+    }
     finally { setBusy(false); }
   }
-  const link = (v: string) => call(`/admin/orders/${o.id}/erp`, { method: "PUT", body: JSON.stringify({ erpOrderNo: v }) });
+  const link = (v: string, force = false) =>
+    call(`/admin/orders/${o.id}/erp`, { method: "PUT", body: JSON.stringify({ erpOrderNo: v, ...(force ? { force: true } : {}) }) }, v);
   const steps: any[] = o.erp?.steps ?? [];
   const day = (s?: string | null) => (s ? new Date(`${s.slice(0, 10)}T00:00:00`).toLocaleDateString("th-TH", { day: "numeric", month: "short" }) : "–");
 
@@ -451,6 +457,17 @@ function ErpPanel({ o, token, onChanged }: { o: any; token: string; onChanged: (
         ) : null}
       </form>
       {msg && <p className={msg.ok ? "ax-psub" : "ax-err"} style={{ margin: "6px 0 0", fontSize: 13 }}>{msg.text}</p>}
+      {doubt && (
+        <div className="ax-pb-doubt" role="alert">
+          <b>{doubt.message}</b>
+          <ul>{doubt.warnings.map(w => <li key={w}>{w}</li>)}</ul>
+          <p>ถ้าผูก ลูกค้าจะเห็นขั้นตอนผลิตของงานนี้ทันที</p>
+          <div className="row">
+            <button type="button" className="ax-btn solid sq" disabled={busy} onClick={() => link(doubt.no, true)}>{busy ? "…" : `ใช่ ผูกกับ ${doubt.no}`}</button>
+            <button type="button" className="ax-sq" disabled={busy} onClick={() => setDoubt(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
       {linked && o.erp?.syncedAt && (
         <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 12.5 }}>
           ดึงล่าสุด {new Date(o.erp.syncedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}

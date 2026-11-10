@@ -108,7 +108,7 @@ export class AdminOrdersController {
   /** the same job's order number in the ERP; from then on the step follows the ERP */
   @Put(":id/erp")
   linkErp(@CurrentUser() user: AuthUser, @Param("id") id: string, @Body(new ZodValidationPipe(ErpLinkSchema)) dto: ErpLinkDto) {
-    return this.erp.link(id, user.id, dto.erpOrderNo);
+    return this.erp.link(id, user.id, dto.erpOrderNo, dto.force === true);
   }
 
   @Post(":id/erp/sync")

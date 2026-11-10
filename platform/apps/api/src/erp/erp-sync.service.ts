@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { linkWarnings } from "./link-check";
 import { Prisma } from "@axiom/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotifyService } from "../notify/notify.service";
@@ -52,7 +53,7 @@ export class ErpSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** an admin links (or, with a blank number, unlinks) the web order and its ERP order */
-  async link(id: string, adminId: string, raw: string | null | undefined): Promise<SyncResult & { erpOrderNo: string | null }> {
+  async link(id: string, adminId: string, raw: string | null | undefined, force = false): Promise<SyncResult & { erpOrderNo: string | null }> {
     const o = await this.prisma.order.findUnique({ where: { id }, select: SYNC_SELECT });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     const no = raw ? normalizeErpNo(raw) : "";
@@ -66,6 +67,16 @@ export class ErpSyncService implements OnModuleInit, OnModuleDestroy {
 
     const r = await fetchErpStatus(this.cfg, no, this.fetchImpl);
     if (!r.ok) throw new BadRequestException(r.error);
+
+    // does the job look like this order? If not, ask before the customer sees its progress
+    if (!force) {
+      const facts = await this.prisma.order.findUnique({ where: { id }, select: { createdAt: true, items: { select: { qty: true } } } });
+      const qty = Array.isArray(facts?.items) ? facts.items.reduce((n: number, i: { qty: number }) => n + i.qty, 0) : null;
+      const warnings = linkWarnings({ createdAt: facts?.createdAt ?? null, qty }, r.status);
+      if (warnings.length) {
+        throw new ConflictException({ message: `เลข ERP ${no} อาจไม่ใช่งานของ ${o.orderNo} — ตรวจก่อนผูก`, warnings, needsConfirm: true });
+      }
+    }
     await this.prisma.order.update({ where: { id }, data: { erpOrderNo: no } });
     const res = await this.apply({ ...o, erpOrderNo: no }, r.status, adminId);
     return { ...res, erpOrderNo: no, message: `ผูกกับ ERP ${no} แล้ว · ${res.message}` };

@@ -91,6 +91,8 @@ export type ProductionStepDto = z.infer<typeof ProductionStepSchema>;
 /** linking the order to the same job in the factory ERP (blank unlinks) */
 export const ErpLinkSchema = z.object({
   erpOrderNo: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().trim().max(60).regex(/^[\w\-\/. ]+$/, "เลขออเดอร์ ERP มีอักขระที่ใช้ไม่ได้").nullish()),
+  /** link even though the job doesn't look like this order (the admin has checked) */
+  force: z.boolean().optional(),
 });
 export type ErpLinkDto = z.infer<typeof ErpLinkSchema>;
 
