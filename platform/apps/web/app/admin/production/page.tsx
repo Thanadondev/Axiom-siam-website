@@ -9,6 +9,8 @@ import { apiFetch } from "../../../lib/api";
 import { kitById, restoreConfig, KITS, type Kit } from "../../../lib/kits";
 import { useKitAssets } from "../../../lib/use-kit-assets";
 import { assetHref } from "../../../lib/kit-assets";
+import { apiHref } from "../../../lib/order-upload";
+import type { OrderFileView } from "../../../components/OrderFiles";
 import { STEPS, SHIP_STEP } from "../../../lib/production-steps";
 import "../../app.css";
 import "../../home.css";
@@ -38,6 +40,8 @@ interface Card {
   /** the same job in the factory ERP — when set, the step follows the ERP */
   erpOrderNo?: string | null;
   erpSyncedAt?: string | null;
+  /** a bib order by the customer's own zip: its picture and the zip (signed links) */
+  file?: OrderFileView | null;
 }
 
 const COLUMNS: { id: Status; label: string; hint: string }[] = [
@@ -202,12 +206,14 @@ export default function ProductionBoard() {
                       <button type="button" className="ax-pb-open" onClick={() => setOpen(c.id)} aria-label={`เปิด ${c.orderNo}`}>
                         <div className="pic">
                           {kit ? <KitThumb kit={kit} colors={jerseyLook(kit, c.look).colors} pattern={jerseyLook(kit, c.look).pattern} number={c.look?.number} />
-                            : <span className="ax-mono" style={{ fontSize: 10 }}>DESIGN</span>}
+                            : c.file?.previewUrl ? <img src={apiHref(c.file.previewUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", background: "#fff" }} />
+                            : <span className="ax-mono" style={{ fontSize: 10 }}>{c.file ? "ZIP" : "DESIGN"}</span>}
                         </div>
                         <div className="meta">
                           <b className="ax-mono">{c.orderNo}</b>
                           <span>{c.user.fullName || c.user.email}</span>
                           <span className="sizes">{qtyOf(c)} ตัว · {sizeSplit(c.items).map(([s, n]) => `${s}${n}`).join(" ")}</span>
+                          {c.file && <span className="erp" title={c.file.name}>ไฟล์ลูกค้า · {c.fabricSummary?.split(" · ")[0]}</span>}
                           {c.status === "in_production" && at > 0 && (
                             <span className="step"><i style={{ width: `${(at / SHIP_STEP) * 100}%` }} />ขั้น {at}/{SHIP_STEP} · {STEPS[at - 1]?.th}</span>
                           )}
@@ -289,6 +295,10 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
   const lf = snap?.assets?.logo, ff = snap?.assets?.font;
   if (lf?.url || lf?.data) files.push({ label: "โลโก้ของลูกค้า", name: lf.name || "logo.png", href: assetHref(lf.url || lf.data), image: true });
   if (ff?.url || ff?.data) files.push({ label: "ฟอนต์ชื่อ-เบอร์", name: ff.name || "font", href: assetHref(ff.url || ff.data), image: false });
+  // a bib order by file: the customer's zip (open it in Illustrator) and its picture
+  const zips: OrderFileView[] = o?.files ?? [];
+  zips.forEach((z, i) => { if (z.downloadUrl) files.push({ label: zips.length > 1 ? `ไฟล์งาน .zip (${i + 1})` : "ไฟล์งาน .zip", name: z.name, href: apiHref(z.downloadUrl), image: false }); });
+  const zipPic = zips.find(z => z.previewUrl)?.previewUrl;
   const roster: any[] = o ? o.items.flatMap((i: any) => i.roster ?? []) : [];
   const split = o ? sizeSplit(o.items) : [];
   const fwd: Status | undefined = o ? FORWARD[o.status as Status] : undefined;
@@ -310,14 +320,18 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
         {o && (
           <>
             <div className="ax-pb-3d">
-              {kit && jl ? <JerseyStage kit={kit} look={jl} /> : (
+              {kit && jl ? <JerseyStage kit={kit} look={jl} /> : zips.length ? (
+                zipPic
+                  ? <a href={apiHref(zipPic)} target="_blank" rel="noreferrer" style={{ display: "flex", flex: 1, padding: 12 }}><img src={apiHref(zipPic)} alt={`ภาพตัวอย่างงาน ${zips[0].name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} /></a>
+                  : <p className="ax-psub" style={{ margin: "auto" }}>ไฟล์ลูกค้าไม่มีภาพตัวอย่าง · ดาวน์โหลด .zip ด้านล่าง</p>
+              ) : (
                 o.items[0]?.designId
                   ? <p className="ax-psub" style={{ margin: "auto" }}>แบบจากโปรแกรมออกแบบขั้นสูง · <Link className="dlink" href={`/orders/${o.id}`} target="_blank">ดูภาพตัวอย่าง</Link></p>
                   : <p className="ax-psub" style={{ margin: "auto" }}>ออเดอร์นี้ไม่มีแบบเสื้อแนบมา</p>
               )}
             </div>
             <div className="ax-pb-facts">
-              <div><span>เสื้อ</span><b>{kit ? `${kit.name} · ${kit.code}` : "-"}</b></div>
+              <div><span>เสื้อ</span><b>{kit ? `${kit.name} · ${kit.code}` : zips.length ? (o.fabricSummary?.split(" · ")[0] ?? "บิบ") : "-"}</b></div>
               <div><span>สเปก</span><b>{o.fabricSummary ?? "-"}</b></div>
               <div><span>ลูกค้า</span><b>{o.user?.fullName || o.user?.email}</b></div>
               <div><span>ยอดรวม</span><b>{baht(o.total)}</b></div>

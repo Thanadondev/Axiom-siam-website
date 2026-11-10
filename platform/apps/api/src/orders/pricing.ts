@@ -26,11 +26,19 @@ const signed = (v: string | undefined, fallback: number) => {
  * what is being made: a jersey (the base price), a hoodie, shorts, or the warm-up suit —
  * a raglan top (crew neck, or zip-up) and track pants
  */
-export const GARMENTS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants"] as const;
+export const GARMENTS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants", "bib_n", "bib_r"] as const;
 export type Garment = (typeof GARMENTS)[number];
 export const GARMENT_LABEL: Record<Garment, string> = {
   jersey: "เสื้อ", hoodie: "เสื้อฮู้ด", shorts: "กางเกง", piste: "เสื้อวอร์ม", piste_zip: "เสื้อวอร์มซิป", pants: "กางเกงวอร์ม",
+  bib_n: "N-bib", bib_r: "R-bib (2 ด้าน)",
 };
+
+/**
+ * Bibs come as the customer's own print files (a .zip of Illustrator artwork), at one
+ * price a piece: no quantity tiers, and no fabric, trim or reversible surcharge.
+ */
+export const FILE_PRODUCTS = ["bib_n", "bib_r"] as const;
+export type FileProduct = (typeof FILE_PRODUCTS)[number];
 
 /** the storefront kits that aren't jerseys (apps/web/lib/kits.ts) */
 const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants" };
@@ -54,6 +62,8 @@ export interface PricingConfig {
   trim: Record<string, number>;
   /** added to (or, below zero, taken off) the jersey price per piece */
   garment: Record<string, number>;
+  /** a set price a piece, in place of tier + surcharges (the bibs) */
+  flat?: Record<string, number>;
   reversible: number;
   shippingFlat: number;
   freeShippingOver: number;
@@ -87,6 +97,10 @@ export const DEFAULT_PRICING: PricingConfig = {
     piste: signed(process.env.PRICE_GARMENT_PISTE, 200),
     piste_zip: signed(process.env.PRICE_GARMENT_PISTE_ZIP, 280),
     pants: signed(process.env.PRICE_GARMENT_PANTS, 150),
+  },
+  flat: {
+    bib_n: num(process.env.PRICE_BIB_N, 252),
+    bib_r: num(process.env.PRICE_BIB_R, 245),
   },
   reversible: num(process.env.PRICE_REVERSIBLE, 60),
   shippingFlat: num(process.env.PRICE_SHIPPING, 80),
@@ -131,12 +145,14 @@ export function priceOrder(
   cfg: PricingConfig = DEFAULT_PRICING,
 ): PriceBreakdown {
   const qty = Math.max(0, Math.trunc(totalQty));
-  const tierPrice = tierFor(qty, cfg).price;
-  const fabricSurcharge = cfg.fabric[fabric] ?? 0;
-  const trimSurcharge = cfg.trim[trim] ?? 0;
-  const reversibleSurcharge = reversible ? cfg.reversible : 0;
+  // a config saved before the bibs existed has no flat table: the defaults fill in
+  const flat = cfg.flat?.[garment] ?? DEFAULT_PRICING.flat?.[garment];
+  const tierPrice = flat ?? tierFor(qty, cfg).price;
+  const fabricSurcharge = flat !== undefined ? 0 : cfg.fabric[fabric] ?? 0;
+  const trimSurcharge = flat !== undefined ? 0 : cfg.trim[trim] ?? 0;
+  const reversibleSurcharge = flat === undefined && reversible ? cfg.reversible : 0;
   // a config saved before garments existed has no garment table
-  const garmentSurcharge = garment === "jersey" ? 0 : cfg.garment?.[garment] ?? DEFAULT_PRICING.garment[garment] ?? 0;
+  const garmentSurcharge = flat !== undefined || garment === "jersey" ? 0 : cfg.garment?.[garment] ?? DEFAULT_PRICING.garment[garment] ?? 0;
 
   const unitPrice = Math.max(0, tierPrice + fabricSurcharge + trimSurcharge + garmentSurcharge + reversibleSurcharge);
   const subtotal = unitPrice * qty;
@@ -166,6 +182,6 @@ export function priceOrder(
  * Returns tiers ascending; never mutates the caller's config.
  */
 export function priceTable(cfg: PricingConfig = DEFAULT_PRICING) {
-  return { ...cfg, tiers: [...cfg.tiers].sort((a, b) => a.minQty - b.minQty) };
+  return { ...cfg, tiers: [...cfg.tiers].sort((a, b) => a.minQty - b.minQty), flat: { ...DEFAULT_PRICING.flat, ...cfg.flat } };
 }
 // unit tests: pricing.spec.ts

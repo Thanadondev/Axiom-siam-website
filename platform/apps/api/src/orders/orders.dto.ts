@@ -6,7 +6,9 @@ const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 export const SIZES = ["S", "M", "L", "XL"] as const;
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
-export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants"] as const;
+export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants", "bib_n", "bib_r"] as const;
+/** what can be ordered with the customer's own print files (pricing.ts) */
+export const FILE_PRODUCT_IDS = ["bib_n", "bib_r"] as const;
 
 /** one row of the size breakdown, e.g. { size: "L", qty: 12 } */
 export const SizeLineSchema = z.object({
@@ -36,13 +38,24 @@ export const CreateOrderSchema = z.object({
   designId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
   designSnapshot: z.any().optional(), // frozen design state at order time
   previewUrl: z.preprocess(emptyToUndef, z.string().optional()),
-  fabric: z.enum(FABRICS),
-  trim: z.enum(TRIMS),
+  // required for a design made on the web (below); a bib from the customer's own files has neither
+  fabric: z.enum(FABRICS).optional(),
+  trim: z.enum(TRIMS).optional(),
   reversible: z.boolean().optional(),
   lines: z.array(SizeLineSchema).min(1, "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์"),
   roster: z.array(RosterRowSchema).max(500).optional(),
   shippingAddressId: z.string().uuid({ message: "กรุณาเลือกที่อยู่จัดส่ง" }),
   note: z.preprocess(emptyToUndef, z.string().max(1000).optional()),
+  /** ordering with the customer's own print files: the uploaded zip (POST /order-files) and what it's for */
+  fileId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
+  product: z.preprocess(emptyToUndef, z.enum(FILE_PRODUCT_IDS).optional()),
+}).superRefine((d, ctx) => {
+  if (!!d.fileId !== !!d.product) ctx.addIssue({ code: "custom", path: ["fileId"], message: "สั่งผลิตด้วยไฟล์ ต้องแนบไฟล์ .zip และเลือกสินค้า" });
+  if (d.fileId && d.designId) ctx.addIssue({ code: "custom", path: ["fileId"], message: "เลือกได้อย่างเดียว: ดีไซน์บนเว็บ หรือไฟล์ของคุณเอง" });
+  if (!d.fileId) {
+    if (!d.fabric) ctx.addIssue({ code: "custom", path: ["fabric"], message: "กรุณาเลือกผ้า" });
+    if (!d.trim) ctx.addIssue({ code: "custom", path: ["trim"], message: "กรุณาเลือกขลิบ" });
+  }
 });
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>;
 

@@ -119,6 +119,7 @@ model User {
   designs           Design[]
   carts             Cart[]
   orders            Order[]
+  orderFiles        OrderFile[]
   authTokens        AuthToken[]
   quoteRequests     QuoteRequest[]
   notifications     Notification[]
@@ -481,10 +482,36 @@ model Order {
   creditNotes     CreditNote[]
   refunds         Refund[]
   shipments       Shipment[]
+  files           OrderFile[]
 
   @@index([userId])
   @@index([status])
   @@map("orders")
+}
+
+/// The customer's own print files: a .zip of Illustrator artwork, uploaded before
+/// the order exists and attached to it when it's placed (orderId null until then).
+/// Not public: served only by signed links (apps/api/src/orders/order-files).
+model OrderFile {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  orderId     String?  @map("order_id")
+  /// the name the customer gave it — shown and offered on download, never used as a path
+  name        String
+  bytes       Int
+  sha256      String
+  /// on disk under UPLOAD_DIR/order-files/, built from ids only
+  path        String
+  /// a picture of the job taken from the .jpg inside the zip, when there was one
+  previewPath String?  @map("preview_path")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("order_files")
 }
 
 model OrderItem {

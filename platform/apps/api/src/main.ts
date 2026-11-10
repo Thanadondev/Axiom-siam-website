@@ -25,6 +25,9 @@ async function bootstrap() {
   // GET /api/v1/payments/slip, see payments/slip-link.ts.
   const uploadDir = resolve(process.env.UPLOAD_DIR ?? "./uploads");
   app.use("/uploads/slips", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
+  // The customer's print files (bib orders) are their artwork: signed links only,
+  // GET /api/v1/order-files/:id/zip — see orders/order-file-link.ts.
+  app.use("/uploads/order-files", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
   // Team logos and fonts (kit studio). Named by content hash, so they never change:
   // cache for a year. The web app draws them into WebGL from another origin, which
   // needs CORS; they are print artwork, not personal data.
@@ -51,6 +54,9 @@ async function bootstrap() {
     credentials: true,
   });
   const port = process.env.API_PORT ? Number(process.env.API_PORT) : 4000;
+  // A print-file zip can be a few hundred MB: Node's default of 5 minutes a request
+  // cuts off an upload on a slow line. (Headers still have to arrive promptly.)
+  app.getHttpServer().requestTimeout = 30 * 60_000;
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`[api] listening on http://localhost:${port}/api/v1`);

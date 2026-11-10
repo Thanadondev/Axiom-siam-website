@@ -186,6 +186,29 @@ describe("priceOrder — garments", () => {
   });
 });
 
+describe("priceOrder — bibs at a set price", () => {
+  it("N-bib 252 and R-bib 245 a piece by default, whatever the quantity, fabric or trim", () => {
+    for (const qty of [1, 50, 200]) {
+      const n = priceOrder({ totalQty: qty, fabric: "C1", trim: "full", reversible: true, garment: "bib_n" });
+      expect(n).toMatchObject({ unitPrice: 252, tierPrice: 252, fabricSurcharge: 0, trimSurcharge: 0, reversibleSurcharge: 0, garmentSurcharge: 0 });
+      expect(n.subtotal).toBe(252 * qty);
+      expect(priceOrder({ totalQty: qty, fabric: "mesh", trim: "none", garment: "bib_r" }).unitPrice).toBe(245);
+    }
+  });
+
+  it("follows the admin's prices, and fills in a saved config that predates the bibs", () => {
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_r" }, { ...cfg, flat: { bib_r: 300 } }).unitPrice).toBe(300);
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_n" }, { ...cfg, flat: { bib_r: 300 } }).unitPrice).toBe(252);
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_n" }, cfg).unitPrice).toBe(252); // cfg has no flat
+  });
+
+  it("shipping and deposit work as for any order", () => {
+    const small = priceOrder({ totalQty: 5, fabric: "mesh", trim: "none", garment: "bib_n" }, { ...DEFAULT_PRICING, depositPct: 50 });
+    expect(small).toMatchObject({ subtotal: 1260, shippingFee: DEFAULT_PRICING.shippingFlat, depositPct: 50 });
+    expect(small.depositAmount).toBe(Math.round(small.total / 2));
+  });
+});
+
 describe("garmentOf", () => {
   it("reads the garment from a kit-studio design, and treats everything else as a jersey", () => {
     expect(garmentOf({ kind: "kit-studio", kit: "warmup" })).toBe("hoodie");

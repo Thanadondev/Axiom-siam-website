@@ -217,6 +217,7 @@ export default function AccountPage() {
             </button>
           ))}
           <Link href="/shop" className="abtn solid" style={{ marginTop: 14 }}>ออกแบบเสื้อใหม่</Link>
+          <Link href="/order/upload" className="abtn ghost" style={{ marginTop: 8 }}>สั่งผลิตด้วยไฟล์ .zip</Link>
         </nav>
         <div className="ax-acc-body" role="tabpanel">
 {tab === "orders" && (<>
@@ -227,8 +228,9 @@ export default function AccountPage() {
           {orders.length === 0 && (
             <div className="ax-acc-empty">
               <b>ยังไม่มีออเดอร์</b>
-              <span>เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที</span>
+              <span>เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที หรือส่งไฟล์งานที่ออกแบบใน Illustrator มาเป็น .zip</span>
               <Link href="/shop" className="abtn solid">เริ่มออกแบบเสื้อ</Link>
+              <Link href="/order/upload" className="abtn ghost">สั่งผลิตด้วยไฟล์ .zip</Link>
             </div>
           )}
           {orders.length > 0 && <div className="tablewrap">

@@ -175,7 +175,7 @@ function Checkout() {
           <div className="acard">
             <div className="eyebrow">สั่งผลิต</div>
             <h1 className="atitle" style={{ marginBottom: 4 }}>{design?.name || "ออเดอร์ใหม่"}</h1>
-            {!designId && <p className="asub">ยังไม่ได้เลือกดีไซน์ — สั่งผลิตแบบเปล่าได้ แต่แนะนำให้ <Link className="dlink" href="/design">ออกแบบก่อน</Link></p>}
+            {!designId && <p className="asub">ยังไม่ได้เลือกดีไซน์ — สั่งผลิตแบบเปล่าได้ แต่แนะนำให้ <Link className="dlink" href="/design">ออกแบบก่อน</Link> · มีไฟล์งานจาก Illustrator แล้ว? <Link className="dlink" href="/order/upload">ส่งไฟล์ .zip</Link></p>}
             {prefilled > 0 && (
               <div className="note-ok" style={{ marginTop: 10 }}>
                 ✓ ดึงรายชื่อ {prefilled} คน และสเปกจากดีไซเนอร์มาให้แล้ว — ตรวจจำนวนแต่ละไซส์ด้านล่างแล้วกดยืนยันได้เลย

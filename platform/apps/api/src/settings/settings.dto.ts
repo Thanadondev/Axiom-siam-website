@@ -17,6 +17,8 @@ export const UpdatePricingSchema = z.object({
     hoodie: delta.optional(), shorts: delta.optional(),
     piste: delta.optional(), piste_zip: delta.optional(), pants: delta.optional(),
   }).optional(),
+  /** the bibs' set price a piece */
+  flat: z.object({ bib_n: money.optional(), bib_r: money.optional() }).optional(),
   reversible: money.optional(),
   shippingFlat: money.optional(),
   freeShippingOver: money.optional(),

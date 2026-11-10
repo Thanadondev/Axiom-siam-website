@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import AppShell from "../../../components/AppShell";
 import PayPanel from "../../../components/PayPanel";
 import ProductionTracker from "../../../components/ProductionTracker";
+import OrderFiles from "../../../components/OrderFiles";
 import { STEPS } from "../../../lib/production-steps";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
@@ -103,6 +104,12 @@ export default function OrderDetail() {
         </div>
         {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
+
+      <OrderFiles
+        files={o.files}
+        title="ไฟล์งานที่ส่งมา"
+        note={["pending", "paid"].includes(o.status) ? "ทีมงานจะเปิดตรวจไฟล์ก่อนเข้าผลิต ถ้ามีปัญหาจะติดต่อกลับ" : undefined}
+      />
 
       <ProductionTracker orderNo={o.orderNo} status={o.status} productionStep={o.productionStep} history={o.statusHistory} erp={o.erp} />
 

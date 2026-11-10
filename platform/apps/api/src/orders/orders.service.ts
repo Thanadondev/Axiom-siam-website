@@ -11,6 +11,7 @@ import { ledger } from "../payments/ledger";
 import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
+import { orderFileView } from "./order-files.service";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -64,36 +65,55 @@ export class OrdersService {
       snapshot = dto.designSnapshot ?? d.stateJson;
     }
 
+    // ordering with the customer's own print files: the zip they uploaded, not yet on an order
+    const file = dto.fileId
+      ? await this.prisma.orderFile.findFirst({ where: { id: dto.fileId, userId, orderId: null }, select: { id: true, name: true } })
+      : null;
+    if (dto.fileId && !file) throw new BadRequestException("ไม่พบไฟล์ที่อัปโหลด หรือไฟล์นี้ใช้กับออเดอร์อื่นไปแล้ว — อัปโหลดใหม่อีกครั้ง");
+    if (file) snapshot = { kind: "file-order", product: dto.product, fileId: file.id, fileName: file.name };
+
     // the garment is read from the design itself, never taken from the request
-    const garment = garmentOf(snapshot);
-    const p = priceOrder({ totalQty, fabric: dto.fabric, trim: dto.trim, reversible: dto.reversible, garment }, cfg);
-    const fabricSummary = `${garment !== "jersey" ? `${GARMENT_LABEL[garment]} · ` : ""}${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
+    // (a file order says what it's for: the team checks the file before production)
+    const garment = file && dto.product ? dto.product : garmentOf(snapshot);
+    // the schema requires fabric and trim unless it's a file order, whose set price ignores them
+    const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment }, cfg);
+    const fabricSummary = file
+      ? `${GARMENT_LABEL[garment]} · ไฟล์ลูกค้า`
+      : `${garment !== "jersey" ? `${GARMENT_LABEL[garment]} · ` : ""}${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
 
     // prices are frozen into the order; later price changes never affect it
-    const order = await this.prisma.order.create({
-      data: {
-        orderNo: makeOrderNo(),
-        userId,
-        status: "pending",
-        subtotal: p.subtotal,
-        shippingFee: p.shippingFee,
-        total: p.total,
-        depositAmount: p.depositAmount,
-        fabricSummary,
-        note: dto.note,
-        shippingAddressId: addr.id,
-        items: {
-          create: lines.map(l => ({
-            designId: dto.designId,
-            designSnapshot: snapshot as any,
-            size: l.size,
-            qty: l.qty,
-            unitPrice: p.unitPrice,
-          })),
+    const order = await this.prisma.$transaction(async tx => {
+      const created = await tx.order.create({
+        data: {
+          orderNo: makeOrderNo(),
+          userId,
+          status: "pending",
+          subtotal: p.subtotal,
+          shippingFee: p.shippingFee,
+          total: p.total,
+          depositAmount: p.depositAmount,
+          fabricSummary,
+          note: dto.note,
+          shippingAddressId: addr.id,
+          items: {
+            create: lines.map(l => ({
+              designId: dto.designId,
+              designSnapshot: snapshot as any,
+              size: l.size,
+              qty: l.qty,
+              unitPrice: p.unitPrice,
+            })),
+          },
+          statusHistory: { create: { status: "pending", note: file ? `สร้างออเดอร์ · ไฟล์ ${file.name}` : "สร้างออเดอร์", changedBy: userId } },
         },
-        statusHistory: { create: { status: "pending", note: "สร้างออเดอร์", changedBy: userId } },
-      },
-      select: { ...ORDER_SELECT, items: { select: { id: true, size: true } } },
+        select: { ...ORDER_SELECT, items: { select: { id: true, size: true } } },
+      });
+      // claim the file in the same transaction: one upload, one order
+      if (file) {
+        const claimed = await tx.orderFile.updateMany({ where: { id: file.id, userId, orderId: null }, data: { orderId: created.id } });
+        if (claimed.count !== 1) throw new BadRequestException("ไฟล์นี้ใช้กับออเดอร์อื่นไปแล้ว — อัปโหลดใหม่อีกครั้ง");
+      }
+      return created;
     });
 
     // attach roster rows (player name/number) to the matching size line
@@ -106,7 +126,7 @@ export class OrdersService {
     }
 
     await this.notify.pushAdmins(
-      `ออเดอร์ใหม่ ${order.orderNo}`,
+      file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)` : `ออเดอร์ใหม่ ${order.orderNo}`,
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,
     );
@@ -129,9 +149,11 @@ export class OrdersService {
     // production tracking lives in the ERP: refresh an old copy before showing it
     if (this.erp && (await this.erp.refreshIfStale(o))) o = (await this.findOne(id, isAdmin)) ?? o;
     // what has been paid and what is due now (deposit, then the balance)
-    const { taxInvoice, erpOrderNo, erpStatus, erpSyncedAt, ...rest } = o;
+    const { taxInvoice, erpOrderNo, erpStatus, erpSyncedAt, files, ...rest } = o;
     return {
       ...rest,
+      // the customer's own print files, by signed links (owner and admins only reach here)
+      files: (files ?? []).map(f => orderFileView(f)),
       balance: ledger(o, o.payments, o.refunds),
       taxInfo: readTaxInfo(taxInvoice),
       // the company's own details for printing a tax invoice (null until set in .env)
@@ -163,6 +185,7 @@ export class OrdersService {
         },
         taxInvoice: true,
         erpOrderNo: true, erpStatus: true, erpSyncedAt: true,
+        files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true }, orderBy: { createdAt: "asc" } },
       },
     });
   }
@@ -319,6 +342,7 @@ export class OrdersService {
           items: { select: { size: true, qty: true } },
           payments: { select: { status: true, type: true, amount: true } },
           refunds: { select: { amount: true } },
+          files: { select: { id: true, name: true, bytes: true, createdAt: true, previewPath: true }, orderBy: { createdAt: "asc" }, take: 1 },
         },
       }),
       this.prisma.order.count({ where }),
@@ -334,7 +358,11 @@ export class OrdersService {
       : [];
     const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
     return {
-      items: items.map(({ payments, refunds, ...o }) => ({ ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null })),
+      items: items.map(({ payments, refunds, files, ...o }) => ({
+        ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null,
+        // a bib order by file: the board shows the job's picture and the zip instead of a 3D shirt
+        file: files?.[0] ? orderFileView(files[0]) : null,
+      })),
       total,
     };
   }

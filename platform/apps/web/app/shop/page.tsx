@@ -60,7 +60,7 @@ function Rack() {
         ["--ax-accent" as any]: t.accent, ["--ax-accent-ink" as any]: t.accentInk,
       }}
     >
-      <StoreHeader nav={[{ href: "/", label: "หน้าแรก" }, { href: "/templates", label: "ตลาดลาย" }, { href: "/design", label: "ออกแบบขั้นสูง" }]} />
+      <StoreHeader nav={[{ href: "/", label: "หน้าแรก" }, { href: "/templates", label: "ตลาดลาย" }, { href: "/design", label: "ออกแบบขั้นสูง" }, { href: "/order/upload", label: "ส่งไฟล์ .zip" }]} />
 
       <div className="ax-wrap" style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, paddingTop: 24, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

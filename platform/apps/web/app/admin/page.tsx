@@ -344,7 +344,7 @@ export default function AdminPage() {
   const setP = (k: string, v: any) => setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [k]: v } }));
   const setTier = (i: number, k: "minQty" | "price", v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, tiers: c.pricing.tiers.map((t: any, j: number) => j === i ? { ...t, [k]: v } : t) } }));
-  const setMap = (group: "fabric" | "trim" | "garment", k: string, v: number) =>
+  const setMap = (group: "fabric" | "trim" | "garment" | "flat", k: string, v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [group]: { ...c.pricing[group], [k]: v } } }));
 
   async function setQuote(id: string, body: { status?: string; adminNote?: string }) {
@@ -960,6 +960,16 @@ export default function AdminPage() {
                 <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
                   <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
                   <input className="ainput mini" type="number" style={{ width: 90 }} value={cfg.pricing.garment?.[k] ?? 0} onChange={e => setMap("garment", k, Number(e.target.value))} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <h3 className="flabel" style={{ margin: 0 }}>บิบ สั่งด้วยไฟล์ลูกค้า (ราคาเดียวต่อตัว ไม่มีขั้นจำนวน ไม่บวกผ้า/ขลิบ)</h3>
+              {[["bib_n", "N-bib (ด้านเดียว)"], ["bib_r", "R-bib (2 ด้าน)"]].map(([k, label]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+                  <input className="ainput mini" type="number" min={0} style={{ width: 90 }} value={cfg.pricing.flat?.[k] ?? ""} onChange={e => setMap("flat", k, Number(e.target.value))} aria-label={`ราคา ${label} บาทต่อตัว`} />
                 </div>
               ))}
             </div>
