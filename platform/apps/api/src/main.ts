@@ -1,14 +1,11 @@
 import "reflect-metadata";
-import { config as loadEnv } from "dotenv";
+// .env first: it must be loaded before the modules below are, not after (see load-env.ts)
+import "./load-env";
 import { resolve } from "path";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import express from "express";
 import { AppModule } from "./app.module";
-
-// Load env before the app (and Prisma) initialise. Won't override real env vars.
-loadEnv({ path: resolve(process.cwd(), ".env") }); // when run from repo root
-loadEnv({ path: resolve(__dirname, "../../../.env") }); // when run from apps/api (dist)
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
