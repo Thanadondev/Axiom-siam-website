@@ -37,7 +37,8 @@ const prisma: any = {
 };
 const match = (row: any, where: any) => Object.entries(where).every(([k, v]) => row[k] === v);
 const pick = (row: any, select?: any) => (select ? Object.fromEntries(Object.keys(select).map(k => [k, row[k]])) : row);
-const settings: any = { pricing: async () => (await import("./pricing")).DEFAULT_PRICING };
+let agentCfg = { agentEnabled: true, agentName: "Axiom Japan (Osaka)", agentAddress: "1-2-3 Namba, Osaka", agentPhone: "+81 6 0000 0000", agentFee: 400 };
+const settings: any = { pricing: async () => (await import("./pricing")).DEFAULT_PRICING, delivery: async () => agentCfg };
 const notify: any = { pushAdmins: async () => {} };
 
 const zip = (bytes = 2048) => { const b = Buffer.alloc(bytes, 7); b.write("PK\u0003\u0004", 0, "latin1"); return b; };
@@ -127,6 +128,32 @@ describe("ordering bibs with the zip", () => {
     expect(o.fabricSummary).toBe("R-bib (2 ด้าน) · ไฟล์ลูกค้า");
     expect(o.items[0].designSnapshot).toEqual({ kind: "file-order", product: "bib_r", fileId: up.id, fileName: "HF-424 R bibs.zip" });
     expect(files[0].orderId).toBe(o.id);
+  });
+
+  it("to the agent in Japan: no address, the agent's fee, and the agent kept on the order as it was", async () => {
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(USER, Readable.from([zip()]), "jp.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    const res = await svc.create(USER, order({ fileId: up.id, product: "bib_r", delivery: "agent", shippingAddressId: undefined }));
+    expect(res.breakdown).toMatchObject({ subtotal: 245 * 15, shippingFee: 400, total: 245 * 15 + 400 });
+    const o = orders[0];
+    expect(o.shippingAddressId).toBeNull();
+    expect(o.delivery).toEqual({ mode: "agent", name: "Axiom Japan (Osaka)", address: "1-2-3 Namba, Osaka", phone: "+81 6 0000 0000" });
+    expect(o.statusHistory.create.note).toMatch(/ส่งรวมผ่านตัวแทนญี่ปุ่น \(Axiom Japan \(Osaka\)\)/);
+  });
+
+  it("the agent option only exists when it's set up, and only for orders by file", async () => {
+    agentCfg = { ...agentCfg, agentEnabled: false };
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(USER, Readable.from([zip()]), "jp.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    await expect(svc.create(USER, order({ fileId: up.id, product: "bib_r", delivery: "agent", shippingAddressId: undefined }))).rejects.toThrow(/ยังไม่เปิดส่งผ่านตัวแทน/);
+    expect(await svc.deliveryOptions()).toEqual({ agent: null });
+    agentCfg = { ...agentCfg, agentEnabled: true };
+    expect(await svc.deliveryOptions()).toEqual({ agent: { name: "Axiom Japan (Osaka)", fee: 400 } });
+    expect(CreateOrderSchema.safeParse(order({ fabric: "mesh", trim: "none", delivery: "agent", shippingAddressId: undefined })).success).toBe(false); // a web design
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_n", shippingAddressId: undefined })).success).toBe(false); // no address, no agent
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_n", delivery: "agent", shippingAddressId: undefined })).success).toBe(true);
   });
 
   it("someone else's zip, or one already on an order, can't be used", async () => {

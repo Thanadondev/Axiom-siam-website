@@ -16,7 +16,7 @@ import { orderFileView } from "./order-files.service";
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
   subtotal: true, discount: true, shippingFee: true, total: true, depositAmount: true,
-  fabricSummary: true, note: true, productionStep: true, createdAt: true, updatedAt: true,
+  fabricSummary: true, note: true, productionStep: true, createdAt: true, updatedAt: true, delivery: true,
 } as const;
 
 function makeOrderNo() {
@@ -38,7 +38,20 @@ export class OrdersService {
   /** live price preview for the checkout page — no side effects */
   async quote(q: PriceQueryDto) {
     const cfg = await this.settings.pricing();
-    return priceOrder({ totalQty: q.totalQty, fabric: q.fabric, trim: q.trim, reversible: q.reversible, garment: q.garment }, cfg);
+    const agent = q.delivery === "agent" ? await this.agentDelivery() : null;
+    return priceOrder({ totalQty: q.totalQty, fabric: q.fabric, trim: q.trim, reversible: q.reversible, garment: q.garment, shippingFee: agent?.fee }, cfg);
+  }
+
+  /** what the order page offers besides an address: the agent in Japan, when an admin has set one up */
+  async deliveryOptions() {
+    const d = await this.settings.delivery();
+    return { agent: d.agentEnabled ? { name: d.agentName, fee: d.agentFee } : null };
+  }
+
+  private async agentDelivery() {
+    const d = await this.settings.delivery();
+    if (!d.agentEnabled || !d.agentName || !d.agentAddress) return null;
+    return { name: d.agentName, address: d.agentAddress, phone: d.agentPhone, fee: d.agentFee };
   }
 
   async table() {
@@ -53,9 +66,11 @@ export class OrdersService {
     const totalQty = lines.reduce((s, l) => s + l.qty, 0);
     if (totalQty < cfg.minQty) throw new BadRequestException(`สั่งขั้นต่ำ ${cfg.minQty} ตัว`);
 
-    // the address must belong to this user
-    const addr = await this.prisma.address.findFirst({ where: { id: dto.shippingAddressId, userId } });
-    if (!addr) throw new BadRequestException("ไม่พบที่อยู่จัดส่ง หรือไม่ใช่ที่อยู่ของคุณ");
+    // where it goes: the agent in Japan (as it is today, kept on the order), or an address of this user's
+    const agent = dto.delivery === "agent" ? await this.agentDelivery() : null;
+    if (dto.delivery === "agent" && !agent) throw new BadRequestException("ยังไม่เปิดส่งผ่านตัวแทนในญี่ปุ่น — เลือกที่อยู่จัดส่งแทน");
+    const addr = agent ? null : await this.prisma.address.findFirst({ where: { id: dto.shippingAddressId, userId } });
+    if (!agent && !addr) throw new BadRequestException("ไม่พบที่อยู่จัดส่ง หรือไม่ใช่ที่อยู่ของคุณ");
 
     // if a saved design is referenced it must belong to this user; snapshot it
     let snapshot: unknown = dto.designSnapshot ?? {};
@@ -76,7 +91,7 @@ export class OrdersService {
     // (a file order says what it's for: the team checks the file before production)
     const garment = file && dto.product ? dto.product : garmentOf(snapshot);
     // the schema requires fabric and trim unless it's a file order, whose set price ignores them
-    const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment }, cfg);
+    const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file
       ? `${GARMENT_LABEL[garment]} · ไฟล์ลูกค้า`
       : `${garment !== "jersey" ? `${GARMENT_LABEL[garment]} · ` : ""}${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
@@ -94,7 +109,8 @@ export class OrdersService {
           depositAmount: p.depositAmount,
           fabricSummary,
           note: dto.note,
-          shippingAddressId: addr.id,
+          shippingAddressId: addr?.id ?? null,
+          ...(agent ? { delivery: { mode: "agent", name: agent.name, address: agent.address, phone: agent.phone } } : {}),
           items: {
             create: lines.map(l => ({
               designId: dto.designId,
@@ -104,7 +120,7 @@ export class OrdersService {
               unitPrice: p.unitPrice,
             })),
           },
-          statusHistory: { create: { status: "pending", note: file ? `สร้างออเดอร์ · ไฟล์ ${file.name}` : "สร้างออเดอร์", changedBy: userId } },
+          statusHistory: { create: { status: "pending", note: `สร้างออเดอร์${file ? ` · ไฟล์ ${file.name}` : ""}${agent ? ` · ส่งรวมผ่านตัวแทนญี่ปุ่น (${agent.name})` : ""}`, changedBy: userId } },
         },
         select: { ...ORDER_SELECT, items: { select: { id: true, size: true } } },
       });

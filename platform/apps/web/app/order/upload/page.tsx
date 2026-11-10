@@ -52,6 +52,10 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const chosen = useRef<File | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addrId, setAddrId] = useState("");
+  /** consolidated shipping to the agent in Japan, when the factory has one set up */
+  const [agent, setAgent] = useState<{ name: string; fee: number } | null>(null);
+  const [delivery, setDelivery] = useState<"address" | "agent">("address");
+  const toAgent = delivery === "agent" && !!agent;
   const [note, setNote] = useState("");
   const [bd, setBd] = useState<Breakdown | null>(null);
   const [err, setErr] = useState("");
@@ -70,6 +74,16 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     apiFetch<{ flat?: Record<string, number> }>("/orders/price-table").then(t => setPrices(t.flat ?? {})).catch(() => {});
   }, []);
 
+  // teams ordering in English or Japanese are abroad: start them on the agent in Japan
+  const langAtLoad = useRef(lang);
+  langAtLoad.current = lang;
+  useEffect(() => {
+    apiFetch<{ agent: { name: string; fee: number } | null }>("/orders/delivery-options").then(d => {
+      setAgent(d.agent);
+      if (d.agent && langAtLoad.current !== "th") setDelivery("agent");
+    }).catch(() => {});
+  }, []);
+
   const loadAddresses = useCallback(() => {
     if (!token) return;
     apiFetch<Address[]>("/auth/addresses", { token }).then(a => {
@@ -82,10 +96,10 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   useEffect(() => {
     if (totalQty === 0) { setBd(null); return; }
     const t = setTimeout(() => {
-      apiFetch<Breakdown>(`/orders/quote?totalQty=${totalQty}&fabric=mesh&trim=none&garment=${product}`).then(setBd).catch(() => {});
+      apiFetch<Breakdown>(`/orders/quote?totalQty=${totalQty}&fabric=mesh&trim=none&garment=${product}${toAgent ? "&delivery=agent" : ""}`).then(setBd).catch(() => {});
     }, 200);
     return () => clearTimeout(t);
-  }, [totalQty, product]);
+  }, [totalQty, product, toAgent]);
 
   useEffect(() => () => { if (pic) URL.revokeObjectURL(pic); }, [pic]);
 
@@ -158,7 +172,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     if (!file) { setErr(L("กรุณาเลือกไฟล์ .zip", "Please choose your .zip file", ".zipファイルを選択してください")); return; }
     if (blocked) { setErr(L("ไม่พบไฟล์งาน (.ai) ใน zip นี้", "There's no artwork (.ai) in this zip", "このzipにはデザインデータ（.ai）が含まれていません")); return; }
     if (totalQty === 0) { setErr(L("กรุณาระบุจำนวนอย่างน้อย 1 ไซส์", "Please enter a quantity for at least one size", "少なくとも1サイズの枚数を入力してください")); return; }
-    if (!addrId) { setErr(L("กรุณาเลือกที่อยู่จัดส่ง", "Please choose a shipping address", "お届け先を選択してください")); return; }
+    if (!toAgent && !addrId) { setErr(L("กรุณาเลือกที่อยู่จัดส่ง", "Please choose a shipping address", "お届け先を選択してください")); return; }
     if (!token) return;
     let step: "upload" | "order" = "upload";
     try {
@@ -182,7 +196,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
         body: JSON.stringify({
           fileId: zip.id, product,
           lines: SIZES.filter(z => qty[z] > 0).map(z => ({ size: z, qty: qty[z] })),
-          shippingAddressId: addrId,
+          ...(toAgent ? { delivery: "agent" } : { shippingAddressId: addrId }),
           note,
         }),
       });
@@ -349,8 +363,23 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
           </div>
 
           <div className="acard">
-            <h2 className="ah2">{L("ที่อยู่จัดส่ง", "Shipping address", "お届け先")}</h2>
-            {addresses.length === 0 ? (
+            <h2 className="ah2">{L("การจัดส่ง", "Delivery", "お届け方法")}</h2>
+            {agent && (
+              <div className="ou-delivery" role="radiogroup" aria-label={L("การจัดส่ง", "Delivery", "お届け方法")}>
+                <label className="ou-product" data-on={toAgent ? "" : undefined}>
+                  <input type="radio" name="delivery" checked={toAgent} onChange={() => setDelivery("agent")} />
+                  <b>{L("ส่งรวมให้ตัวแทนในญี่ปุ่น", "Consolidated to our agent in Japan", "日本の代理店へまとめて発送")}</b>
+                  <span className="dim">{agent.name} · {L("ไม่ต้องกรอกที่อยู่", "no address needed", "住所の入力は不要です")}</span>
+                  <span className="price">{L("ค่าส่ง", "Shipping", "送料")} {agent.fee > 0 ? baht(agent.fee) : L("ฟรี", "free", "無料")}{L(" / ออเดอร์", " / order", "／注文")}</span>
+                </label>
+                <label className="ou-product" data-on={!toAgent ? "" : undefined}>
+                  <input type="radio" name="delivery" checked={!toAgent} onChange={() => setDelivery("address")} />
+                  <b>{L("ส่งถึงที่อยู่ของฉัน", "To my address", "指定の住所へ発送")}</b>
+                  <span className="dim">{L("ในประเทศไทย", "in Thailand", "タイ国内")}</span>
+                </label>
+              </div>
+            )}
+            {toAgent ? null : addresses.length === 0 ? (
               <p className="asub">
                 {L("ยังไม่มีที่อยู่ — ", "No address yet — ", "お届け先が未登録です。")}
                 <Link className="dlink" href="/account">{L("เพิ่มที่อยู่ในบัญชีของฉัน", "add one in My account", "マイアカウントで追加")}</Link>
@@ -379,6 +408,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
           <h2 className="ah2">{L("สรุปคำสั่งซื้อ", "Order summary", "ご注文内容")}</h2>
           <Row k={L("สินค้า", "Product", "商品")} v={PRODUCTS.find(p => p.id === product)!.name} />
           <Row k={L("ไฟล์", "File", "ファイル")} v={file ? <span className="ou-fname" title={file.name}>{file.name}</span> : <span className="dim">{L("ยังไม่ได้เลือก", "Not chosen yet", "未選択")}</span>} />
+          <Row k={L("จัดส่ง", "Delivery", "お届け")} v={toAgent ? <span className="ou-fname" title={agent!.name}>{L("ตัวแทนญี่ปุ่น", "Agent in Japan", "日本の代理店")}</span> : L("ที่อยู่ในไทย", "Address in Thailand", "タイ国内の住所")} />
           {!bd ? (
             <p className="asub" style={{ marginTop: 10 }}>
               {L("ใส่จำนวนเพื่อดูราคา", "Enter the quantities to see the price", "枚数を入力すると金額が表示されます")}
@@ -390,7 +420,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
               <Row k={L("ราคาต่อตัว", "Price per piece", "単価")} v={<b>{baht(bd.unitPrice)}</b>} />
               <Row k={L(`× ${bd.totalQty} ตัว`, `× ${bd.totalQty} pieces`, `× ${bd.totalQty}枚`)} v={baht(bd.subtotal)} />
               <Row k={L("ค่าจัดส่ง", "Shipping", "送料")} v={bd.shippingFee === 0 ? <span style={{ color: "var(--okc, #16a34a)" }}>{L("ฟรี", "Free", "無料")}</span> : baht(bd.shippingFee)} />
-              {bd.shippingFee > 0 && <p className="dim">{L(`สั่งครบ ${baht(bd.freeShippingOver)} ส่งฟรี`, `Free shipping from ${baht(bd.freeShippingOver)}`, `${baht(bd.freeShippingOver)}以上で送料無料`)}</p>}
+              {bd.shippingFee > 0 && !toAgent && <p className="dim">{L(`สั่งครบ ${baht(bd.freeShippingOver)} ส่งฟรี`, `Free shipping from ${baht(bd.freeShippingOver)}`, `${baht(bd.freeShippingOver)}以上で送料無料`)}</p>}
               <hr className="ou-hr" />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <b>{L("ยอดรวม", "Total", "合計")}</b>
@@ -413,7 +443,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </div>
           )}
           {err && <p className="ou-warn" role="alert">⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || !addrId} onClick={submit}>
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || (!toAgent && !addrId)} onClick={submit}>
             {busy === "upload" ? L("กำลังอัปโหลดไฟล์…", "Uploading…", "アップロード中…")
               : busy === "order" ? L("กำลังสร้างออเดอร์…", "Placing the order…", "注文を作成中…")
               : L("อัปโหลดไฟล์และสั่งผลิต", "Upload and place the order", "データをアップロードして注文する")}

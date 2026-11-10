@@ -470,6 +470,9 @@ model Order {
   erpStatus         Json?       @map("erp_status")
   erpSyncedAt       DateTime?   @map("erp_synced_at")
   shippingAddressId String?     @map("shipping_address_id")
+  /// consolidated shipping to the agent in Japan: { mode: "agent", name, address, phone } as it was
+  /// when ordered (no shippingAddressId then). Null = shipped to shippingAddress.
+  delivery          Json?
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
 

@@ -301,3 +301,5 @@ a.noteitem:hover{background:var(--soft)}
 .ou-fromlist .nums { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .ou-fromlist .nums b { color: var(--brand); font-size: 15px; }
 .ou-fromlist .dim { overflow-wrap: anywhere; }
+.ou-delivery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
+@media (max-width: 520px) { .ou-delivery { grid-template-columns: minmax(0, 1fr); } }

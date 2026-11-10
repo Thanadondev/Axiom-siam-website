@@ -340,6 +340,13 @@ export default function AdminPage() {
     if (r) { setCfg((c: any) => ({ ...c, bank: r })); setSaved("บันทึกบัญชีรับเงินแล้ว ✓"); }
     setBusy(false);
   }
+  async function saveDelivery() {
+    setBusy(true); setSaved("");
+    const r = await call<any>("/admin/settings/delivery", { method: "PATCH", body: JSON.stringify(cfg.delivery) });
+    if (r) { setCfg((c: any) => ({ ...c, delivery: r })); setSaved("บันทึกตัวแทนในญี่ปุ่นแล้ว ✓"); }
+    setBusy(false);
+  }
+  const setD = (k: string, v: any) => setCfg((c: any) => ({ ...c, delivery: { ...c.delivery, [k]: v } }));
   const setB = (k: string, v: any) => setCfg((c: any) => ({ ...c, bank: { ...c.bank, [k]: v } }));
   const setP = (k: string, v: any) => setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [k]: v } }));
   const setTier = (i: number, k: "minQty" | "price", v: number) =>
@@ -1050,6 +1057,37 @@ export default function AdminPage() {
                 เว้นพร้อมเพย์ว่างได้ ถ้าไม่อยากให้มี QR — ลูกค้าจะโอนเข้าเลขบัญชีแทน
               </p>
               <button className="abtn solid" style={{ marginTop: 16 }} disabled={busy} onClick={saveBank}>บันทึกบัญชีรับเงิน</button>
+            </div>
+          )}
+
+          {/* ---------------- DELIVERY: the agent in Japan ---------------- */}
+          {cfg.delivery && (
+            <div className="acard">
+              <h2 className="ah2">ส่งรวมผ่านตัวแทนในญี่ปุ่น</h2>
+              <p className="asub">
+                ลูกค้าที่สั่ง bib ด้วยไฟล์ zip เลือก &quot;ส่งรวมให้ตัวแทนในญี่ปุ่น&quot; ได้แทนการกรอกที่อยู่ —
+                ออเดอร์จะเก็บที่อยู่ตัวแทนตามที่ตั้งไว้ ณ วันที่สั่ง และคิดค่าส่งตามที่ใส่ด้านล่างต่อออเดอร์
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, fontSize: 14 }}>
+                <input type="checkbox" checked={!!cfg.delivery.agentEnabled} onChange={e => setD("agentEnabled", e.target.checked)} />
+                เปิดให้ลูกค้าเลือกส่งผ่านตัวแทน (ต้องกรอกชื่อและที่อยู่ก่อน)
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14, marginTop: 14 }}>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>ชื่อตัวแทน (ลูกค้าเห็น)</label>
+                  <input className="ainput" placeholder="เช่น Axiom Japan (Osaka)" value={cfg.delivery.agentName ?? ""} onChange={e => setD("agentName", e.target.value)} maxLength={120} />
+                </div>
+                <div>
+                  <label className="flabel" style={{ margin: "0 0 6px" }}>เบอร์โทร</label>
+                  <input className="ainput" value={cfg.delivery.agentPhone ?? ""} onChange={e => setD("agentPhone", e.target.value)} maxLength={40} />
+                </div>
+                <NumField label="ค่าส่งต่อออเดอร์ (บาท)" value={cfg.delivery.agentFee ?? 0} onChange={v => setD("agentFee", v)} />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <label className="flabel" style={{ margin: "0 0 6px" }}>ที่อยู่ตัวแทน (พิมพ์ในใบสั่งงาน)</label>
+                <textarea className="ainput" rows={3} value={cfg.delivery.agentAddress ?? ""} onChange={e => setD("agentAddress", e.target.value)} maxLength={500} />
+              </div>
+              <button className="abtn solid" style={{ marginTop: 16 }} disabled={busy} onClick={saveDelivery}>บันทึกตัวแทนในญี่ปุ่น</button>
             </div>
           )}
 

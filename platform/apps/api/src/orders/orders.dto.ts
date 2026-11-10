@@ -9,6 +9,8 @@ export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
 export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants", "bib_n", "bib_r"] as const;
 /** what can be ordered with the customer's own print files (pricing.ts) */
 export const FILE_PRODUCT_IDS = ["bib_n", "bib_r"] as const;
+/** where an order goes: the customer's address, or consolidated to the agent in Japan (file orders) */
+export const DELIVERY_MODES = ["address", "agent"] as const;
 
 /** one row of the size breakdown, e.g. { size: "L", qty: 12 } */
 export const SizeLineSchema = z.object({
@@ -31,6 +33,8 @@ export const PriceQuerySchema = z.object({
   reversible: z.preprocess(v => v === "true" || v === true, z.boolean()).optional(),
   // a preview only: an order's garment comes from its design
   garment: z.preprocess(emptyToUndef, z.enum(GARMENT_IDS).optional()),
+  /** "agent": shipped consolidated to the agent in Japan, at its own fee */
+  delivery: z.preprocess(emptyToUndef, z.enum(DELIVERY_MODES).optional()),
 });
 export type PriceQueryDto = z.infer<typeof PriceQuerySchema>;
 
@@ -44,7 +48,9 @@ export const CreateOrderSchema = z.object({
   reversible: z.boolean().optional(),
   lines: z.array(SizeLineSchema).min(1, "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์"),
   roster: z.array(RosterRowSchema).max(500).optional(),
-  shippingAddressId: z.string().uuid({ message: "กรุณาเลือกที่อยู่จัดส่ง" }),
+  // required unless the order goes to the agent in Japan (below)
+  shippingAddressId: z.preprocess(emptyToUndef, z.string().uuid({ message: "กรุณาเลือกที่อยู่จัดส่ง" }).optional()),
+  delivery: z.preprocess(emptyToUndef, z.enum(DELIVERY_MODES).optional()),
   note: z.preprocess(emptyToUndef, z.string().max(1000).optional()),
   /** ordering with the customer's own print files: the uploaded zip (POST /order-files) and what it's for */
   fileId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
@@ -52,6 +58,8 @@ export const CreateOrderSchema = z.object({
 }).superRefine((d, ctx) => {
   if (!!d.fileId !== !!d.product) ctx.addIssue({ code: "custom", path: ["fileId"], message: "สั่งผลิตด้วยไฟล์ ต้องแนบไฟล์ .zip และเลือกสินค้า" });
   if (d.fileId && d.designId) ctx.addIssue({ code: "custom", path: ["fileId"], message: "เลือกได้อย่างเดียว: ดีไซน์บนเว็บ หรือไฟล์ของคุณเอง" });
+  if (d.delivery === "agent" && !d.fileId) ctx.addIssue({ code: "custom", path: ["delivery"], message: "ส่งผ่านตัวแทนญี่ปุ่นได้เฉพาะออเดอร์ที่สั่งด้วยไฟล์" });
+  if (d.delivery !== "agent" && !d.shippingAddressId) ctx.addIssue({ code: "custom", path: ["shippingAddressId"], message: "กรุณาเลือกที่อยู่จัดส่ง" });
   if (!d.fileId) {
     if (!d.fabric) ctx.addIssue({ code: "custom", path: ["fabric"], message: "กรุณาเลือกผ้า" });
     if (!d.trim) ctx.addIssue({ code: "custom", path: ["trim"], message: "กรุณาเลือกขลิบ" });

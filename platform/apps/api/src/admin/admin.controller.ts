@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -12,7 +12,7 @@ import {
   type ApproveSlipDto, type RejectSlipDto, type BankConfigDto, type RecordPaymentDto, type RecordRefundDto,
 } from "../payments/payments.dto";
 import {
-  UpdatePricingSchema, UpdateMarketSchema, type UpdatePricingDto, type UpdateMarketDto,
+  UpdatePricingSchema, UpdateMarketSchema, UpdateDeliverySchema, type UpdatePricingDto, type UpdateMarketDto, type UpdateDeliveryDto,
 } from "../settings/settings.dto";
 import {
   ListQuerySchema, UpdateUserSchema, AdminTemplateSchema, UpdateReportSchema, CreatePayoutSchema, UpdateQuoteSchema,
@@ -45,6 +45,16 @@ export class AdminController {
   @Patch("settings/market")
   saveMarket(@CurrentUser() me: AuthUser, @Body(new ZodValidationPipe(UpdateMarketSchema)) dto: UpdateMarketDto) {
     return this.settings.saveMarket(dto, me.id);
+  }
+
+  /** the agent in Japan that bib orders by zip ship to, consolidated */
+  @Patch("settings/delivery")
+  async saveDelivery(@CurrentUser() me: AuthUser, @Body(new ZodValidationPipe(UpdateDeliverySchema)) dto: UpdateDeliveryDto) {
+    const next = { ...(await this.settings.delivery()), ...dto };
+    if (next.agentEnabled && (!next.agentName || !next.agentAddress)) {
+      throw new BadRequestException("เปิดใช้ได้เมื่อกรอกชื่อและที่อยู่ตัวแทนแล้ว");
+    }
+    return this.settings.saveDelivery(dto, me.id);
   }
 
   /** the company bank account customers transfer to */

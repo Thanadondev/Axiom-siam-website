@@ -115,6 +115,8 @@ export interface PriceInput {
   trim: string;
   reversible?: boolean;
   garment?: Garment;
+  /** a set shipping fee for this order (the agent in Japan), in place of the flat-or-free rule */
+  shippingFee?: number;
 }
 
 export interface PriceBreakdown {
@@ -141,7 +143,7 @@ export function tierFor(qty: number, cfg: PricingConfig): QtyTier {
 }
 
 export function priceOrder(
-  { totalQty, fabric, trim, reversible = false, garment = "jersey" }: PriceInput,
+  { totalQty, fabric, trim, reversible = false, garment = "jersey", shippingFee: setShipping }: PriceInput,
   cfg: PricingConfig = DEFAULT_PRICING,
 ): PriceBreakdown {
   const qty = Math.max(0, Math.trunc(totalQty));
@@ -156,7 +158,9 @@ export function priceOrder(
 
   const unitPrice = Math.max(0, tierPrice + fabricSurcharge + trimSurcharge + garmentSurcharge + reversibleSurcharge);
   const subtotal = unitPrice * qty;
-  const shippingFee = subtotal === 0 || subtotal >= cfg.freeShippingOver ? 0 : cfg.shippingFlat;
+  const shippingFee = subtotal === 0 ? 0
+    : setShipping !== undefined ? Math.max(0, Math.round(setShipping))
+    : subtotal >= cfg.freeShippingOver ? 0 : cfg.shippingFlat;
   const total = subtotal + shippingFee;
 
   return {

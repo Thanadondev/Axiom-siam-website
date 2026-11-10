@@ -23,6 +23,13 @@ export class OrdersController {
     return this.orders.table();
   }
 
+  /** delivery besides an address: the agent in Japan (name and fee) when it's set up */
+  @Public()
+  @Get("delivery-options")
+  deliveryOptions() {
+    return this.orders.deliveryOptions();
+  }
+
   @Public()
   @Get("quote")
   quote(@Query(new ZodValidationPipe(PriceQuerySchema)) q: PriceQueryDto) {

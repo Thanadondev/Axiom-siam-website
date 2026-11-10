@@ -390,7 +390,12 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
               </div>
             )}
             {o.note && <div><span className="ax-label">หมายเหตุจากลูกค้า</span><p style={{ margin: 0, fontSize: 14 }}>{o.note}</p></div>}
-            {a && (
+            {o.delivery?.mode === "agent" ? (
+              <div>
+                <span className="ax-label">ส่งถึง · ส่งรวมผ่านตัวแทนญี่ปุ่น</span>
+                <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-line" }}>{o.delivery.name}{o.delivery.phone ? ` · ${o.delivery.phone}` : ""}<br />{o.delivery.address}</p>
+              </div>
+            ) : a && (
               <div>
                 <span className="ax-label">ส่งถึง</span>
                 <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>{a.recipient} · {a.phone}<br />{[a.line1, a.line2, a.district, a.province, a.postalCode].filter(Boolean).join(" ")}</p>
@@ -517,6 +522,9 @@ function JobSheet({ o, kit, look, split, roster }: { o: any; kit: Kit | null; lo
         </table>
       )}
       {o.note && <p><b>หมายเหตุ</b> {o.note}</p>}
+      {o.delivery?.mode === "agent" && (
+        <p style={{ whiteSpace: "pre-line" }}><b>ส่งรวมผ่านตัวแทนญี่ปุ่น</b> {o.delivery.name}{o.delivery.phone ? ` · ${o.delivery.phone}` : ""}{"\n"}{o.delivery.address}</p>
+      )}
     </div>
   );
 }
