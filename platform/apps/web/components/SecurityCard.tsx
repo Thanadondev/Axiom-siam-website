@@ -38,7 +38,7 @@ export default function SecurityCard() {
       setMsg(r.message);
       setOpen(false); setCur(""); setNext(""); setConfirm("");
       // reflect the new state so the card flips to "change password"
-      if (!hasPw) setUser({ ...user, hasPassword: true });
+      if (!hasPw && user) setUser({ ...user, hasPassword: true });
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -81,8 +81,8 @@ export default function SecurityCard() {
         </form>
       )}
 
-      {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
-      {msg && <p style={{ color: "#16a34a", fontSize: 13, marginTop: 10 }}>{msg}</p>}
+      {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+      {msg && <p style={{ color: "var(--okc, #16a34a)", fontSize: 13, marginTop: 10 }}>{msg}</p>}
     </div>
   );
 }

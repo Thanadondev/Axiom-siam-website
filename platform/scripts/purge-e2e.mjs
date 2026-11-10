@@ -88,6 +88,18 @@ async function main() {
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   }
 
+  // print-file zips (bib orders): the rows, and the files under UPLOAD_DIR/order-files/<user>.
+  // The API resolves UPLOAD_DIR from apps/api, this script from the repo root: try both.
+  await prisma.orderFile.deleteMany({ where: { userId: { in: ids } } });
+  const { rm } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const upload = process.env.UPLOAD_DIR ?? "./uploads";
+  for (const id of ids.filter(i => /^[0-9a-f-]{36}$/i.test(i))) {
+    for (const base of [resolve(upload), resolve("apps/api", upload)]) {
+      await rm(resolve(base, "order-files", id), { recursive: true, force: true });
+    }
+  }
+
   await prisma.design.deleteMany({ where: { userId: { in: ids } } });
   await prisma.address.deleteMany({ where: { userId: { in: ids } } });
   await prisma.user.deleteMany({ where: { id: { in: ids }, email: { endsWith: E2E_DOMAIN } } });

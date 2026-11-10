@@ -119,6 +119,7 @@ model User {
   designs           Design[]
   carts             Cart[]
   orders            Order[]
+  orderFiles        OrderFile[]
   authTokens        AuthToken[]
   quoteRequests     QuoteRequest[]
   notifications     Notification[]
@@ -459,6 +460,15 @@ model Order {
   depositAmount     Int         @default(0) @map("deposit_amount")
   fabricSummary     String?     @map("fabric_summary")
   note              String?
+  /// the customer's details for a full tax invoice (JSON text: name, taxId, branch, address)
+  taxInvoice        String?     @map("tax_invoice")
+  /// where the job is on the line: 0 not started, 1–9 the factory steps, 10 shipped
+  productionStep    Int         @default(0) @map("production_step")
+  /// the same job's order number in the factory ERP — the production step is read from there
+  erpOrderNo        String?     @unique @map("erp_order_no")
+  /// the ERP's last answer: each step with its dates (apps/api/src/erp)
+  erpStatus         Json?       @map("erp_status")
+  erpSyncedAt       DateTime?   @map("erp_synced_at")
   shippingAddressId String?     @map("shipping_address_id")
   createdAt         DateTime    @default(now()) @map("created_at")
   updatedAt         DateTime    @updatedAt @map("updated_at")
@@ -469,12 +479,39 @@ model Order {
   statusHistory   OrderStatusHistory[]
   payments        Payment[]
   invoices        Invoice[]
+  creditNotes     CreditNote[]
   refunds         Refund[]
   shipments       Shipment[]
+  files           OrderFile[]
 
   @@index([userId])
   @@index([status])
   @@map("orders")
+}
+
+/// The customer's own print files: a .zip of Illustrator artwork, uploaded before
+/// the order exists and attached to it when it's placed (orderId null until then).
+/// Not public: served only by signed links (apps/api/src/orders/order-files).
+model OrderFile {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  orderId     String?  @map("order_id")
+  /// the name the customer gave it — shown and offered on download, never used as a path
+  name        String
+  bytes       Int
+  sha256      String
+  /// on disk under UPLOAD_DIR/order-files/, built from ids only
+  path        String
+  /// a picture of the job taken from the .jpg inside the zip, when there was one
+  previewPath String?  @map("preview_path")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("order_files")
 }
 
 model OrderItem {
@@ -513,6 +550,8 @@ model OrderStatusHistory {
   id        String      @id @default(uuid())
   orderId   String      @map("order_id")
   status    OrderStatus
+  /// set when the entry records a move along the production line (1–10)
+  step      Int?
   note      String?
   changedBy String?     @map("changed_by")
   createdAt DateTime    @default(now()) @map("created_at")
@@ -569,11 +608,42 @@ model Invoice {
   currency   Currency @default(THB)
   taxId      String?  @map("tax_id")
   pdfUrl     String?  @map("pdf_url")
+  // the buyer, frozen when the tax invoice is issued (a tax invoice can't change afterwards)
+  buyerName    String? @map("buyer_name")
+  buyerTaxId   String? @map("buyer_tax_id")
+  buyerBranch  String? @map("buyer_branch")
+  buyerAddress String? @map("buyer_address")
   issuedAt   DateTime @default(now()) @map("issued_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditNotes CreditNote[]
 
   @@map("invoices")
+}
+
+/// ใบลดหนี้: lowers the value of an issued invoice (a refund, or the sale called off).
+/// Numbered CN-YYYY-00001 in its own sequence; the buyer is copied from the invoice.
+model CreditNote {
+  id           String   @id @default(uuid())
+  creditNo     String   @unique @map("credit_no")
+  orderId      String   @map("order_id")
+  invoiceId    String   @map("invoice_id")
+  refundId     String?  @unique @map("refund_id")
+  /// the reduction in value, VAT included
+  amount       Int
+  reason       String
+  buyerName    String?  @map("buyer_name")
+  buyerTaxId   String?  @map("buyer_tax_id")
+  buyerBranch  String?  @map("buyer_branch")
+  buyerAddress String?  @map("buyer_address")
+  issuedAt     DateTime @default(now()) @map("issued_at")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  refund  Refund? @relation(fields: [refundId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("credit_notes")
 }
 
 model Refund {
@@ -584,7 +654,8 @@ model Refund {
   providerRef String?  @map("provider_ref")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditNote CreditNote?
 
   @@index([orderId])
   @@map("refunds")

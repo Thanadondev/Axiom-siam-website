@@ -1,41 +1,76 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import Link from "next/link";
-import UserMenu from "./UserMenu";
-import NotifyBell from "./NotifyBell";
+import { useMemo, type ReactNode } from "react";
+import StoreHeader from "./StoreHeader";
+import StoreFooter from "./StoreFooter";
+import JerseyStage from "./JerseyStage";
+import { KITS, defaultConfig } from "../lib/kits";
+import { tri, type Lang } from "../lib/i18n";
 import "../app/app.css";
+import "../app/home.css";
 
-type Theme = "light" | "dark";
+const nav = (lang: Lang) => {
+  const L = tri(lang);
+  return [
+    { href: "/shop", label: L("ออกแบบเสื้อ", "Design", "デザイン") },
+    { href: "/templates", label: L("ตลาดลาย", "Designs market", "デザインマーケット") },
+    { href: "/design", label: L("ออกแบบขั้นสูง", "Advanced designer", "上級デザイナー") },
+  ];
+};
 
-export default function AppShell({ children, narrow = false, wide = false }: { children: ReactNode; narrow?: boolean; wide?: boolean }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const logo = theme === "light" ? "/logo-mark-blue.png" : "/logo-mark.png";
-
+/**
+ * Frame for the account-side pages (account, orders, admin, terms…): the
+ * storefront header and footer around a centred column, in the same dark
+ * brand theme as the shop. `auth` turns it into the split sign-in layout:
+ * a kit turning in 3D beside the form.
+ */
+export default function AppShell({
+  children, narrow = false, wide = false, auth = false, lang, onLang,
+}: {
+  children: ReactNode;
+  narrow?: boolean;
+  wide?: boolean;
+  /** sign-in / sign-up style page: form on the right, brand stage on the left */
+  auth?: boolean;
+  /** a page written in Thai / English / Japanese passes its language: the header gets the switch */
+  lang?: Lang;
+  onLang?: (l: Lang) => void;
+}) {
   return (
-    <div className={`app theme-${theme}`}>
-      <header className="app-header">
-        <Link href="/" className="app-brand">
-          <img src={logo} alt="AXIOM SIAM" style={{ height: 34, width: "auto", display: "block" }} />
-          <b>AXIOM SIAM</b>
-        </Link>
-        <nav className="app-nav">
-          <Link href="/">หน้าแรก</Link>
-          <Link href="/templates">ตลาดลาย</Link>
-          <Link href="/design">ออกแบบเสื้อ</Link>
-          <NotifyBell />
-          <UserMenu />
-          <div className="pill" title="ธีมสี">
-            <button className={theme === "light" ? "on" : ""} onClick={() => setTheme("light")} aria-label="ธีมขาว-น้ำเงิน">☀</button>
-            <button className={theme === "dark" ? "on" : ""} onClick={() => setTheme("dark")} aria-label="ธีมดำ-มิ้นต์">🌙</button>
-          </div>
-        </nav>
-      </header>
-      <main className={`app-main${narrow ? " app-narrow" : ""}${wide ? " app-wide" : ""}`}>{children}</main>
-      <footer style={{ textAlign: "center", padding: "24px 22px 40px", fontSize: 12.5, color: "var(--muted)" }}>
-        © {new Date().getFullYear()} Axiom Siam Co.,Ltd. ·{" "}
-        <Link href="/terms" style={{ color: "var(--muted)", textDecoration: "underline" }}>ข้อตกลง & เงื่อนไข</Link>
-      </footer>
+    <div className="app ax" lang={lang}>
+      <StoreHeader nav={nav(lang ?? "th")} bell cta={!auth} lang={lang} onLang={onLang} />
+      {auth ? (
+        <div className="ax-auth">
+          <AuthStage />
+          <main className="ax-auth-form">{children}</main>
+        </div>
+      ) : (
+        <main className={`app-main${narrow ? " app-narrow" : ""}${wide ? " app-wide" : ""}`}>{children}</main>
+      )}
+      {!auth && <StoreFooter lang={lang} />}
     </div>
+  );
+}
+
+function AuthStage() {
+  // a different kit each day, so returning visitors see the range
+  const kit = useMemo(() => KITS[Math.floor(Date.now() / 86400000) % KITS.length], []);
+  const look = useMemo(() => {
+    const c = defaultConfig(kit);
+    return { colors: c.colors, pattern: c.pattern, trim: c.trim, fabric: c.fabric, name: "", number: "10", font: c.font };
+  }, [kit]);
+  return (
+    <aside className="ax-auth-art" aria-label="Axiom Siam">
+      <div className="stage"><JerseyStage kit={kit} look={look} /></div>
+      <div className="copy">
+        <span className="ax-mono">Axiom Siam · Sportswear factory</span>
+        <h2 className="ax-display">ทีมเดียวกัน<br /><em>ตั้งแต่ตัวแรก</em></h2>
+        <ul>
+          <li>ออกแบบบนโมเดล 3D เห็นราคาทันที</li>
+          <li>เก็บแบบ รายชื่อ และที่อยู่ไว้สั่งซ้ำ</li>
+          <li>ติดตามทุกออเดอร์จนถึงมือทีม</li>
+        </ul>
+      </div>
+    </aside>
   );
 }

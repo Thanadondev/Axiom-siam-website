@@ -33,7 +33,7 @@ export default function WireScene({ progressRef }: { progressRef: React.MutableR
       const camera = new THREE.PerspectiveCamera(52, W() / H(), 0.1, 200);
       camera.position.set(0, 0, 14);
 
-      const accent = new THREE.Color(0x3b82f6);
+      const accent = new THREE.Color(0xf26522);
 
       // ---- a jersey-ish outline (torso + two sleeves) as a line loop ----
       function jerseyGeometry() {

@@ -1,0 +1,142 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { Readable } from "stream";
+import { createHash } from "crypto";
+
+/** a customer uploads their print-file zip, then orders bibs with it */
+
+const USER = "11111111-1111-4111-8111-111111111111";
+const OTHER = "22222222-2222-4222-8222-222222222222";
+const ADDR = "33333333-3333-4333-8333-333333333333";
+let dir: string;
+let OrderFilesService: typeof import("./order-files.service").OrderFilesService;
+let orderFileView: typeof import("./order-files.service").orderFileView;
+let OrdersService: typeof import("./orders.service").OrdersService;
+let CreateOrderSchema: typeof import("./orders.dto").CreateOrderSchema;
+
+// an in-memory stand-in for the two tables these touch
+let files: any[] = [];
+let orders: any[] = [];
+const prisma: any = {
+  orderFile: {
+    create: async ({ data, select }: any) => { const row = { ...data, orderId: null, previewPath: null, createdAt: new Date() }; files.push(row); return pick(row, select); },
+    findFirst: async ({ where, select }: any) => { const r = files.find(f => match(f, where)); return r ? pick(r, select) : null; },
+    findUnique: async ({ where, select }: any) => { const r = files.find(f => f.id === where.id); return r ? pick(r, select) : null; },
+    findMany: async ({ where }: any) => files.filter(f => f.orderId === where.orderId && f.createdAt < where.createdAt.lt),
+    update: async ({ where, data }: any) => Object.assign(files.find(f => f.id === where.id), data),
+    updateMany: async ({ where, data }: any) => { const hit = files.filter(f => match(f, where)); hit.forEach(f => Object.assign(f, data)); return { count: hit.length }; },
+    delete: async ({ where }: any) => { files = files.filter(f => f.id !== where.id); },
+  },
+  address: { findFirst: async ({ where }: any) => (where.id === ADDR && where.userId === USER ? { id: ADDR } : null) },
+  design: { findFirst: async () => null },
+  order: { create: async ({ data }: any) => { const o = { id: `order-${orders.length + 1}`, orderNo: `AX-TEST-${orders.length + 1}`, ...data, items: data.items.create.map((i: any, k: number) => ({ id: `item-${k}`, ...i })) }; orders.push(o); return o; } },
+  orderRoster: { createMany: async () => ({}) },
+  $transaction: async (fn: any) => fn(prisma),
+};
+const match = (row: any, where: any) => Object.entries(where).every(([k, v]) => row[k] === v);
+const pick = (row: any, select?: any) => (select ? Object.fromEntries(Object.keys(select).map(k => [k, row[k]])) : row);
+const settings: any = { pricing: async () => (await import("./pricing")).DEFAULT_PRICING };
+const notify: any = { pushAdmins: async () => {} };
+
+const zip = (bytes = 2048) => { const b = Buffer.alloc(bytes, 7); b.write("PK\u0003\u0004", 0, "latin1"); return b; };
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
+// a file order sends no fabric or trim: a bib has neither
+const order = (over: Record<string, unknown> = {}) =>
+  ({ lines: [{ size: "M", qty: 10 }, { size: "L", qty: 5 }], shippingAddressId: ADDR, ...over }) as any;
+
+beforeAll(async () => {
+  dir = mkdtempSync(join(tmpdir(), "axiom-order-files-"));
+  process.env.UPLOAD_DIR = dir;
+  ({ OrderFilesService, orderFileView } = await import("./order-files.service"));
+  ({ OrdersService } = await import("./orders.service"));
+  ({ CreateOrderSchema } = await import("./orders.dto"));
+});
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+beforeEach(() => { files = []; orders = []; });
+
+describe("uploading the zip", () => {
+  it("streams it to disk under the customer's folder, named by id, with its size and sha256", async () => {
+    const store = new OrderFilesService(prisma);
+    const body = zip(300_000);
+    const row = await store.saveZip(USER, Readable.from([body.subarray(0, 1000), body.subarray(1000)]), encodeURIComponent("HF-100 (N) 4379 J-Field Axis R bib (ML).zip"), body.length);
+    expect(row).toMatchObject({ name: "HF-100 (N) 4379 J-Field Axis R bib (ML).zip", bytes: 300_000 });
+    const saved = files[0];
+    expect(saved.path).toBe(`${USER}/${row.id}.zip`);
+    expect(saved.sha256).toBe(createHash("sha256").update(body).digest("hex"));
+    expect(readFileSync(join(dir, "order-files", saved.path)).equals(body)).toBe(true);
+    expect(existsSync(join(dir, "order-files", USER, `${row.id}.part`))).toBe(false);
+  });
+
+  it("refuses what isn't a zip, a file that arrives short, and anything over 500 MB — and leaves nothing behind", async () => {
+    const store = new OrderFilesService(prisma);
+    await expect(store.saveZip(USER, Readable.from([Buffer.from("%PDF-1.7 an Illustrator file")]), "x.zip")).rejects.toThrow(/ไม่ใช่ .zip/);
+    await expect(store.saveZip(USER, Readable.from([zip(5000)]), "x.zip", 9000)).rejects.toThrow(/มาไม่ครบ/);
+    await expect(store.saveZip(USER, Readable.from([zip()]), "x.zip", 600 * 1024 * 1024)).rejects.toThrow(/500 MB/);
+    expect(files).toHaveLength(0);
+    const left = existsSync(join(dir, "order-files", USER)) ? require("fs").readdirSync(join(dir, "order-files", USER)).filter((n: string) => n.endsWith(".part")) : [];
+    expect(left).toEqual([]);
+  });
+
+  it("keeps a picture of the job, only for its owner, and only a real image", async () => {
+    const store = new OrderFilesService(prisma);
+    const row = await store.saveZip(USER, Readable.from([zip()]), "a.zip");
+    await expect(store.savePreview(OTHER, row.id, JPEG)).rejects.toThrow(/ไม่พบไฟล์/);
+    await expect(store.savePreview(USER, row.id, Buffer.from("<svg onload=alert(1)>"))).rejects.toThrow();
+    await store.savePreview(USER, row.id, JPEG);
+    expect(files[0].previewPath).toBe(`${USER}/${row.id}-preview.jpg`);
+    expect(orderFileView({ ...files[0] }).previewUrl).toMatch(new RegExp(`^/api/v1/order-files/${row.id}/preview\\?exp=\\d+&sig=`));
+  });
+
+  it("clears uploads that never became an order after a week, and keeps ordered ones", async () => {
+    const store = new OrderFilesService(prisma);
+    const a = await store.saveZip(USER, Readable.from([zip()]), "a.zip");
+    const b = await store.saveZip(USER, Readable.from([zip()]), "b.zip");
+    files.find(f => f.id === b.id).orderId = "order-x";
+    const later = Date.now() + 8 * 24 * 60 * 60_000;
+    expect(await store.sweepOrphans(later)).toBe(1);
+    expect(files.map(f => f.id)).toEqual([b.id]);
+    expect(existsSync(join(dir, "order-files", USER, `${a.id}.zip`))).toBe(false);
+    expect(existsSync(join(dir, "order-files", USER, `${b.id}.zip`))).toBe(true);
+  });
+});
+
+describe("ordering bibs with the zip", () => {
+  it("the order asks for both the zip and what it's for, and not a web design as well", () => {
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ product: "bib_r" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_r", designId: "55555555-5555-4555-8555-555555555555" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_x" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_n" })).success).toBe(true);
+  });
+
+  it("a design made on the web still has to say its fabric and trim", () => {
+    expect(CreateOrderSchema.safeParse(order()).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ fabric: "mesh" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(order({ fabric: "mesh", trim: "none" })).success).toBe(true);
+  });
+
+  it("prices it at the bib's set price, records the file on the order, and claims the zip", async () => {
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(USER, Readable.from([zip()]), "HF-424 R bibs.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    const res = await svc.create(USER, order({ fileId: up.id, product: "bib_r" }));
+    expect(res.breakdown).toMatchObject({ unitPrice: 245, subtotal: 245 * 15, garment: "bib_r" });
+    const o = orders[0];
+    expect(o.fabricSummary).toBe("R-bib (2 ด้าน) · ไฟล์ลูกค้า");
+    expect(o.items[0].designSnapshot).toEqual({ kind: "file-order", product: "bib_r", fileId: up.id, fileName: "HF-424 R bibs.zip" });
+    expect(files[0].orderId).toBe(o.id);
+  });
+
+  it("someone else's zip, or one already on an order, can't be used", async () => {
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(OTHER, Readable.from([zip()]), "theirs.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    await expect(svc.create(USER, order({ fileId: up.id, product: "bib_n" }))).rejects.toThrow(/ไม่พบไฟล์ที่อัปโหลด/);
+    const mine = await store.saveZip(USER, Readable.from([zip()]), "mine.zip");
+    await svc.create(USER, order({ fileId: mine.id, product: "bib_n" }));
+    await expect(svc.create(USER, order({ fileId: mine.id, product: "bib_n" }))).rejects.toThrow(/ใช้กับออเดอร์อื่นไปแล้ว/);
+    expect(orders).toHaveLength(1);
+  });
+});

@@ -389,7 +389,7 @@ export class AdminService {
     from.setMonth(from.getMonth() - (months - 1), 1);
     from.setHours(0, 0, 0, 0);
 
-    const [purchases, orders] = await this.prisma.$transaction([
+    const [purchases, orders, refunds] = await this.prisma.$transaction([
       this.prisma.templatePurchase.findMany({
         where: { status: "paid", createdAt: { gte: from } },
         select: { createdAt: true, price: true, platformFee: true },
@@ -398,14 +398,15 @@ export class AdminService {
         where: { status: { notIn: ["pending", "cancelled"] }, createdAt: { gte: from } },
         select: { createdAt: true, total: true },
       }),
+      this.prisma.refund.findMany({ where: { createdAt: { gte: from } }, select: { createdAt: true, amount: true } }),
     ]);
 
     const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const map = new Map<string, { month: string; templateGross: number; platformRevenue: number; orderGross: number; orders: number; templateSales: number }>();
+    const map = new Map<string, { month: string; templateGross: number; platformRevenue: number; orderGross: number; orderRefunds: number; orders: number; templateSales: number }>();
     for (let i = 0; i < months; i++) {
       const d = new Date(from);
       d.setMonth(from.getMonth() + i);
-      map.set(key(d), { month: key(d), templateGross: 0, platformRevenue: 0, orderGross: 0, orders: 0, templateSales: 0 });
+      map.set(key(d), { month: key(d), templateGross: 0, platformRevenue: 0, orderGross: 0, orderRefunds: 0, orders: 0, templateSales: 0 });
     }
     for (const p of purchases) {
       const e = map.get(key(p.createdAt));
@@ -414,6 +415,11 @@ export class AdminService {
     for (const o of orders) {
       const e = map.get(key(o.createdAt));
       if (e) { e.orderGross += o.total; e.orders++; }
+    }
+    // money given back comes off the month it went out (orderGross is net of it)
+    for (const r of refunds) {
+      const e = map.get(key(r.createdAt));
+      if (e) { e.orderRefunds += r.amount; e.orderGross -= r.amount; }
     }
     return [...map.values()];
   }

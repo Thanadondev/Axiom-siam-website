@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { priceOrder, priceTable, tierFor, DEFAULT_PRICING, type PricingConfig } from "./pricing";
+import { priceOrder, priceTable, tierFor, garmentOf, DEFAULT_PRICING, type PricingConfig } from "./pricing";
 
 /** the config the business actually agreed on */
 const cfg: PricingConfig = {
@@ -10,6 +10,7 @@ const cfg: PricingConfig = {
   ],
   fabric: { mesh: 0, B1: 20, C1: 40 },
   trim: { none: 0, neck: 10, neckarm: 20, full: 30 },
+  garment: { jersey: 0, hoodie: 250, shorts: -80 },
   reversible: 60,
   shippingFlat: 80,
   freeShippingOver: 3500,
@@ -160,5 +161,80 @@ describe("DEFAULT_PRICING", () => {
     expect(tierFor(100, DEFAULT_PRICING).price).toBe(290);
     expect(DEFAULT_PRICING.freeShippingOver).toBe(3500);
     expect(DEFAULT_PRICING.depositPct).toBe(100);
+  });
+});
+
+describe("priceOrder — garments", () => {
+  it("prices a jersey at the base, a hoodie above it and shorts below", () => {
+    const q = { totalQty: 10, fabric: "C1", trim: "full" };
+    expect(priceOrder(q, cfg).unitPrice).toBe(370);
+    expect(priceOrder({ ...q, garment: "hoodie" }, cfg).unitPrice).toBe(620);
+    expect(priceOrder({ ...q, garment: "shorts" }, cfg).unitPrice).toBe(290);
+    expect(priceOrder({ ...q, garment: "shorts" }, cfg).garmentSurcharge).toBe(-80);
+  });
+
+  it("never goes below zero", () => {
+    const cheap = { ...cfg, tiers: [{ minQty: 1, price: 50 }], garment: { shorts: -500 } };
+    expect(priceOrder({ totalQty: 1, fabric: "mesh", trim: "none", garment: "shorts" }, cheap).unitPrice).toBe(0);
+  });
+
+  it("uses the default garment prices when a saved config predates them", () => {
+    const old = { ...cfg } as Partial<PricingConfig>;
+    delete old.garment;
+    const p = priceOrder({ totalQty: 1, fabric: "mesh", trim: "none", garment: "hoodie" }, old as PricingConfig);
+    expect(p.garmentSurcharge).toBe(DEFAULT_PRICING.garment.hoodie);
+  });
+});
+
+describe("priceOrder — bibs at a set price", () => {
+  it("N-bib 252 and R-bib 245 a piece by default, whatever the quantity, fabric or trim", () => {
+    for (const qty of [1, 50, 200]) {
+      const n = priceOrder({ totalQty: qty, fabric: "C1", trim: "full", reversible: true, garment: "bib_n" });
+      expect(n).toMatchObject({ unitPrice: 252, tierPrice: 252, fabricSurcharge: 0, trimSurcharge: 0, reversibleSurcharge: 0, garmentSurcharge: 0 });
+      expect(n.subtotal).toBe(252 * qty);
+      expect(priceOrder({ totalQty: qty, fabric: "mesh", trim: "none", garment: "bib_r" }).unitPrice).toBe(245);
+    }
+  });
+
+  it("follows the admin's prices, and fills in a saved config that predates the bibs", () => {
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_r" }, { ...cfg, flat: { bib_r: 300 } }).unitPrice).toBe(300);
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_n" }, { ...cfg, flat: { bib_r: 300 } }).unitPrice).toBe(252);
+    expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_n" }, cfg).unitPrice).toBe(252); // cfg has no flat
+  });
+
+  it("shipping and deposit work as for any order", () => {
+    const small = priceOrder({ totalQty: 5, fabric: "mesh", trim: "none", garment: "bib_n" }, { ...DEFAULT_PRICING, depositPct: 50 });
+    expect(small).toMatchObject({ subtotal: 1260, shippingFee: DEFAULT_PRICING.shippingFlat, depositPct: 50 });
+    expect(small.depositAmount).toBe(Math.round(small.total / 2));
+  });
+});
+
+describe("garmentOf", () => {
+  it("reads the garment from a kit-studio design, and treats everything else as a jersey", () => {
+    expect(garmentOf({ kind: "kit-studio", kit: "warmup" })).toBe("hoodie");
+    expect(garmentOf({ kind: "kit-studio", kit: "STRIDE" })).toBe("shorts");
+    expect(garmentOf({ kind: "kit-studio", kit: "striker" })).toBe("jersey");
+    expect(garmentOf({ kit: "warmup" })).toBe("jersey"); // not a kit-studio design
+    expect(garmentOf(null)).toBe("jersey");
+    expect(garmentOf("warmup")).toBe("jersey");
+  });
+
+  it("knows the warm-up suit: the crew and full-zip tops, and the track pants", () => {
+    expect(garmentOf({ kind: "kit-studio", kit: "tempo" })).toBe("piste");
+    expect(garmentOf({ kind: "kit-studio", kit: "tempozip" })).toBe("piste_zip");
+    expect(garmentOf({ kind: "kit-studio", kit: "track" })).toBe("pants");
+  });
+});
+
+describe("priceOrder — warm-up suit", () => {
+  it("prices the zip top above the crew top, and the pants above shorts", () => {
+    const q = { totalQty: 10, fabric: "C1", trim: "full" };
+    const d = DEFAULT_PRICING.garment;
+    expect(d.piste_zip).toBeGreaterThan(d.piste);
+    expect(d.pants).toBeGreaterThan(d.shorts);
+    const base = priceOrder(q, DEFAULT_PRICING).unitPrice;
+    expect(priceOrder({ ...q, garment: "piste" }, DEFAULT_PRICING).unitPrice).toBe(base + d.piste);
+    expect(priceOrder({ ...q, garment: "piste_zip" }, DEFAULT_PRICING).unitPrice).toBe(base + d.piste_zip);
+    expect(priceOrder({ ...q, garment: "pants" }, DEFAULT_PRICING).garmentSurcharge).toBe(d.pants);
   });
 });

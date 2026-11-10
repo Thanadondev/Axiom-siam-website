@@ -37,6 +37,15 @@ export class MarketController {
     return this.market.categories();
   }
 
+  /**
+   * Live colour-preview state. Public on purpose — a buyer has to see the
+   * design on their colour before paying. Non-owners get watermark:true.
+   */
+  @Get(":id/preview-state")
+  async previewState(@Req() req: Request, @Param("id") id: string) {
+    return this.market.getPreviewState(await this.optionalUserId(req), id);
+  }
+
   @Get("designer/:id")
   designerProfile(@Param("id") id: string) {
     return this.market.designerProfile(id);

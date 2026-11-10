@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AppShell narrow>
+    <AppShell auth>
       <form className="acard" onSubmit={onSubmit}>
         <div className="eyebrow">AXIOM SIAM</div>
         <h1 className="atitle">ลืมรหัสผ่าน</h1>

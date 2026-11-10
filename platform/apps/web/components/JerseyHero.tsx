@@ -30,11 +30,11 @@ export default function JerseyHero() {
       const camera = new THREE.PerspectiveCamera(38, W() / H(), 0.1, 100);
       camera.position.set(0, 0, 6.4);
 
-      // studio lighting tuned for a black garment: white key + fill, blue edge rims
+      // studio lighting tuned for a black garment: white key + fill, orange edge rims
       scene.add(new THREE.AmbientLight(0x9fb2ff, 0.9));
       const key = new THREE.DirectionalLight(0xffffff, 3.0); key.position.set(3, 4, 5); scene.add(key);
       const fill = new THREE.DirectionalLight(0xbcd0ff, 1.1); fill.position.set(-3, 1, 4); scene.add(fill);
-      const rimL = new THREE.PointLight(0x3b82f6, 6, 30); rimL.position.set(-4, 1, -3); scene.add(rimL);
+      const rimL = new THREE.PointLight(0xf26522, 6, 30); rimL.position.set(-4, 1, -3); scene.add(rimL);
       const rimR = new THREE.PointLight(0x60a5fa, 5, 30); rimR.position.set(4, 0, -3); scene.add(rimR);
 
       const pivot = new THREE.Group();

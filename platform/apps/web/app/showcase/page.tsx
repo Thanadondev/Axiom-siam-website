@@ -54,7 +54,7 @@ export default function ShowcasePage() {
       {/* NAV */}
       <nav className={`sc-nav${navSolid ? " solid" : ""}`}>
         <Link href="/showcase" className="sc-brand">
-          <img src="/logo-mark.png" alt="" />AXIOM SIAM
+          <img src="/models/axiom-logo-white.png" alt="" />AXIOM SIAM
         </Link>
         <div className="sc-links">
           <a href="#craft">งานฝีมือ</a>

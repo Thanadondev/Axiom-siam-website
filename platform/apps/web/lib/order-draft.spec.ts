@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseOrderDraft, qtyFromRoster, linesFromQty, normaliseSize, emptyQty, DRAFT_KEY } from "./order-draft";
+import { parseOrderDraft, qtyFromRoster, qtyFromRaw, linesFromQty, normaliseSize, emptyQty, DRAFT_KEY } from "./order-draft";
 
 const DESIGN_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -184,5 +184,35 @@ describe("normaliseSize", () => {
 describe("DRAFT_KEY", () => {
   it("is the key the designer bridge writes to", () => {
     expect(DRAFT_KEY).toBe("axiom-order-draft");
+  });
+});
+
+describe("parseOrderDraft — counts without a roster (/shop customizer)", () => {
+  it("takes per-size counts when no player is named", () => {
+    const d = parseOrderDraft(designerDraft({ roster: [], qty: { S: 2, M: 5, L: 0, XL: 1 } }), DESIGN_ID);
+    expect(d!.roster).toEqual([]);
+    expect(d!.qty).toEqual({ S: 2, M: 5, L: 0, XL: 1 });
+  });
+
+  it("lets a roster win over counts", () => {
+    const d = parseOrderDraft(designerDraft({ qty: { S: 40, M: 40, L: 40, XL: 40 } }), DESIGN_ID);
+    expect(d!.qty).toEqual({ S: 0, M: 1, L: 1, XL: 1 });
+  });
+
+  it("is all zeros when neither is sent (old designer drafts)", () => {
+    const d = parseOrderDraft(designerDraft({ roster: [] }), DESIGN_ID);
+    expect(d!.qty).toEqual(emptyQty());
+  });
+});
+
+describe("qtyFromRaw", () => {
+  it("clamps and truncates", () => {
+    expect(qtyFromRaw({ S: -3, M: 2.9, L: 99999, XL: "4" })).toEqual({ S: 0, M: 2, L: 5000, XL: 4 });
+  });
+
+  it("turns junk into zeros", () => {
+    for (const junk of [null, undefined, "x", 7, [], { S: "abc", M: NaN }]) {
+      expect(qtyFromRaw(junk)).toEqual(emptyQty());
+    }
   });
 });

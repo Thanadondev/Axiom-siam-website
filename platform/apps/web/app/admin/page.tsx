@@ -6,6 +6,7 @@ import AppShell from "../../components/AppShell";
 import SlipReview from "../../components/SlipReview";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
+import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
@@ -231,6 +232,44 @@ export default function AdminPage() {
     await loadTab("payouts");
     setBusy(false);
   }
+  /** money received outside the slip flow — recorded with its amount, never a bare status change */
+  async function recordPayment(o: any) {
+    const due = o.balance?.outstanding ?? o.total;
+    const amt = prompt(`ยอดที่รับจริงของ ${o.orderNo} (ค้าง ${baht(due)}):`, String(o.balance?.due || due));
+    if (!amt) return;
+    const method = prompt("ช่องทาง: cash (เงินสด) / transfer (โอนนอกระบบ) / cheque (เช็ค) / other", "transfer");
+    if (!method) return;
+    const ref = prompt("เลขอ้างอิง (ถ้ามี):", "") ?? undefined;
+    const note = prompt("หมายเหตุ — ใครรับเงิน รับเมื่อไหร่ (จำเป็น):", "");
+    if (!note) return;
+    setBusy(true);
+    const r = await call<any>(`/admin/orders/${o.id}/payments`, {
+      method: "POST",
+      body: JSON.stringify({ amount: Number(amt.replace(/[^\d]/g, "")), method: method.trim(), ref: ref || undefined, note }),
+    });
+    if (r) { alert(r.message); await loadTab("orders"); }
+    setBusy(false);
+  }
+  /** money given back — closes the order as "คืนเงินแล้ว" only when all of it is back */
+  async function recordRefund(o: any) {
+    const held = (o.balance?.paid ?? 0) - (o.balance?.refunded ?? 0);
+    const amt = prompt(`ยอดที่คืนให้ลูกค้า ${o.orderNo} (รับไว้ ${baht(held)}):`, String(held));
+    if (!amt) return;
+    const amount = Number(amt.replace(/[^\d]/g, ""));
+    const reason = prompt("เหตุผลที่คืนเงิน (ลูกค้าจะเห็น):", "");
+    if (!reason) return;
+    const method = prompt("ช่องทาง: transfer (โอนคืน) / cash (เงินสด) / other", "transfer");
+    if (!method) return;
+    const ref = prompt("เลขอ้างอิงการโอนคืน (ถ้ามี):", "") ?? undefined;
+    const close = amount === held && confirm(`คืนครบ ${baht(held)} แล้ว — ปิดออเดอร์เป็น "คืนเงินแล้ว" เลยไหม?`);
+    setBusy(true);
+    const r = await call<any>(`/admin/orders/${o.id}/refunds`, {
+      method: "POST",
+      body: JSON.stringify({ amount, reason, method: method.trim(), ref: ref || undefined, close }),
+    });
+    if (r) { alert(r.message); await loadTab("orders"); }
+    setBusy(false);
+  }
   async function setOrderStatus(o: any, status: string) {
     if (!status) return;
     let courier: string | undefined, trackingNo: string | undefined;
@@ -305,7 +344,7 @@ export default function AdminPage() {
   const setP = (k: string, v: any) => setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [k]: v } }));
   const setTier = (i: number, k: "minQty" | "price", v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, tiers: c.pricing.tiers.map((t: any, j: number) => j === i ? { ...t, [k]: v } : t) } }));
-  const setMap = (group: "fabric" | "trim", k: string, v: number) =>
+  const setMap = (group: "fabric" | "trim" | "garment" | "flat", k: string, v: number) =>
     setCfg((c: any) => ({ ...c, pricing: { ...c.pricing, [group]: { ...c.pricing[group], [k]: v } } }));
 
   async function setQuote(id: string, body: { status?: string; adminNote?: string }) {
@@ -360,8 +399,9 @@ export default function AdminPage() {
               {t.id === "reports" && stats?.queue?.openReports > 0 ? ` (${stats.queue.openReports})` : ""}
             </button>
           ))}
+          <Link className="chip" href="/admin/production" style={{ borderColor: "var(--brand)" }}>🏭 บอร์ดผลิต</Link>
         </div>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
+        {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
       </div>
 
       {/* ---------------- DASHBOARD ---------------- */}
@@ -471,14 +511,25 @@ export default function AdminPage() {
             <Table head={["เลขออเดอร์", "ลูกค้า", "สเปก / จำนวน", "ยอดรวม", "สถานะ", "เปลี่ยนสถานะ"]}>
               {orders.map(o => {
                 const qty = o.items.reduce((s: number, i: any) => s + i.qty, 0);
-                const next = NEXT_STATUS[o.status] ?? [];
+                // "ชำระแล้ว" comes from an approved slip or a recorded payment, not from here
+                // "ชำระแล้ว" / "คืนเงินแล้ว" come from recording the money, not from here
+                const next = (NEXT_STATUS[o.status] ?? []).filter((s: string) => s !== "paid" && s !== "refunded");
+                const held = o.balance ? o.balance.paid - o.balance.refunded : 0;
+                const owes = o.balance ? o.balance.outstanding > 0 : o.status === "pending";
                 return (
                   <tr key={o.id}>
                     <td><b>{o.orderNo}</b><div className="dim">{dt(o.createdAt)}</div></td>
                     <td>{o.user.fullName ?? "-"}<div className="dim">{o.user.email}</div></td>
                     <td className="dim">{o.fabricSummary}<div>{qty} ตัว · {o.items.map((i: any) => `${i.size}×${i.qty}`).join(", ")}</div></td>
-                    <td><b>{baht(o.total)}</b></td>
-                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span></td>
+                    <td>
+                      <b>{baht(o.total)}</b>
+                      {o.balance && o.balance.outstanding > 0 && o.status !== "cancelled" && (
+                        <div className="dim" style={{ color: "#b45309" }}>ค้าง {baht(o.balance.outstanding)}</div>
+                      )}
+                      {o.balance?.refunded > 0 && <div className="dim">คืนแล้ว {baht(o.balance.refunded)}</div>}
+                    </td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status]}</span>
+                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>ขั้น {o.productionStep}/{SHIP_STEP} · {STEPS[o.productionStep - 1]?.th}</div>}</td>
                     <td>
                       <div className="rowbtns">
                         {next.length === 0 ? <span className="dim">ปิดแล้ว</span> : (
@@ -486,6 +537,12 @@ export default function AdminPage() {
                             <option value="">เลือก…</option>
                             {next.map(s => <option key={s} value={s}>{ORDER_STATUS_TH[s]}</option>)}
                           </select>
+                        )}
+                        {owes && !["cancelled", "refunded", "completed"].includes(o.status) && (
+                          <button className="minibtn" disabled={busy} onClick={() => recordPayment(o)}>💰 บันทึกรับเงิน</button>
+                        )}
+                        {held > 0 && !["refunded", "cancelled"].includes(o.status) && (
+                          <button className="minibtn danger" disabled={busy} onClick={() => recordRefund(o)}>↩ คืนเงิน</button>
                         )}
                         <Link className="minibtn" href={`/orders/${o.id}`} target="_blank">ดู</Link>
                       </div>
@@ -735,10 +792,11 @@ export default function AdminPage() {
                   <span className="dim">▇ ออเดอร์ผลิต</span>
                   <span className="dim" style={{ opacity: .7 }}>▇ ตลาดลาย</span>
                 </div>
-                <Table head={["เดือน", "ออเดอร์", "ยอดออเดอร์", "ขายลาย", "ยอดขายลาย", "รายได้แพลตฟอร์ม"]}>
+                <Table head={["เดือน", "ออเดอร์", "ยอดออเดอร์ (หักคืนเงิน)", "ขายลาย", "ยอดขายลาย", "รายได้แพลตฟอร์ม"]}>
                   {monthly.filter(m => m.orders || m.templateSales).map(m => (
                     <tr key={m.month}>
-                      <td><b>{m.month}</b></td><td>{m.orders}</td><td>{baht(m.orderGross)}</td>
+                      <td><b>{m.month}</b></td><td>{m.orders}</td>
+                      <td>{baht(m.orderGross)}{m.orderRefunds > 0 && <div className="dim">คืน {baht(m.orderRefunds)}</div>}</td>
                       <td>{m.templateSales}</td><td>{baht(m.templateGross)}</td><td><b style={{ color: "var(--brand)" }}>{baht(m.platformRevenue)}</b></td>
                     </tr>
                   ))}
@@ -896,6 +954,26 @@ export default function AdminPage() {
               </div>
             </div>
 
+            <div style={{ marginTop: 20 }}>
+              <h3 className="flabel" style={{ margin: 0 }}>ราคาตามชนิดสินค้า เทียบกับเสื้อ (บาท/ตัว · ติดลบ = ถูกกว่าเสื้อ)</h3>
+              {[["hoodie", "เสื้อฮู้ด"], ["shorts", "กางเกงกีฬา"], ["piste", "เสื้อวอร์ม (คอกลม)"], ["piste_zip", "เสื้อวอร์มซิป"], ["pants", "กางเกงวอร์ม"]].map(([k, label]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+                  <input className="ainput mini" type="number" style={{ width: 90 }} value={cfg.pricing.garment?.[k] ?? 0} onChange={e => setMap("garment", k, Number(e.target.value))} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <h3 className="flabel" style={{ margin: 0 }}>บิบ สั่งด้วยไฟล์ลูกค้า (ราคาเดียวต่อตัว ไม่มีขั้นจำนวน ไม่บวกผ้า/ขลิบ)</h3>
+              {[["bib_n", "N-bib (ด้านเดียว)"], ["bib_r", "R-bib (2 ด้าน)"]].map(([k, label]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, maxWidth: 360 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+                  <input className="ainput mini" type="number" min={0} style={{ width: 90 }} value={cfg.pricing.flat?.[k] ?? ""} onChange={e => setMap("flat", k, Number(e.target.value))} aria-label={`ราคา ${label} บาทต่อตัว`} />
+                </div>
+              ))}
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginTop: 20 }}>
               <NumField label="เสื้อ 2 ด้าน +฿" value={cfg.pricing.reversible} onChange={v => setP("reversible", v)} />
               <NumField label="ค่าส่ง (บาท)" value={cfg.pricing.shippingFlat} onChange={v => setP("shippingFlat", v)} />
@@ -975,7 +1053,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {saved && <div className="acard" style={{ color: "#16a34a", fontWeight: 600 }}>{saved}</div>}
+          {saved && <div className="acard" style={{ color: "var(--okc, #16a34a)", fontWeight: 600 }}>{saved}</div>}
         </>
       )}
     </AppShell>
@@ -995,7 +1073,7 @@ function Kpi({ label, value, sub, accent, danger }: { label: string; value: stri
   return (
     <div className="kpi">
       <div className="kpilabel">{label}</div>
-      <div className="kpivalue" style={danger ? { color: "#dc2626" } : accent ? { color: "var(--brand)" } : undefined}>{value}</div>
+      <div className="kpivalue" style={danger ? { color: "var(--err, #dc2626)" } : accent ? { color: "var(--brand)" } : undefined}>{value}</div>
       {sub && <div className="kpisub">{sub}</div>}
     </div>
   );

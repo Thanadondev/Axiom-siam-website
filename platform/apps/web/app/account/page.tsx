@@ -7,6 +7,7 @@ import { apiFetch } from "../../lib/api";
 import AppShell from "../../components/AppShell";
 import TwoFactorCard from "../../components/TwoFactorCard";
 import SecurityCard from "../../components/SecurityCard";
+import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 
 const ORDER_STATUS_TH: Record<string, string> = {
   pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
@@ -34,8 +35,21 @@ const emptyAddr = {
   district: "", province: "", postalCode: "", country: "TH", isDefault: false,
 };
 
+type AccTab = "orders" | "designs" | "purchases" | "shop" | "profile" | "address" | "security";
+const ACC_TABS: AccTab[] = ["orders", "designs", "purchases", "shop", "profile", "address", "security"];
+
 export default function AccountPage() {
   const { user, token, loading, setUser } = useAuth(); // logout lives in the header user menu
+  // ?tab=address etc. opens a section directly (checkout links here to add an address)
+  const [tab, setTabState] = useState<AccTab>("orders");
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab") as AccTab | null;
+    if (t && ACC_TABS.includes(t)) setTabState(t);
+  }, []);
+  const setTab = (t: AccTab) => {
+    setTabState(t);
+    try { window.history.replaceState(null, "", t === "orders" ? "/account" : `/account?tab=${t}`); } catch { /* ignore */ }
+  };
 
   const [pf, setPf] = useState({ fullName: "", phone: "", companyName: "", bio: "", locale: "th" });
   const [pmsg, setPmsg] = useState("");
@@ -163,19 +177,84 @@ export default function AccountPage() {
     );
   }
 
-  return (
-    <AppShell>
-      {/* header card */}
-      <div className="acard">
-        <div className="eyebrow">บัญชีของฉัน</div>
-        <h1 className="atitle">{user.fullName || user.email}</h1>
-        <p className="asub">{user.email}</p>
-        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <span className="chip">บทบาท: {user.role}</span>
-          <span className={`chip${user.isVerified ? " on" : ""}`}>{user.isVerified ? "✅ ยืนยันอีเมลแล้ว" : "⏳ ยังไม่ยืนยันอีเมล"}</span>
-        </div>
-      </div>
+  const active = orders.filter(o => !["completed", "cancelled", "refunded"].includes(o.status)).length;
+  const name = user.fullName || user.email.split("@")[0];
+  const TABS: { id: AccTab; label: string; n?: number }[] = [
+    { id: "orders", label: "ออเดอร์", n: orders.length },
+    { id: "designs", label: "ดีไซน์ของฉัน", n: designs.length },
+    { id: "purchases", label: "ลายที่ซื้อ", n: purchases.length },
+    { id: "shop", label: "ร้านของฉัน", n: listings?.items.length },
+    { id: "profile", label: "ข้อมูลส่วนตัว" },
+    { id: "address", label: "ที่อยู่จัดส่ง", n: addrs.length },
+    { id: "security", label: "ความปลอดภัย" },
+  ];
 
+  return (
+    <AppShell wide>
+      <section className="ax-acc-hero">
+        <span className="avatar" aria-hidden="true">{name.trim()[0]?.toUpperCase()}</span>
+        <div className="who">
+          <div className="eyebrow">บัญชีของฉัน</div>
+          <h1 className="ax-display">{name}</h1>
+          <p className="asub" style={{ margin: 0 }}>{user.email}{user.companyName ? ` · ${user.companyName}` : ""}</p>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <span className={`tag ${user.isVerified ? "green" : ""}`}>{user.isVerified ? "ยืนยันอีเมลแล้ว" : "ยังไม่ยืนยันอีเมล"}</span>
+            {user.role !== "customer" && <span className="tag blue">{user.role}</span>}
+          </div>
+        </div>
+        <div className="ax-acc-stats">
+          <button type="button" onClick={() => setTab("orders")}><b>{active}</b><span>ออเดอร์ที่กำลังดำเนินการ</span></button>
+          <button type="button" onClick={() => setTab("designs")}><b>{designs.length}</b><span>ดีไซน์ที่บันทึก</span></button>
+          <button type="button" onClick={() => setTab("purchases")}><b>{purchases.length}</b><span>ลายที่ซื้อ</span></button>
+        </div>
+      </section>
+
+      <div className="ax-acc">
+        <nav className="ax-acc-nav" aria-label="หมวดบัญชี" role="tablist">
+          {TABS.map(t => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
+              {t.label}{t.n ? <span>{t.n}</span> : null}
+            </button>
+          ))}
+          <Link href="/shop" className="abtn solid" style={{ marginTop: 14 }}>ออกแบบเสื้อใหม่</Link>
+          <Link href="/order/upload" className="abtn ghost" style={{ marginTop: 8 }}>สั่งผลิตด้วยไฟล์ .zip</Link>
+        </nav>
+        <div className="ax-acc-body" role="tabpanel">
+{tab === "orders" && (<>
+      {/* production orders */}
+      {(
+        <div className="acard">
+          <div className="eyebrow">ออเดอร์สั่งผลิต</div>
+          {orders.length === 0 && (
+            <div className="ax-acc-empty">
+              <b>ยังไม่มีออเดอร์</b>
+              <span>เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที หรือส่งไฟล์งานที่ออกแบบใน Illustrator มาเป็น .zip</span>
+              <Link href="/shop" className="abtn solid">เริ่มออกแบบเสื้อ</Link>
+              <Link href="/order/upload" className="abtn ghost">สั่งผลิตด้วยไฟล์ .zip</Link>
+            </div>
+          )}
+          {orders.length > 0 && <div className="tablewrap">
+            <table className="atable" style={{ minWidth: 480 }}>
+              <thead><tr><th>เลขออเดอร์</th><th>สเปก</th><th>ยอดรวม</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.id}>
+                    <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString("th-TH")}</div></td>
+                    <td className="dim">{o.fabricSummary}</td>
+                    <td><b>฿{o.total.toLocaleString("th-TH")}</b></td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span>
+                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>ขั้น {o.productionStep}/{SHIP_STEP} · {STEPS[o.productionStep - 1]?.th}</div>}</td>
+                    <td><Link className="minibtn" href={`/orders/${o.id}`}>ดูรายละเอียด</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>}
+        </div>
+      )}
+
+</>)}
+{tab === "designs" && (<>
       {/* my designs */}
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -190,7 +269,7 @@ export default function AccountPage() {
               <div key={d.id} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--soft)" }}>
                 <div style={{ position: "relative", background: "#fff", aspectRatio: "4 / 3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   {/\(\d+\s*ตัว\)/.test(d.name) && (
-                    <span style={{ position: "absolute", top: 6, left: 6, background: "#2563eb", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>🧾 ออเดอร์ทีม</span>
+                    <span style={{ position: "absolute", top: 6, left: 6, background: "var(--brand)", color: "var(--on-brand)", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>🧾 ออเดอร์ทีม</span>
                   )}
                   {d.previewUrl ? <img src={d.previewUrl} alt={d.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: "#94a3b8", fontSize: 12 }}>ไม่มีตัวอย่าง</span>}
                 </div>
@@ -199,9 +278,9 @@ export default function AccountPage() {
                   <div className="asub" style={{ fontSize: 11 }}>{d.mode === "reversible" ? "สองด้าน" : "ธรรมดา"} · {new Date(d.updatedAt).toLocaleDateString("th-TH")}</div>
                   <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                     <Link href={`/design?design=${d.id}`} className="linkbtn">เปิด</Link>
-                    <Link href={`/order/new?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>🧵 สั่งผลิต</Link>
+                    <Link href={`/checkout?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>🧵 สั่งผลิต</Link>
                     <button onClick={() => publishDesign(d)} className="linkbtn" style={{ color: "var(--brand)" }}>ขายในตลาด</button>
-                    <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "#ef4444" }}>ลบ</button>
+                    <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>ลบ</button>
                   </div>
                 </div>
               </div>
@@ -210,36 +289,19 @@ export default function AccountPage() {
         )}
       </div>
 
-      <SecurityCard />
-      <TwoFactorCard />
-
-      {/* production orders */}
-      {orders.length > 0 && (
-        <div className="acard">
-          <div className="eyebrow">ออเดอร์สั่งผลิต</div>
-          <div className="tablewrap">
-            <table className="atable" style={{ minWidth: 480 }}>
-              <thead><tr><th>เลขออเดอร์</th><th>สเปก</th><th>ยอดรวม</th><th>สถานะ</th><th></th></tr></thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id}>
-                    <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString("th-TH")}</div></td>
-                    <td className="dim">{o.fabricSummary}</td>
-                    <td><b>฿{o.total.toLocaleString("th-TH")}</b></td>
-                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span></td>
-                    <td><Link className="minibtn" href={`/orders/${o.id}`}>ดูรายละเอียด</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
+</>)}
+{tab === "purchases" && (<>
       {/* purchased templates (owned assets) */}
-      {purchases.length > 0 && (
+      {(
         <div className="acard">
           <div className="eyebrow">เทมเพลตที่ซื้อไว้</div>
+          {purchases.length === 0 && (
+            <div className="ax-acc-empty">
+              <b>ยังไม่มีลายที่ซื้อ</b>
+              <span>ลายจากดีไซเนอร์ ซื้อครั้งเดียวใช้กับทีมได้ตลอด</span>
+              <Link href="/templates" className="abtn ghost">ไปที่ตลาดลาย</Link>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>
             {purchases.map((p) => (
               <div key={p.purchaseId} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--soft)" }}>
@@ -257,8 +319,10 @@ export default function AccountPage() {
         </div>
       )}
 
+</>)}
+{tab === "shop" && (<>
       {/* my marketplace listings + earnings */}
-      {listings && listings.items.length > 0 && (
+      {listings && listings.items.length > 0 ? (
         <div className="acard">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div className="eyebrow">เทมเพลตที่ฉันขาย</div>
@@ -273,14 +337,23 @@ export default function AccountPage() {
                 <div style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
                   <div className="asub" style={{ fontSize: 11 }}>{baht(t.price)} · {t.status === "published" ? "กำลังขาย" : t.status} · ขาย {t.salesCount}</div>
-                  <button onClick={() => unpublish(t.id)} className="linkbtn" style={{ color: "#ef4444", marginTop: 6 }}>เอาออก</button>
+                  <button onClick={() => unpublish(t.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)", marginTop: 6 }}>เอาออก</button>
                 </div>
               </div>
             ))}
           </div>
         </div>
+      ) : (
+        <div className="acard">
+          <div className="eyebrow">เทมเพลตที่ฉันขาย</div>
+          <div className="ax-acc-empty">
+            <b>ยังไม่ได้วางขายลาย</b>
+            <span>เปิดแท็บ "ดีไซน์ของฉัน" แล้วกด "ขายในตลาด" ที่ดีไซน์ที่ต้องการ</span>
+          </div>
+        </div>
       )}
-
+</>)}
+{tab === "profile" && (<>
       {/* profile edit */}
       <form className="acard" onSubmit={saveProfile}>
         <div className="eyebrow">ข้อมูลส่วนตัว</div>
@@ -309,6 +382,8 @@ export default function AccountPage() {
         <button className="abtn solid" style={{ marginTop: 18 }} disabled={psaving}>{psaving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}</button>
       </form>
 
+</>)}
+{tab === "address" && (<>
       {/* addresses */}
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -333,7 +408,7 @@ export default function AccountPage() {
               <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
                 {!a.isDefault && <button onClick={() => makeDefault(a.id)} className="linkbtn">ตั้งเป็นค่าเริ่มต้น</button>}
                 <button onClick={() => startEdit(a)} className="linkbtn">แก้ไข</button>
-                <button onClick={() => delAddr(a.id)} className="linkbtn" style={{ color: "#ef4444" }}>ลบ</button>
+                <button onClick={() => delAddr(a.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>ลบ</button>
               </div>
             </div>
           ))}
@@ -389,6 +464,13 @@ export default function AccountPage() {
         )}
       </div>
 
+</>)}
+          {tab === "security" && (<>
+            <SecurityCard />
+            <TwoFactorCard />
+          </>)}
+        </div>
+      </div>
     </AppShell>
   );
 }

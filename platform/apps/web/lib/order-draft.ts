@@ -85,8 +85,21 @@ export function parseOrderDraft(raw: string | null | undefined, designId: string
     trim,
     reversible: !!d.reversible,
     roster,
-    qty: qtyFromRoster(roster),
+    // a roster decides the sizes; without one, take the per-size counts the
+    // /shop customizer sends (shirts without printed names)
+    qty: roster.length ? qtyFromRoster(roster) : qtyFromRaw(d.qty),
   };
+}
+
+/** per-size counts from an untrusted blob: whole numbers 0–5000, junk → 0 */
+export function qtyFromRaw(raw: unknown): Record<Size, number> {
+  const q = emptyQty();
+  if (!raw || typeof raw !== "object") return q;
+  for (const s of SIZES) {
+    const n = Math.trunc(Number((raw as Record<string, unknown>)[s]));
+    q[s] = Number.isFinite(n) ? Math.max(0, Math.min(5000, n)) : 0;
+  }
+  return q;
 }
 
 /** the `lines` array the POST /orders endpoint expects */

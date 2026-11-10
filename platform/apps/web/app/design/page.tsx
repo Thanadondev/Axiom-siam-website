@@ -15,6 +15,13 @@ function DesignerBridge() {
   const sp = useSearchParams();
   const designId = sp.get("design");
   const templateId = sp.get("template");
+  // Colourway chosen on the template page. Kept as primitives, not an object:
+  // an object literal is a new reference every render, so putting it in the
+  // effect deps below would tear down and re-add the message listener forever.
+  const vBody = sp.get("body");
+  const vTrim = sp.get("trim");
+  const vSize = sp.get("size");
+  const vTrimLevel = sp.get("trimLevel");
 
   useEffect(() => {
     function reply(msg: any) {
@@ -39,6 +46,17 @@ function DesignerBridge() {
           } catch {
             /* ignore — not owned or not found */
           }
+        }
+        // Apply the colourway the buyer picked in the marketplace. Sent after
+        // axiom-open so it wins over whatever the saved doc had.
+        if (vBody || vTrim || vSize || vTrimLevel) {
+          setTimeout(() => reply({
+            type: "axiom-set-variant",
+            bodyColor: vBody || undefined,
+            trimColor: vTrim || undefined,
+            size: vSize || undefined,
+            trim: vTrimLevel || undefined,
+          }), 250);
         }
       }
       if (m.type === "axiom-save") {
@@ -90,7 +108,7 @@ function DesignerBridge() {
                 roster: Array.isArray(p.roster) ? p.roster : [],
               }));
             } catch { /* private mode / quota — the page still works, just unprefilled */ }
-            router.push(`/order/new?design=${res.id}`);
+            router.push(`/checkout?design=${res.id}`);
           }
         } catch (e: any) {
           reply({ type: "axiom-save-order-result", ok: false, error: e.message });
@@ -128,10 +146,10 @@ function DesignerBridge() {
     // proactively (re)send auth whenever it changes, in case the iframe loaded first
     reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
     return () => window.removeEventListener("message", onMessage);
-  }, [user, token, designId, templateId, router]);
+  }, [user, token, designId, templateId, router, vBody, vTrim, vSize, vTrimLevel]);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#eef1f7" }}>
+    <div style={{ position: "fixed", inset: 0, background: "#0d0e10" }}>
       <iframe
         ref={iframeRef}
         src="/designer/index.html"
@@ -141,7 +159,7 @@ function DesignerBridge() {
       <Link
         href="/"
         title="กลับหน้าหลัก"
-        style={{ position: "fixed", left: 16, bottom: 16, zIndex: 50, display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,.9)", color: "#2563eb", textDecoration: "none", fontSize: 12.5, fontWeight: 700, padding: "9px 16px 9px 12px", borderRadius: 30, border: "1px solid rgba(37,99,235,.22)", boxShadow: "0 6px 22px rgba(15,23,42,.14)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+        style={{ position: "fixed", left: 16, bottom: 16, zIndex: 50, display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(20,22,25,.92)", color: "#f2f0eb", textDecoration: "none", fontSize: 12.5, fontWeight: 700, padding: "9px 16px 9px 12px", borderRadius: 30, border: "1px solid #3a3d42", boxShadow: "0 6px 22px rgba(0,0,0,.4)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
       >
         <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>←</span> Axiom Siam
       </Link>
@@ -156,7 +174,7 @@ function DesignerBridge() {
 
 export default function DesignPage() {
   return (
-    <Suspense fallback={<div style={{ position: "fixed", inset: 0, background: "#eef1f7" }} />}>
+    <Suspense fallback={<div style={{ position: "fixed", inset: 0, background: "#0d0e10" }} />}>
       <DesignerBridge />
     </Suspense>
   );

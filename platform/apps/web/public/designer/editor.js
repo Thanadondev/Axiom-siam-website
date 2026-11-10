@@ -34,9 +34,9 @@ $("#right").innerHTML = `
   <div class="panel">
     <div class="phead">🧾 New Order · รีออเดอร์ทีม</div>
     <div class="pbody">
-      <button class="mini" id="wizOpen" style="width:100%;box-sizing:border-box;margin-bottom:7px;background:#2563eb;color:#fff;border-color:transparent;height:40px;font-weight:700;font-size:13px">🧾 สร้างออเดอร์ทีม (ง่ายๆ)</button>
+      <button class="mini" id="wizOpen" style="width:100%;box-sizing:border-box;margin-bottom:7px;background:#f26522;color:#0d0e10;border-color:transparent;height:40px;font-weight:700;font-size:13px">🧾 สร้างออเดอร์ทีม (ง่ายๆ)</button>
       <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">ทำทีละขั้น: เลือกแบบ → ใส่รายชื่อ → วางชื่อ-เบอร์อัตโนมัติ → สร้างไฟล์/บันทึก</div>
-      <div id="advToggle" style="font-size:11px;color:#2563eb;cursor:pointer;margin-bottom:8px;user-select:none">⚙ เครื่องมือขั้นสูง (ทำเอง) ▾</div>
+      <div id="advToggle" style="font-size:11px;color:#ff9a66;cursor:pointer;margin-bottom:8px;user-select:none">⚙ เครื่องมือขั้นสูง (ทำเอง) ▾</div>
       <div id="rosterAdv" style="display:none">
       <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:7px">1) คลิกข้อความบนเสื้อ แล้วแท็กเป็นช่อง “ชื่อ” หรือ “เบอร์” — ทำได้ทั้งหน้าและหลัง</div>
       <div class="btnrow" style="margin-bottom:5px">
@@ -64,8 +64,8 @@ $("#right").innerHTML = `
         <button class="mini" id="rosterPreview" title="ดูตัวอย่างชื่อคนแรกบนเสื้อ">👁 ดูตัวอย่าง</button>
         <button class="mini" id="rosterReset" title="คืนค่าเทมเพลตเดิม">↺ คืนค่า</button>
       </div>
-      <button class="mini" id="rosterGen" style="width:100%;box-sizing:border-box;margin-bottom:6px;background:#2563eb;color:#fff;border-color:transparent;height:34px;font-weight:700">⚙ สร้างทั้งทีม → ZIP</button>
-      <button class="mini" id="rosterOrder" style="width:100%;box-sizing:border-box;margin-bottom:6px;height:36px;background:#16a34a;color:#fff;border-color:transparent;font-weight:700">🧵 สั่งผลิตเลย →</button>
+      <button class="mini" id="rosterGen" style="width:100%;box-sizing:border-box;margin-bottom:6px;height:34px;font-weight:700">⚙ สร้างทั้งทีม → ZIP</button>
+      <button class="mini" id="rosterOrder" style="width:100%;box-sizing:border-box;margin-bottom:6px;height:36px;background:#f26522;color:#0d0e10;border-color:transparent;font-weight:700">🧵 สั่งผลิตเลย →</button>
       <button class="mini" id="rosterSave" style="width:100%;box-sizing:border-box;height:32px">💾 บันทึกออเดอร์เข้าบัญชี</button>
       <div id="rosterProg" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
       </div>
@@ -204,8 +204,15 @@ $("#right").innerHTML = `
 
 /* ---------- canvas init ---------- */
 function initCanvas() {
+  // selection handles in the Axiom accent, readable on the dark stage
+  fabric.Object.prototype.set({
+    borderColor: "#f26522", cornerColor: "#f26522", cornerStrokeColor: "#0d0e10",
+    transparentCorners: false, cornerStyle: "circle", cornerSize: 11, borderScaleFactor: 1.5,
+  });
   canvas = new fabric.Canvas("c", {
     backgroundColor: "transparent",
+    selectionColor: "rgba(242,101,34,0.08)",
+    selectionBorderColor: "#f26522",
     preserveObjectStacking: true,
     selection: true,
     fireRightClick: false,
@@ -540,7 +547,8 @@ function clearToasts(kind) {
   if (!box) return;
   [...box.children].filter(c => !kind || c._kind === kind).forEach(dismissToast);
 }
-function userObjects() { return canvas.getObjects().filter(o => !o._bg && !o._temp); }
+// _wm = preview watermark: never part of the document, never exported
+function userObjects() { return canvas.getObjects().filter(o => !o._bg && !o._temp && !o._wm); }
 function hint(msg) { $("#hint").textContent = msg || ""; }
 
 /* ---------- history (undo/redo) ---------- */
@@ -734,8 +742,8 @@ function penD(pts, close) {
 function clearPenTemp() { penTemp.forEach(o => canvas.remove(o)); penTemp = []; }
 function marker(x, y, anchor) {
   const o = anchor
-    ? new fabric.Circle({ left: x, top: y, radius: 5, originX: "center", originY: "center", fill: "#fff", stroke: "#2563eb", strokeWidth: 2 })
-    : new fabric.Rect({ left: x, top: y, width: 8, height: 8, originX: "center", originY: "center", fill: "#93c5fd", stroke: "#2563eb", strokeWidth: 1 });
+    ? new fabric.Circle({ left: x, top: y, radius: 5, originX: "center", originY: "center", fill: "#fff", stroke: "#f26522", strokeWidth: 2 })
+    : new fabric.Rect({ left: x, top: y, width: 8, height: 8, originX: "center", originY: "center", fill: "#ffc3a3", stroke: "#f26522", strokeWidth: 1 });
   o.set({ selectable: false, evented: false, excludeFromExport: true }); o._temp = true; return o;
 }
 function renderPen(mouse) {
@@ -744,7 +752,7 @@ function renderPen(mouse) {
   if (mouse && !penDragging && penPts.length >= 1) pts = penPts.concat([{ x: mouse.x, y: mouse.y, hIn: null, hOut: null }]);
   const d = penD(pts, false);
   if (d) {
-    const prev = new fabric.Path(d, { fill: "", stroke: "#2563eb", strokeWidth: 1.5, strokeDashArray: [5, 4], selectable: false, evented: false, excludeFromExport: true, strokeUniform: true });
+    const prev = new fabric.Path(d, { fill: "", stroke: "#f26522", strokeWidth: 1.5, strokeDashArray: [5, 4], selectable: false, evented: false, excludeFromExport: true, strokeUniform: true });
     prev._temp = true; penTemp.push(prev); canvas.add(prev);
   }
   penPts.forEach(pt => {
@@ -803,8 +811,8 @@ function startNodeEdit() {
   editablePoints(o).forEach(pt => {
     const c = pToCanvas(o, o.path[pt.ci][pt.idx], o.path[pt.ci][pt.idx + 1]);
     const h = pt.anchor
-      ? new fabric.Circle({ radius: 6, fill: "#fff", stroke: "#2563eb", strokeWidth: 2 })
-      : new fabric.Rect({ width: 9, height: 9, fill: "#93c5fd", stroke: "#2563eb", strokeWidth: 1 });
+      ? new fabric.Circle({ radius: 6, fill: "#fff", stroke: "#f26522", strokeWidth: 2 })
+      : new fabric.Rect({ width: 9, height: 9, fill: "#ffc3a3", stroke: "#f26522", strokeWidth: 1 });
     h.set({ left: c.x, top: c.y, originX: "center", originY: "center", hasControls: false, hasBorders: false, excludeFromExport: true });
     h._temp = true; h._target = o; h._pt = pt;
     h.on("moving", () => { const loc = pToLocal(o, h.left, h.top); o.path[pt.ci][pt.idx] = loc.x; o.path[pt.ci][pt.idx + 1] = loc.y; o.dirty = true; o._setPositionDimensions ? o._setPositionDimensions({}) : null; canvas.requestRenderAll(); });
@@ -1109,8 +1117,98 @@ window.addEventListener("message", ev => {
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }
-  else if (m.type === "axiom-open" && m.doc) openDoc(m.doc);
+  else if (m.type === "axiom-open" && m.doc) { openDoc(m.doc); if (m.watermark) setTimeout(applyWatermark, 120); }
+  /* marketplace preview: repaint the same garment in a different colourway/size.
+     Reuses the editor's own render path, so what a buyer sees is exactly what
+     the editor would draw — no second renderer to drift out of sync. */
+  else if (m.type === "axiom-set-variant") {
+    try {
+      if (m.bodyColor) setBodyColor(m.bodyColor);
+      if (m.trimColor) setTrimColor(m.trimColor);
+      let geomChanged = false;
+      if (m.size && m.size !== TPL_SIZE) {
+        TPL_SIZE = m.size;
+        const zz = document.getElementById("sizeSel"); if (zz) zz.value = TPL_SIZE;
+        geomChanged = true;
+      }
+      if (m.trim !== undefined && m.trim !== curTrim) {
+        curTrim = m.trim; curLayout = "vertical";
+        const tf = document.getElementById("trimSel"); if (tf) tf.value = curTrim;
+        geomChanged = true;
+      }
+      // colours repaint inside setBodyColor/setTrimColor; size/trim change the
+      // pattern outline, so the whole layout has to be rebuilt
+      if (geomChanged) { rebuildLayout(); if (typeof updateDim === "function") updateDim(); }
+      // every repaint clears the canvas — restamp, or the watermark vanishes
+      // the moment a buyer clicks a swatch
+      drawWatermark();
+      reply({ type: "axiom-variant-ready", bodyColor, trimColor, size: TPL_SIZE, trim: curTrim });
+    } catch (e) {
+      reply({ type: "axiom-variant-ready", error: String(e && e.message || e) });
+    }
+  }
 });
+
+/** post back to the embedding page (no-op when opened standalone) */
+function reply(msg) { if (inFrame()) window.parent.postMessage(msg, "*"); }
+
+/* ---------- preview watermark ----------
+   Stamped over an unpurchased template. Honest about what this is: it stops a
+   right-click save, not a determined developer — the vector state is already
+   in the browser by the time this draws. It is a speed bump, not a lock. */
+let watermarkOn = false;
+function applyWatermark() {
+  watermarkOn = true;
+  drawWatermark();
+}
+function drawWatermark() {
+  if (!watermarkOn || !canvas) return;
+  canvas.getObjects().filter(o => o._wm).forEach(o => canvas.remove(o));
+
+  const W = ART.w, H = ART.h;
+  const marks = [];
+  // diagonal tiles so cropping one out still leaves others
+  for (let y = -H * 0.2; y < H * 1.2; y += 130) {
+    for (let x = -W * 0.2; x < W * 1.2; x += 260) {
+      const t = new fabric.Text("AXIOM · ตัวอย่าง", {
+        left: x, top: y, angle: -30,
+        fontSize: 20, fontFamily: "Sora, sans-serif", fontWeight: "700",
+        fill: "rgba(120,140,180,0.30)",
+        selectable: false, evented: false, excludeFromExport: true,
+      });
+      t._wm = true;
+      marks.push(t);
+    }
+  }
+  marks.forEach(t => canvas.add(t));
+  canvas.requestRenderAll();
+}
+
+/* ---------- preview mode ----------
+   ?preview=1 strips the editor chrome and locks the canvas: the marketplace
+   embeds this to show a live, colour-swappable garment without shipping a
+   second rendering engine. */
+function isPreview() { return /[?&]preview=1\b/.test(location.search); }
+if (isPreview()) {
+  document.documentElement.classList.add("previewmode");
+  // a buyer must not be able to nudge the artwork out of place.
+  // `canvas` is a top-level `let`, so it is NOT on window — reference it directly.
+  const lockCanvas = () => {
+    if (!canvas) return;
+    canvas.selection = false;
+    canvas.skipTargetFind = true;
+    canvas.defaultCursor = "default";
+    canvas.forEachObject(o => { o.selectable = false; o.evented = false; });
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+  };
+  // openDoc() adds objects, so re-lock after every variant/doc change
+  window.addEventListener("message", ev => {
+    const t = (ev.data || {}).type;
+    if (t === "axiom-open" || t === "axiom-set-variant") setTimeout(lockCanvas, 60);
+  });
+  setTimeout(lockCanvas, 300);
+}
 $("#btnOpen").onclick = () => $("#fileOpen").click();
 { const bi = document.getElementById("btnImport"); if (bi) bi.onclick = () => { importMode = (document.getElementById("importTarget") || {}).value || "front"; const f = document.getElementById("fileImg"); if (f) f.click(); }; }
 $("#fileOpen").addEventListener("change", ev => {
@@ -1950,13 +2048,13 @@ function renderWizTable(body) {
 }
 function renderWizard() {
   const stepsEl = document.getElementById("wizSteps");
-  if (stepsEl) stepsEl.innerHTML = WIZ_STEPS.map((s, i) => `<div style="flex:1;text-align:center;font-size:10.5px;padding:7px 2px;border-radius:6px;background:${i + 1 === wizStep ? "#2563eb" : "var(--panel2)"};color:${i + 1 === wizStep ? "#fff" : "var(--muted)"};font-weight:${i + 1 === wizStep ? "700" : "400"}">${i + 1}. ${s}</div>`).join("");
+  if (stepsEl) stepsEl.innerHTML = WIZ_STEPS.map((s, i) => `<div style="flex:1;text-align:center;font-size:10.5px;padding:7px 2px;border-radius:6px;background:${i + 1 === wizStep ? "#f26522" : "var(--panel2)"};color:${i + 1 === wizStep ? "#0d0e10" : "var(--muted)"};font-weight:${i + 1 === wizStep ? "700" : "400"}">${i + 1}. ${s}</div>`).join("");
   const body = document.getElementById("wizBody"); if (!body) return;
   if (wizStep === 1) {
     body.innerHTML = `<label style="font-size:12px;color:var(--muted)">ชื่อออเดอร์/ทีม</label>
       <input type="text" id="wizName" value="${wizEsc(wizName)}" placeholder="เช่น SAKURAGI ทีม A" style="width:100%;box-sizing:border-box;margin:6px 0 14px">
       <label style="font-size:12px;color:var(--muted)">รูปแบบชื่อ-เบอร์บนเสื้อ</label>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${WIZ_LAYOUTS.map(l => `<label style="display:flex;gap:9px;align-items:flex-start;padding:10px;border:1.5px solid ${wizLayout === l.id ? "#2563eb" : "var(--line2)"};border-radius:9px;cursor:pointer"><input type="radio" name="wizLo" value="${l.id}" ${wizLayout === l.id ? "checked" : ""} style="margin-top:2px"><span><b style="font-size:13px">${l.label}</b><br><span style="font-size:11.5px;color:var(--muted)">${l.desc}</span></span></label>`).join("")}</div>`;
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${WIZ_LAYOUTS.map(l => `<label style="display:flex;gap:9px;align-items:flex-start;padding:10px;border:1.5px solid ${wizLayout === l.id ? "#f26522" : "var(--line2)"};border-radius:9px;cursor:pointer"><input type="radio" name="wizLo" value="${l.id}" ${wizLayout === l.id ? "checked" : ""} style="margin-top:2px"><span><b style="font-size:13px">${l.label}</b><br><span style="font-size:11.5px;color:var(--muted)">${l.desc}</span></span></label>`).join("")}</div>`;
     const nm = document.getElementById("wizName"); if (nm) nm.oninput = () => { wizName = nm.value; };
     body.querySelectorAll('input[name="wizLo"]').forEach(r => r.onchange = () => { wizLayout = r.value; renderWizard(); });
   } else if (wizStep === 2) { renderWizTable(body); }
@@ -1972,8 +2070,8 @@ function renderWizard() {
     const n = wizRows.filter(r => r.name || r.number).length;
     body.innerHTML = `<p style="font-size:14px;margin-bottom:6px"><b>${wizEsc(wizName) || "ออเดอร์ทีม"}</b> — ${n} คน</p>
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px">พร้อมสร้างไฟล์ต่อคน (หน้า+หลัง) หรือบันทึกออเดอร์เข้าบัญชี</p>
-      <button class="mini" id="wizGen" style="width:100%;box-sizing:border-box;height:40px;margin-bottom:8px;background:#2563eb;color:#fff;border-color:transparent;font-weight:700">⚙ สร้างทั้งทีม → ดาวน์โหลด ZIP</button>
-      <button class="mini" id="wizOrder" style="width:100%;box-sizing:border-box;height:44px;margin-bottom:8px;background:#16a34a;color:#fff;border-color:transparent;font-weight:700;font-size:13.5px">🧵 สั่งผลิตเลย → ดูราคา</button>
+      <button class="mini" id="wizGen" style="width:100%;box-sizing:border-box;height:40px;margin-bottom:8px;font-weight:700">⚙ สร้างทั้งทีม → ดาวน์โหลด ZIP</button>
+      <button class="mini" id="wizOrder" style="width:100%;box-sizing:border-box;height:44px;margin-bottom:8px;background:#f26522;color:#0d0e10;border-color:transparent;font-weight:700;font-size:13.5px">🧵 สั่งผลิตเลย → ดูราคา</button>
       <button class="mini" id="wizSave" style="width:100%;box-sizing:border-box;height:34px">💾 บันทึกไว้ก่อน (ยังไม่สั่ง)</button>
       <div id="wizProg" style="font-size:11.5px;color:var(--muted);margin-top:10px"></div>`;
     const g = document.getElementById("wizGen"); if (g) g.onclick = async () => { const pr = document.getElementById("wizProg"); if (pr) pr.textContent = "กำลังสร้าง..."; await generateBatch(); const rp = document.getElementById("rosterProg"); if (pr) pr.textContent = rp ? rp.textContent : "เสร็จ ✓"; };

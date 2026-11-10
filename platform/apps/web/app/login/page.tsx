@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import AppShell from "../../components/AppShell";
 import AuthAlternatives from "../../components/AuthAlternatives";
+import { nextPath } from "../../lib/next-path";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -22,7 +23,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(form.email, form.password, needs2fa ? totpCode : undefined);
-      router.push("/account");
+      router.push(nextPath());
     } catch (e: any) {
       // the API answers 401 + { twoFactorRequired: true } when 2FA is enrolled
       if (e.body?.twoFactorRequired) {
@@ -37,7 +38,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AppShell narrow>
+    <AppShell auth>
       <form className="acard" onSubmit={onSubmit}>
         <div className="eyebrow">AXIOM SIAM</div>
         <h1 className="atitle">เข้าสู่ระบบ</h1>

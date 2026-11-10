@@ -58,6 +58,13 @@ export class StorageService {
     return actual;
   }
 
+  /** where a slip named "<order>/<file>" (from a verified link) lives on disk, or null */
+  slipPath(file: string): string | null {
+    const base = resolve(this.root, "slips");
+    const p = resolve(base, file);
+    return p.startsWith(base + "/") || p.startsWith(base + "\\") ? p : null;
+  }
+
   async saveSlip(orderId: string, buf: Buffer, declaredMime?: string): Promise<string> {
     const mime = StorageService.validate(buf, declaredMime);
     const ext = StorageService.ALLOWED[mime];

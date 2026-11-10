@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
 import { apiFetch } from "../lib/api";
+import { nextPath } from "../lib/next-path";
 
 declare global {
   interface Window { google?: any }
@@ -35,7 +36,7 @@ export default function AuthAlternatives() {
         method: "POST", body: JSON.stringify({ credential: resp.credential }),
       });
       setToken(r.accessToken); setUser(r.user);
-      router.push("/account");
+      router.push(nextPath());
     } catch (e: any) { setErr(e.message); }
   }, [router, setToken, setUser]);
 

@@ -41,7 +41,7 @@ function VerifyInner() {
 
 export default function VerifyPage() {
   return (
-    <AppShell narrow>
+    <AppShell auth>
       <Suspense fallback={<div className="acard"><p className="asub">กำลังโหลด...</p></div>}>
         <VerifyInner />
       </Suspense>

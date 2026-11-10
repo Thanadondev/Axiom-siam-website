@@ -1,14 +1,32 @@
-import { Body, Controller, Get, Param, Post, UseGuards, BadRequestException } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards, BadRequestException, NotFoundException } from "@nestjs/common";
+import type { Response } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Public, CurrentUser, type AuthUser } from "../auth/decorators";
 import { RateLimit } from "../common/rate-limit.guard";
 import { PaymentsService } from "./payments.service";
 import { StorageService } from "./storage.service";
 import { SubmitSlipSchema } from "./payments.dto";
+import { verifySlipLink } from "./slip-link";
 
 @Controller("payments")
 export class PaymentsController {
-  constructor(private readonly payments: PaymentsService) {}
+  constructor(private readonly payments: PaymentsService, private readonly storage: StorageService) {}
+
+  /**
+   * A slip image, by a signed link the API handed to its owner or an admin
+   * (slip-link.ts). Slips are not served as public files.
+   */
+  @Public()
+  @Get("slip")
+  slip(@Query("f") f: string, @Query("exp") exp: string, @Query("sig") sig: string, @Res() res: Response) {
+    const file = verifySlipLink(f, exp, sig);
+    const path = file ? this.storage.slipPath(file) : null;
+    if (!path) throw new NotFoundException("ลิงก์สลิปหมดอายุหรือไม่ถูกต้อง");
+    res.setHeader("Cache-Control", "private, max-age=600");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.sendFile(path, err => { if (err && !res.headersSent) res.status(404).end(); });
+  }
 
   /** the order page hides the pay panel when no account is configured */
   @Public()

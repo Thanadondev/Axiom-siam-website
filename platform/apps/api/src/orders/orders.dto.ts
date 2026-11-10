@@ -1,10 +1,14 @@
 import { z } from "zod";
+import { cleanTaxId, validThaiTaxId } from "./tax-invoice";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 
 export const SIZES = ["S", "M", "L", "XL"] as const;
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
+export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants", "bib_n", "bib_r"] as const;
+/** what can be ordered with the customer's own print files (pricing.ts) */
+export const FILE_PRODUCT_IDS = ["bib_n", "bib_r"] as const;
 
 /** one row of the size breakdown, e.g. { size: "L", qty: 12 } */
 export const SizeLineSchema = z.object({
@@ -25,6 +29,8 @@ export const PriceQuerySchema = z.object({
   fabric: z.enum(FABRICS),
   trim: z.enum(TRIMS),
   reversible: z.preprocess(v => v === "true" || v === true, z.boolean()).optional(),
+  // a preview only: an order's garment comes from its design
+  garment: z.preprocess(emptyToUndef, z.enum(GARMENT_IDS).optional()),
 });
 export type PriceQueryDto = z.infer<typeof PriceQuerySchema>;
 
@@ -32,15 +38,35 @@ export const CreateOrderSchema = z.object({
   designId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
   designSnapshot: z.any().optional(), // frozen design state at order time
   previewUrl: z.preprocess(emptyToUndef, z.string().optional()),
-  fabric: z.enum(FABRICS),
-  trim: z.enum(TRIMS),
+  // required for a design made on the web (below); a bib from the customer's own files has neither
+  fabric: z.enum(FABRICS).optional(),
+  trim: z.enum(TRIMS).optional(),
   reversible: z.boolean().optional(),
   lines: z.array(SizeLineSchema).min(1, "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์"),
   roster: z.array(RosterRowSchema).max(500).optional(),
   shippingAddressId: z.string().uuid({ message: "กรุณาเลือกที่อยู่จัดส่ง" }),
   note: z.preprocess(emptyToUndef, z.string().max(1000).optional()),
+  /** ordering with the customer's own print files: the uploaded zip (POST /order-files) and what it's for */
+  fileId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
+  product: z.preprocess(emptyToUndef, z.enum(FILE_PRODUCT_IDS).optional()),
+}).superRefine((d, ctx) => {
+  if (!!d.fileId !== !!d.product) ctx.addIssue({ code: "custom", path: ["fileId"], message: "สั่งผลิตด้วยไฟล์ ต้องแนบไฟล์ .zip และเลือกสินค้า" });
+  if (d.fileId && d.designId) ctx.addIssue({ code: "custom", path: ["fileId"], message: "เลือกได้อย่างเดียว: ดีไซน์บนเว็บ หรือไฟล์ของคุณเอง" });
+  if (!d.fileId) {
+    if (!d.fabric) ctx.addIssue({ code: "custom", path: ["fabric"], message: "กรุณาเลือกผ้า" });
+    if (!d.trim) ctx.addIssue({ code: "custom", path: ["trim"], message: "กรุณาเลือกขลิบ" });
+  }
 });
 export type CreateOrderDto = z.infer<typeof CreateOrderSchema>;
+
+/** the customer's details for a full tax invoice (ใบกำกับภาษีเต็มรูป) */
+export const TaxInvoiceSchema = z.object({
+  name: z.string().trim().min(2, "กรุณากรอกชื่อบริษัท / ชื่อผู้ซื้อ").max(160),
+  taxId: z.string().trim().transform(cleanTaxId).refine(validThaiTaxId, "เลขประจำตัวผู้เสียภาษีไม่ถูกต้อง (13 หลัก)"),
+  branch: z.string().trim().regex(/^\d{5}$/, "เลขสาขา 5 หลัก (สำนักงานใหญ่ = 00000)").default("00000"),
+  address: z.string().trim().min(10, "กรุณากรอกที่อยู่ตามทะเบียน").max(400),
+});
+export type TaxInvoiceDto = z.infer<typeof TaxInvoiceSchema>;
 
 export const ORDER_STATUSES = [
   "pending", "paid", "approved", "in_production", "shipped", "delivered", "completed", "cancelled", "refunded",
@@ -54,6 +80,21 @@ export const UpdateOrderStatusSchema = z.object({
   trackingNo: z.preprocess(emptyToUndef, z.string().max(80).optional()),
 });
 export type UpdateOrderStatusDto = z.infer<typeof UpdateOrderStatusSchema>;
+
+/** moving an order to a step on the production line (1–9; 10 comes with shipping) */
+export const ProductionStepSchema = z.object({
+  step: z.coerce.number().int().min(1).max(9),
+  note: z.preprocess(emptyToUndef, z.string().max(500).optional()),
+});
+export type ProductionStepDto = z.infer<typeof ProductionStepSchema>;
+
+/** linking the order to the same job in the factory ERP (blank unlinks) */
+export const ErpLinkSchema = z.object({
+  erpOrderNo: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().trim().max(60).regex(/^[\w\-\/. ]+$/, "เลขออเดอร์ ERP มีอักขระที่ใช้ไม่ได้").nullish()),
+  /** link even though the job doesn't look like this order (the admin has checked) */
+  force: z.boolean().optional(),
+});
+export type ErpLinkDto = z.infer<typeof ErpLinkSchema>;
 
 export const OrderListQuerySchema = z.object({
   status: z.preprocess(emptyToUndef, z.enum(ORDER_STATUSES).optional()),

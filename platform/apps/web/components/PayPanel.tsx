@@ -12,7 +12,11 @@ import { apiFetch } from "../lib/api";
  */
 
 type Methods = {
+  /** what to transfer now: the deposit, the balance or the whole order */
   amount: number;
+  kind?: "deposit" | "full" | "balance" | null;
+  total?: number;
+  paid?: number;
   orderNo: string;
   qrPayload: string | null;
   bank: { bankName: string; accountNo: string; accountName: string; note: string };
@@ -21,12 +25,13 @@ type State = {
   orderStatus: string;
   paymentStatus: "none" | "pending" | "submitted" | "paid" | "rejected" | "failed" | "refunded";
   rejectReason: string | null;
+  /** a short-lived signed link (slips are not public files) */
   slipUrl: string | null;
   slipUploadedAt: string | null;
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
-const FILES = API.replace(/\/api\/v1\/?$/, ""); // slips are served outside the api prefix
+const FILES = API.replace(/\/api\/v1\/?$/, ""); // slip links come back as /api/v1/payments/slip?…
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const MAX_MB = 8;
 
@@ -72,7 +77,8 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
       const s = await apiFetch<State>(`/payments/orders/${orderId}/state`, { token }).catch(() => null);
       if (s) {
         setSt(s);
-        if (s.orderStatus !== "pending") { clearInterval(t); onPaid(); }
+        // approved: the deposit, the balance or the whole order is in
+        if (s.paymentStatus === "paid") { clearInterval(t); onPaid(); }
       }
     }, 8000);
     return () => clearInterval(t);
@@ -119,7 +125,7 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
     finally { setBusy(false); }
   }
 
-  if (err && !m) return <div className="acard"><p style={{ color: "#dc2626", fontSize: 13 }}>⚠ {err}</p></div>;
+  if (err && !m) return <div className="acard"><p style={{ color: "var(--err, #dc2626)", fontSize: 13 }}>⚠ {err}</p></div>;
   if (!m) return <div className="acard"><p className="asub">กำลังโหลดข้อมูลการชำระเงิน…</p></div>;
 
   // ---- slip is with the admin ----
@@ -145,11 +151,17 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
   return (
     <div className="acard">
       <div className="eyebrow">ชำระเงิน</div>
-      <h2 className="ah2" style={{ marginTop: 4, marginBottom: 4 }}>โอนเงิน {baht(m.amount)}</h2>
-      <p className="asub">โอนตามยอดนี้พอดี แล้วแนบสลิปด้านล่าง</p>
+      <h2 className="ah2" style={{ marginTop: 4, marginBottom: 4 }}>
+        {m.kind === "deposit" ? "โอนมัดจำ" : m.kind === "balance" ? "โอนส่วนที่เหลือ" : "โอนเงิน"} {baht(m.amount)}
+      </h2>
+      <p className="asub">
+        โอนตามยอดนี้พอดี แล้วแนบสลิปด้านล่าง
+        {m.kind === "deposit" && m.total ? ` · ยอดรวม ${baht(m.total)} ส่วนที่เหลือชำระก่อนจัดส่ง` : ""}
+        {m.kind === "balance" && m.paid ? ` · ชำระแล้ว ${baht(m.paid)}` : ""}
+      </p>
 
       {st?.paymentStatus === "rejected" && st.rejectReason && (
-        <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 10, padding: "10px 13px", margin: "14px 0", fontSize: 13.5 }}>
+        <div className="note-bad" style={{ margin: "14px 0" }}>
           ⚠ สลิปก่อนหน้าไม่ผ่าน: {st.rejectReason}
           <br />กรุณาตรวจสอบแล้วแนบสลิปใหม่อีกครั้ง
         </div>
@@ -200,7 +212,7 @@ export default function PayPanel({ orderId, token, onPaid }: { orderId: string; 
         )}
 
         <p className="dim" style={{ marginTop: 10 }}>รองรับ JPG / PNG / WEBP / HEIC · ไม่เกิน {MAX_MB}MB</p>
-        {err && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
+        {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 10 }}>⚠ {err}</p>}
       </div>
     </div>
   );
