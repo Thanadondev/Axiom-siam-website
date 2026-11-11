@@ -70,6 +70,23 @@ export function numberedLines(size: BibSize, count: number, from: number): strin
   return Array.from({ length: n }, (_, i) => `${from + i}\t${size}`).join("\n");
 }
 
+/** each size's piece width, mm (the factory template, CB-005): the logo scales with it from M */
+const PIECE_W: Record<BibSize, number> = { S: 459, M: 519, L: 609, XL: 683, XXL: 763, SPM: 565, SPL: 634 };
+
+/**
+ * How sharp the logo prints where it prints biggest: the chest logo is 85 mm tall
+ * on M (no wider than 110 mm), scaled with the piece — so the largest size on the
+ * list decides. Dots per inch over its printed height.
+ */
+export function logoDpi(w: number, h: number, sizes: BibSize[]): { dpi: number; mm: number; size: string } {
+  const size = (sizes.length ? sizes : (["M"] as BibSize[])).reduce((a, b) => (PIECE_W[b] > PIECE_W[a] ? b : a));
+  const k = PIECE_W[size] / PIECE_W.M;
+  let mmH = 85 * k;
+  const mmW = (mmH * w) / h;
+  if (mmW > 110 * k) mmH = (110 * k * h) / w;
+  return { dpi: Math.round(h / (mmH / 25.4)), mm: Math.round(mmH), size: BIB_SIZE_LABEL[size] };
+}
+
 export function countBySize(rows: BibRow[]): Partial<Record<BibSize, number>> {
   const out: Partial<Record<BibSize, number>> = {};
   for (const r of rows) out[r.size] = (out[r.size] ?? 0) + 1;

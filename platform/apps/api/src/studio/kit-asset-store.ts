@@ -14,7 +14,8 @@ import { join, resolve } from "path";
 export type KitAssetKind = "logo" | "font";
 
 export const KIT_ASSET_LIMITS: Record<KitAssetKind, number> = {
-  logo: 3 * 1024 * 1024, // the studio re-encodes logos to a 1024px PNG, so this is generous
+  // the kit studio re-encodes logos to a 1024 px PNG; the bib designer keeps print resolution (up to 3000 px)
+  logo: 8 * 1024 * 1024,
   font: 4 * 1024 * 1024,
 };
 

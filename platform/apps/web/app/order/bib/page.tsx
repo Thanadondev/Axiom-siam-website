@@ -8,7 +8,8 @@ import SwatchPicker from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
-import { importLogo, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
+import { importPrintLogo, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
+import { logoDpi } from "../../../lib/bib-roster";
 import { readRoster, numberedLines, countBySize, BIB_SIZES, BIB_SIZE_LABEL, NAME_MAX, type BibSize } from "../../../lib/bib-roster";
 
 /**
@@ -64,7 +65,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [font, setFont] = useState<FontId>("block");
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
   const [sides, setSides] = useState<[Side, Side]>([SIDE_A, SIDE_B]);
-  const [logo, setLogo] = useState<{ url: string; name: string; data: string } | null>(null);
+  const [logo, setLogo] = useState<{ url: string; name: string; data: string; w: number; h: number; svg: boolean } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoErr, setLogoErr] = useState("");
   const logoInput = useRef<HTMLInputElement>(null);
@@ -155,9 +156,10 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     if (!f || !token) return;
     setLogoErr(""); setLogoBusy(true);
     try {
-      const a = await importLogo(f);
-      const url = await uploadAsset(a, token);
-      setLogo({ url, name: a.name, data: a.data });
+      // kept at print resolution (not the studio's 1024 px), uploaded as it is
+      const a = await importPrintLogo(f);
+      const url = await uploadAsset({ id: `print-logo-${Date.now()}`, kind: "logo", name: a.name, data: a.data, created: Date.now() }, token);
+      setLogo({ url, name: a.name, data: a.data, w: a.w, h: a.h, svg: /\.svg$/i.test(f.name) || f.type === "image/svg+xml" });
     } catch (e: any) {
       setLogoErr(lang === "th" ? e?.message || "นำเข้าโลโก้ไม่สำเร็จ" : L("", "Couldn't use this logo — try a PNG with a clear background", "このロゴを使用できませんでした。背景が透明なPNGでお試しください"));
     } finally {
@@ -283,6 +285,24 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
               </div>
             </div>
             <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={e => onLogo(e.target.files?.[0])} />
+            {logo && (() => {
+              // how sharp it prints where it prints biggest (the largest size on the list)
+              const q = logoDpi(logo.w, logo.h, roster.rows.map(r => r.size));
+              const tone = q.dpi >= 250 ? "ok" : q.dpi >= 150 ? "soft" : "bad";
+              return (
+                <p className={tone === "bad" ? "ou-warn" : "dim"} style={{ fontSize: 13, margin: "10px 0 0" }}>
+                  {tone === "ok" ? "✓ " : "⚠ "}
+                  {L(
+                    `${logo.w}×${logo.h} px · พิมพ์สูง ${q.mm} มม. (ไซส์ ${q.size}) ≈ ${q.dpi} dpi`,
+                    `${logo.w}×${logo.h} px · printed ${q.mm} mm tall (size ${q.size}) ≈ ${q.dpi} dpi`,
+                    `${logo.w}×${logo.h} px · 印刷時の高さ ${q.mm}mm（${q.size}サイズ）≈ ${q.dpi} dpi`,
+                  )}
+                  {logo.svg ? L(" · SVG คมทุกขนาด", " · SVG, sharp at any size", " · SVGはどのサイズでも鮮明") : ""}
+                  {tone === "soft" && L(" — ใช้ได้ แต่ถ้ามีไฟล์ใหญ่กว่านี้จะคมกว่า", " — fine, but a bigger file would print sharper", " — 使用できますが、より大きいファイルの方が鮮明です")}
+                  {tone === "bad" && L(" — ภาพจะแตกตอนพิมพ์ ใช้ไฟล์ที่ใหญ่กว่านี้หรือ SVG", " — this will print blurry; use a bigger file or an SVG", " — 印刷すると粗くなります。より大きいファイルかSVGをお使いください")}
+                </p>
+              );
+            })()}
             {logoErr && <p className="ou-warn">⚠ {logoErr}</p>}
           </div>
 

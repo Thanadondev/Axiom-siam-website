@@ -7,6 +7,7 @@ import { printPdf } from "./print-pdf";
 import { BIB_SIZES, layoutFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Side } from "./template";
 import { textShape } from "./text";
 import { xlsx } from "./xlsx";
+import { fitPng, PRINT_LOGO_PX } from "./raster";
 
 /**
  * A web-designed bib order as the same job package the graphics team makes:
@@ -61,7 +62,8 @@ async function bibFile(d: BibDesign, size: BibSize, r: RosterRow, tag: string, l
 
 export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array }): Promise<BuiltJob> {
   const d = BibDesignSchema.parse(input);
-  const logo = meta.logoPng ? { png: meta.logoPng, ...pngSize(meta.logoPng) } : undefined;
+  const png = meta.logoPng ? fitPng(meta.logoPng, PRINT_LOGO_PX) : undefined;
+  const logo = png ? { png, ...pngSize(png) } : undefined;
   const groups = bySize(d.roster);
   const counts = Object.fromEntries(groups.map(([z, rows]) => [z, rows.length])) as Partial<Record<BibSize, number>>;
   const name = jobFolderName({ orderNo: meta.ref, product: d.product, sizes: groups.map(([z]) => z), team: d.team || null });

@@ -8,6 +8,7 @@ import { buildBibJob } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
+import { fitPng, PREVIEW_LOGO_PX } from "./raster";
 
 /** what a web-designed bib order keeps on its items: enough to build the job again */
 export interface BibSnapshot {
@@ -57,7 +58,8 @@ export class BibJobService {
     for (const r of d.roster) counts[r.size] = (counts[r.size] ?? 0) + 1;
     const z = (BIB_SIZES as readonly string[]).includes(size ?? "") ? (size as BibSize) : (BIB_SIZES.find(s => counts[s]) ?? "M");
     const row = d.roster.find(r => r.size === z) ?? d.roster[0];
-    const png = await this.logo(logoUrl);
+    const full = await this.logo(logoUrl);
+    const png = full ? fitPng(full, PREVIEW_LOGO_PX) : undefined;
     const logo = png ? { png, ...pngSize(png) } : undefined;
     const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show }, z, counts, { ref: "PREVIEW", date: new Date() });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
