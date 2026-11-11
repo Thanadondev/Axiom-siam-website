@@ -202,6 +202,13 @@ describe("priceOrder — bibs at a set price", () => {
     expect(priceOrder({ totalQty: 10, fabric: "mesh", trim: "none", garment: "bib_n" }, cfg).unitPrice).toBe(252); // cfg has no flat
   });
 
+  it("a set shipping fee (the agent in Japan) replaces the flat-or-free rule, whatever the total", () => {
+    expect(priceOrder({ totalQty: 5, fabric: "mesh", trim: "none", garment: "bib_r", shippingFee: 400 })).toMatchObject({ subtotal: 1225, shippingFee: 400, total: 1625 });
+    expect(priceOrder({ totalQty: 100, fabric: "mesh", trim: "none", garment: "bib_r", shippingFee: 400 }).shippingFee).toBe(400); // over the free-shipping line
+    expect(priceOrder({ totalQty: 5, fabric: "mesh", trim: "none", garment: "bib_r", shippingFee: 0 }).shippingFee).toBe(0);
+    expect(priceOrder({ totalQty: 0, fabric: "mesh", trim: "none", garment: "bib_r", shippingFee: 400 }).shippingFee).toBe(0); // nothing ordered
+  });
+
   it("shipping and deposit work as for any order", () => {
     const small = priceOrder({ totalQty: 5, fabric: "mesh", trim: "none", garment: "bib_n" }, { ...DEFAULT_PRICING, depositPct: 50 });
     expect(small).toMatchObject({ subtotal: 1260, shippingFee: DEFAULT_PRICING.shippingFlat, depositPct: 50 });
@@ -214,6 +221,7 @@ describe("garmentOf", () => {
     expect(garmentOf({ kind: "kit-studio", kit: "warmup" })).toBe("hoodie");
     expect(garmentOf({ kind: "kit-studio", kit: "STRIDE" })).toBe("shorts");
     expect(garmentOf({ kind: "kit-studio", kit: "striker" })).toBe("jersey");
+    expect(garmentOf({ kind: "kit-studio", kit: "rim" })).toBe("bib_n"); // the basketball singlet is cut on the bib template
     expect(garmentOf({ kit: "warmup" })).toBe("jersey"); // not a kit-studio design
     expect(garmentOf(null)).toBe("jersey");
     expect(garmentOf("warmup")).toBe("jersey");

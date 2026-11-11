@@ -367,6 +367,10 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
               </div>
             )}
+            {(snap?.kind === "bib-design" || (snap?.kind === "kit-studio" && KITS_ON_BIB.includes(String(snap.kit).toLowerCase()))) && (
+              <BibJobLine o={o} built={zips.length > 0} token={token} onChanged={fetchOne} what={snap.kind === "bib-design" ? "เอี๊ยมออกแบบบนเว็บ" : "เสื้อบาสออกแบบบนเว็บ (ตัดบนแพทเทิร์นเอี๊ยม CB-005)"} />
+            )}
+            {zips.length > 0 && <NasLine o={o} zips={zips} token={token} onChanged={fetchOne} />}
             {!["cancelled", "refunded"].includes(o.status) && (
               <ErpPanel o={o} token={token} onChanged={() => { fetchOne(); onChanged(); }} />
             )}
@@ -390,7 +394,12 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
               </div>
             )}
             {o.note && <div><span className="ax-label">หมายเหตุจากลูกค้า</span><p style={{ margin: 0, fontSize: 14 }}>{o.note}</p></div>}
-            {a && (
+            {o.delivery?.mode === "agent" ? (
+              <div>
+                <span className="ax-label">ส่งถึง · ส่งรวมผ่านตัวแทนญี่ปุ่น</span>
+                <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-line" }}>{o.delivery.name}{o.delivery.phone ? ` · ${o.delivery.phone}` : ""}<br />{o.delivery.address}</p>
+              </div>
+            ) : a && (
               <div>
                 <span className="ax-label">ส่งถึง</span>
                 <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>{a.recipient} · {a.phone}<br />{[a.line1, a.line2, a.district, a.province, a.postalCode].filter(Boolean).join(" ")}</p>
@@ -517,6 +526,9 @@ function JobSheet({ o, kit, look, split, roster }: { o: any; kit: Kit | null; lo
         </table>
       )}
       {o.note && <p><b>หมายเหตุ</b> {o.note}</p>}
+      {o.delivery?.mode === "agent" && (
+        <p style={{ whiteSpace: "pre-line" }}><b>ส่งรวมผ่านตัวแทนญี่ปุ่น</b> {o.delivery.name}{o.delivery.phone ? ` · ${o.delivery.phone}` : ""}{"\n"}{o.delivery.address}</p>
+      )}
     </div>
   );
 }
@@ -544,6 +556,72 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
           <button type="submit" className="ax-btn solid sq" disabled={busy || !tracking.trim()}>บันทึกการจัดส่ง</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Where the customer's zip sits in the team's job folders on the NAS (copied
+ * once the order is paid, retried every couple of minutes), with a button to
+ * send it now.
+ */
+/** a bib designed on the web: its print files are made by the website; the team can make them again */
+/** kits from the kit studio cut on the bib template: their print files are made by the website (apps/api/src/bibs/kit.ts) */
+const KITS_ON_BIB = ["rim"];
+
+function BibJobLine({ o, built, token, onChanged, what }: { o: any; built: boolean; token: string; onChanged: () => void; what: string }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const onNas = (o.files ?? []).some((f: OrderFileView) => f.nas?.path);
+  async function rebuild() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<{ files: number; offChart: string[] }>(`/admin/orders/${o.id}/bib-job`, { method: "POST", token });
+      setMsg({ ok: true, text: `สร้างไฟล์งานแล้ว ${r.files} ไฟล์${r.offChart.length ? ` · สีนอกชาร์ต: ${r.offChart.join(", ")}` : ""}` });
+      onChanged();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <span className="ax-label">{what} · ไฟล์งานสร้างโดยระบบ (CMYK, 1 ไฟล์ต่อตัว)</span>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+        <span className={built ? "ax-psub" : "ax-err"} style={{ margin: 0, fontSize: 13 }}>
+          {built ? (onNas ? "ไฟล์งานอยู่บน NAS แล้ว — สร้างใหม่จะได้อีกไฟล์ ไม่ทับของเดิม" : "ไฟล์งานพร้อมแล้ว") : "ยังไม่มีไฟล์งาน — สร้างไม่สำเร็จตอนสั่ง"}
+        </span>
+        <button type="button" className="ax-sq" disabled={busy} onClick={rebuild}>{busy ? "กำลังสร้าง…" : "สร้างไฟล์งานใหม่"}</button>
+      </div>
+      {msg && <p className={msg.ok ? "ax-psub" : "ax-err"} style={{ margin: "6px 0 0", fontSize: 13 }}>{msg.text}</p>}
+    </div>
+  );
+}
+
+function NasLine({ o, zips, token, onChanged }: { o: any; zips: OrderFileView[]; token: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const paid = !["pending", "cancelled", "refunded"].includes(o.status);
+  const onNas = zips.filter(z => z.nas?.path);
+  async function send() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch<{ ok: boolean; message: string }>(`/admin/orders/${o.id}/nas`, { method: "POST", token });
+      setMsg({ ok: r.ok, text: r.message });
+      if (r.ok) onChanged();
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <span className="ax-label">NAS · โฟลเดอร์งาน (_webjobs)</span>
+      {onNas.length === zips.length ? (
+        onNas.map(z => <p key={z.id} className="ax-psub ax-mono" style={{ margin: "4px 0 0", fontSize: 12.5, overflowWrap: "anywhere" }}>{z.nas!.path}</p>)
+      ) : (
+        <div className="row" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+          <span className="ax-psub" style={{ margin: 0, fontSize: 13 }}>{paid ? "ยังไม่อยู่บน NAS — ระบบลองส่งให้ทุก 2 นาที" : "ส่งเข้า NAS เมื่อลูกค้าชำระเงินแล้ว"}</span>
+          {paid && <button type="button" className="ax-sq" disabled={busy} onClick={send}>{busy ? "…" : "ส่งเข้า NAS ตอนนี้"}</button>}
+        </div>
+      )}
+      {msg && <p className={msg.ok ? "ax-psub" : "ax-err"} style={{ margin: "6px 0 0", fontSize: 13 }}>{msg.text}</p>}
     </div>
   );
 }

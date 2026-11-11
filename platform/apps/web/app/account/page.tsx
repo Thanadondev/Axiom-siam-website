@@ -8,11 +8,8 @@ import AppShell from "../../components/AppShell";
 import TwoFactorCard from "../../components/TwoFactorCard";
 import SecurityCard from "../../components/SecurityCard";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
-
-const ORDER_STATUS_TH: Record<string, string> = {
-  pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
-  shipped: "จัดส่งแล้ว", delivered: "ได้รับแล้ว", completed: "เสร็จสิ้น", cancelled: "ยกเลิก", refunded: "คืนเงินแล้ว",
-};
+import { tri, locale, useLang } from "../../lib/i18n";
+import { orderStatus, summaryIn } from "../../lib/order-text";
 
 interface Address {
   id: string;
@@ -40,6 +37,10 @@ const ACC_TABS: AccTab[] = ["orders", "designs", "purchases", "shop", "profile",
 
 export default function AccountPage() {
   const { user, token, loading, setUser } = useAuth(); // logout lives in the header user menu
+  // the frame and the orders are in Thai / English / Japanese (teams in Japan order by zip);
+  // the designer tabs (designs, shop, profile, addresses, security) are in Thai
+  const [lang, setLang] = useLang();
+  const L = tri(lang);
   // ?tab=address etc. opens a section directly (checkout links here to add an address)
   const [tab, setTabState] = useState<AccTab>("orders");
   useEffect(() => {
@@ -163,15 +164,15 @@ export default function AccountPage() {
   const setA = (k: keyof typeof af) => (e: React.ChangeEvent<HTMLInputElement>) => setAf({ ...af, [k]: e.target.value });
 
   if (loading) {
-    return <AppShell><p className="asub">กำลังโหลด...</p></AppShell>;
+    return <AppShell lang={lang} onLang={setLang}><p className="asub">{L("กำลังโหลด...", "Loading…", "読み込み中…")}</p></AppShell>;
   }
   if (!user) {
     return (
-      <AppShell narrow>
+      <AppShell narrow lang={lang} onLang={setLang}>
         <div className="acard center">
-          <h1 className="atitle">ยังไม่ได้เข้าสู่ระบบ</h1>
-          <p className="asub">กรุณาเข้าสู่ระบบเพื่อดูโปรไฟล์</p>
-          <Link href="/login" className="abtn solid block" style={{ marginTop: 18 }}>เข้าสู่ระบบ</Link>
+          <h1 className="atitle">{L("ยังไม่ได้เข้าสู่ระบบ", "You're not signed in", "ログインしていません")}</h1>
+          <p className="asub">{L("กรุณาเข้าสู่ระบบเพื่อดูโปรไฟล์", "Please sign in to see your account", "アカウントを表示するにはログインしてください")}</p>
+          <Link href="/login?next=/account" className="abtn solid block" style={{ marginTop: 18 }}>{L("เข้าสู่ระบบ", "Sign in", "ログイン")}</Link>
         </div>
       </AppShell>
     );
@@ -180,71 +181,73 @@ export default function AccountPage() {
   const active = orders.filter(o => !["completed", "cancelled", "refunded"].includes(o.status)).length;
   const name = user.fullName || user.email.split("@")[0];
   const TABS: { id: AccTab; label: string; n?: number }[] = [
-    { id: "orders", label: "ออเดอร์", n: orders.length },
-    { id: "designs", label: "ดีไซน์ของฉัน", n: designs.length },
-    { id: "purchases", label: "ลายที่ซื้อ", n: purchases.length },
-    { id: "shop", label: "ร้านของฉัน", n: listings?.items.length },
-    { id: "profile", label: "ข้อมูลส่วนตัว" },
-    { id: "address", label: "ที่อยู่จัดส่ง", n: addrs.length },
-    { id: "security", label: "ความปลอดภัย" },
+    { id: "orders", label: L("ออเดอร์", "Orders", "ご注文"), n: orders.length },
+    { id: "designs", label: L("ดีไซน์ของฉัน", "My designs", "マイデザイン"), n: designs.length },
+    { id: "purchases", label: L("ลายที่ซื้อ", "Bought designs", "購入したデザイン"), n: purchases.length },
+    { id: "shop", label: L("ร้านของฉัน", "My shop", "マイショップ"), n: listings?.items.length },
+    { id: "profile", label: L("ข้อมูลส่วนตัว", "Profile", "プロフィール") },
+    { id: "address", label: L("ที่อยู่จัดส่ง", "Addresses", "お届け先"), n: addrs.length },
+    { id: "security", label: L("ความปลอดภัย", "Security", "セキュリティ") },
   ];
 
   return (
-    <AppShell wide>
+    <AppShell wide lang={lang} onLang={setLang}>
       <section className="ax-acc-hero">
         <span className="avatar" aria-hidden="true">{name.trim()[0]?.toUpperCase()}</span>
         <div className="who">
-          <div className="eyebrow">บัญชีของฉัน</div>
+          <div className="eyebrow">{L("บัญชีของฉัน", "My account", "マイアカウント")}</div>
           <h1 className="ax-display">{name}</h1>
           <p className="asub" style={{ margin: 0 }}>{user.email}{user.companyName ? ` · ${user.companyName}` : ""}</p>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <span className={`tag ${user.isVerified ? "green" : ""}`}>{user.isVerified ? "ยืนยันอีเมลแล้ว" : "ยังไม่ยืนยันอีเมล"}</span>
+            <span className={`tag ${user.isVerified ? "green" : ""}`}>{user.isVerified ? L("ยืนยันอีเมลแล้ว", "Email confirmed", "メール確認済み") : L("ยังไม่ยืนยันอีเมล", "Email not confirmed", "メール未確認")}</span>
             {user.role !== "customer" && <span className="tag blue">{user.role}</span>}
           </div>
         </div>
         <div className="ax-acc-stats">
-          <button type="button" onClick={() => setTab("orders")}><b>{active}</b><span>ออเดอร์ที่กำลังดำเนินการ</span></button>
-          <button type="button" onClick={() => setTab("designs")}><b>{designs.length}</b><span>ดีไซน์ที่บันทึก</span></button>
-          <button type="button" onClick={() => setTab("purchases")}><b>{purchases.length}</b><span>ลายที่ซื้อ</span></button>
+          <button type="button" onClick={() => setTab("orders")}><b>{active}</b><span>{L("ออเดอร์ที่กำลังดำเนินการ", "Orders in progress", "進行中のご注文")}</span></button>
+          <button type="button" onClick={() => setTab("designs")}><b>{designs.length}</b><span>{L("ดีไซน์ที่บันทึก", "Saved designs", "保存したデザイン")}</span></button>
+          <button type="button" onClick={() => setTab("purchases")}><b>{purchases.length}</b><span>{L("ลายที่ซื้อ", "Bought designs", "購入したデザイン")}</span></button>
         </div>
       </section>
 
       <div className="ax-acc">
-        <nav className="ax-acc-nav" aria-label="หมวดบัญชี" role="tablist">
+        <nav className="ax-acc-nav" aria-label={L("หมวดบัญชี", "Account sections", "アカウントメニュー")} role="tablist">
           {TABS.map(t => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>
               {t.label}{t.n ? <span>{t.n}</span> : null}
             </button>
           ))}
-          <Link href="/shop" className="abtn solid" style={{ marginTop: 14 }}>ออกแบบเสื้อใหม่</Link>
-          <Link href="/order/upload" className="abtn ghost" style={{ marginTop: 8 }}>สั่งผลิตด้วยไฟล์ .zip</Link>
+          <Link href="/shop" className="abtn solid" style={{ marginTop: 14 }}>{L("ออกแบบเสื้อใหม่", "Design a kit", "デザインする")}</Link>
+          <Link href="/order/bib" className="abtn ghost" style={{ marginTop: 8 }}>{L("ออกแบบเอี๊ยมบนเว็บ", "Design bibs", "ビブスをデザイン")}</Link>
+          <Link href="/order/upload" className="abtn ghost" style={{ marginTop: 8 }}>{L("สั่งผลิตด้วยไฟล์ .zip", "Order with your .zip", ".zipで入稿・注文")}</Link>
         </nav>
         <div className="ax-acc-body" role="tabpanel">
 {tab === "orders" && (<>
       {/* production orders */}
       {(
         <div className="acard">
-          <div className="eyebrow">ออเดอร์สั่งผลิต</div>
+          <div className="eyebrow">{L("ออเดอร์สั่งผลิต", "Production orders", "制作のご注文")}</div>
           {orders.length === 0 && (
             <div className="ax-acc-empty">
-              <b>ยังไม่มีออเดอร์</b>
-              <span>เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที หรือส่งไฟล์งานที่ออกแบบใน Illustrator มาเป็น .zip</span>
-              <Link href="/shop" className="abtn solid">เริ่มออกแบบเสื้อ</Link>
-              <Link href="/order/upload" className="abtn ghost">สั่งผลิตด้วยไฟล์ .zip</Link>
+              <b>{L("ยังไม่มีออเดอร์", "No orders yet", "ご注文はまだありません")}</b>
+              <span>{L("เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที หรือส่งไฟล์งานที่ออกแบบใน Illustrator มาเป็น .zip", "Pick a kit and colour it on the 3D model, or send the artwork you made in Illustrator as a .zip.", "3Dモデルでデザインするか、Illustratorで作成したデータを.zipで入稿してください。")}</span>
+              <Link href="/shop" className="abtn solid">{L("เริ่มออกแบบเสื้อ", "Start designing", "デザインを始める")}</Link>
+              <Link href="/order/bib" className="abtn ghost">{L("ออกแบบเอี๊ยมบนเว็บ", "Design bibs", "ビブスをデザイン")}</Link>
+              <Link href="/order/upload" className="abtn ghost">{L("สั่งผลิตด้วยไฟล์ .zip", "Order with your .zip", ".zipで入稿・注文")}</Link>
             </div>
           )}
           {orders.length > 0 && <div className="tablewrap">
             <table className="atable" style={{ minWidth: 480 }}>
-              <thead><tr><th>เลขออเดอร์</th><th>สเปก</th><th>ยอดรวม</th><th>สถานะ</th><th></th></tr></thead>
+              <thead><tr><th>{L("เลขออเดอร์", "Order", "注文番号")}</th><th>{L("สเปก", "Item", "内容")}</th><th>{L("ยอดรวม", "Total", "合計")}</th><th>{L("สถานะ", "Status", "状況")}</th><th></th></tr></thead>
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.id}>
-                    <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString("th-TH")}</div></td>
-                    <td className="dim">{o.fabricSummary}</td>
-                    <td><b>฿{o.total.toLocaleString("th-TH")}</b></td>
-                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{ORDER_STATUS_TH[o.status] ?? o.status}</span>
-                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>ขั้น {o.productionStep}/{SHIP_STEP} · {STEPS[o.productionStep - 1]?.th}</div>}</td>
-                    <td><Link className="minibtn" href={`/orders/${o.id}`}>ดูรายละเอียด</Link></td>
+                    <td><b>{o.orderNo}</b><div className="dim">{new Date(o.createdAt).toLocaleDateString(locale(lang))}</div></td>
+                    <td className="dim">{summaryIn(lang, o.fabricSummary)}</td>
+                    <td><b>฿{o.total.toLocaleString(locale(lang))}</b></td>
+                    <td><span className={`tag ${o.status === "cancelled" || o.status === "refunded" ? "red" : o.status === "completed" ? "green" : "blue"}`}>{orderStatus(lang, o.status)}</span>
+                      {o.status === "in_production" && o.productionStep > 0 && <div className="dim" style={{ marginTop: 4 }}>{L(`ขั้น ${o.productionStep}/${SHIP_STEP} · ${STEPS[o.productionStep - 1]?.th}`, `Step ${o.productionStep}/${SHIP_STEP} · ${STEPS[o.productionStep - 1]?.en}`, `工程 ${o.productionStep}/${SHIP_STEP} · ${STEPS[o.productionStep - 1]?.ja}`)}</div>}</td>
+                    <td><Link className="minibtn" href={`/orders/${o.id}`}>{L("ดูรายละเอียด", "Details", "詳細")}</Link></td>
                   </tr>
                 ))}
               </tbody>

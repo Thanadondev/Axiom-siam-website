@@ -8,7 +8,7 @@ const UploadSchema = z.object({
   kind: z.enum(["logo", "font"]),
   name: z.string().max(200).optional(),
   // base64 inflates by ~4/3: reject an oversized body before decoding it
-  data: z.string().min(40, "ไฟล์ไม่ถูกต้อง").max(Math.ceil(KIT_ASSET_LIMITS.font * 1.4), "ไฟล์ใหญ่เกินไป"),
+  data: z.string().min(40, "ไฟล์ไม่ถูกต้อง").max(Math.ceil(Math.max(KIT_ASSET_LIMITS.logo, KIT_ASSET_LIMITS.font) * 1.4), "ไฟล์ใหญ่เกินไป"),
 });
 
 /**

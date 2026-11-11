@@ -88,8 +88,21 @@ async function main() {
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   }
 
-  // print-file zips (bib orders): the rows, and the files under UPLOAD_DIR/order-files/<user>.
+  // print-file zips (bib orders): the rows, the files under UPLOAD_DIR/order-files/<user>,
+  // and, for files kept in the S3 bucket ("s3:<key>"), the objects there.
   // The API resolves UPLOAD_DIR from apps/api, this script from the repo root: try both.
+  const inBucket = (await prisma.orderFile.findMany({ where: { userId: { in: ids } }, select: { path: true, previewPath: true } }))
+    .flatMap(f => [f.path, f.previewPath]).filter(p => p?.startsWith("s3:")).map(p => `order-files/${p.slice(3)}`);
+  if (inBucket.length) {
+    const { S3_BUCKET: bucket, S3_ACCESS_KEY_ID: key, S3_SECRET_ACCESS_KEY: secret, S3_ENDPOINT: endpoint } = process.env;
+    if (!bucket || !key || !secret) {
+      console.log(`\x1b[33m⚠ ${inBucket.length} ไฟล์อยู่ใน S3 แต่ไม่ได้ตั้งค่า S3 — ข้ามการลบใน bucket\x1b[0m`);
+    } else {
+      const { S3Client, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+      const s3 = new S3Client({ region: process.env.S3_REGION || "auto", endpoint: endpoint || undefined, forcePathStyle: Boolean(endpoint), credentials: { accessKeyId: key, secretAccessKey: secret } });
+      for (const k of inBucket) await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: k })).catch(e => console.log(`  ลบ ${k} ไม่ได้: ${e.message}`));
+    }
+  }
   await prisma.orderFile.deleteMany({ where: { userId: { in: ids } } });
   const { rm } = await import("node:fs/promises");
   const { resolve } = await import("node:path");

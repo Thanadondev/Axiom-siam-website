@@ -301,3 +301,41 @@ a.noteitem:hover{background:var(--soft)}
 .ou-fromlist .nums { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .ou-fromlist .nums b { color: var(--brand); font-size: 15px; }
 .ou-fromlist .dim { overflow-wrap: anywhere; }
+.ou-delivery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
+@media (max-width: 520px) { .ou-delivery { grid-template-columns: minmax(0, 1fr); } }
+/* the order page: items and history beside the summary, stacked on phones */
+.od-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 760px) { .od-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- /order/bib: designing bibs on the web ---------- */
+.bd-fonts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 6px; font-size: 13.5px; }
+.bd-checks label, .bd-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.bd-toggle { margin: 14px 0 4px; font-size: 13.5px; }
+.bd-logo { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; align-items: center; margin-top: 10px; }
+.bd-logo .pic { width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; text-align: center;
+  background: repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+.bd-logo .pic img { max-width: 104px; max-height: 104px; object-fit: contain; }
+.bd-pickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.bd-pickers.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bd-seg { display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; margin: 6px 0 8px; }
+.bd-seg button { padding: 7px 14px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13.5px; cursor: pointer; }
+.bd-seg button + button { border-left: 1.5px solid var(--border); }
+.bd-seg button[aria-checked="true"] { background: var(--brand); color: #fff; }
+.bd-roster { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 13px; }
+.bd-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+.bd-run .ainput, .app.ax .bd-run .ainput { width: auto; min-width: 0; padding: 6px 8px; flex: none; }
+.bd-run input.ainput, .app.ax .bd-run input.ainput { width: 76px; }
+.bd-run label { display: inline-flex; align-items: center; gap: 6px; }
+.bd-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 12px; font-size: 13.5px; }
+.bd-counts .chip { pointer-events: none; }
+.bd-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.bd-tabs button { padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; }
+.bd-tabs button[aria-selected="true"] { border-color: var(--brand); color: var(--brand); font-weight: 700; }
+.bd-sheet { display: flex; align-items: center; justify-content: center; min-height: 200px; margin-top: 8px; border: 1px solid var(--border); border-radius: 12px; background: #fff; overflow: hidden; transition: opacity .2s; }
+.bd-sheet[data-busy] { opacity: .6; }
+.bd-sheet img { display: block; width: 100%; height: auto; }
+@media (max-width: 640px) {
+  .bd-fonts, .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
+  .bd-logo { grid-template-columns: minmax(0, 1fr); }
+}

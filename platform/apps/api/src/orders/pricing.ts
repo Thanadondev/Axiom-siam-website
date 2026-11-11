@@ -40,8 +40,11 @@ export const GARMENT_LABEL: Record<Garment, string> = {
 export const FILE_PRODUCTS = ["bib_n", "bib_r"] as const;
 export type FileProduct = (typeof FILE_PRODUCTS)[number];
 
-/** the storefront kits that aren't jerseys (apps/web/lib/kits.ts) */
-const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants" };
+/**
+ * the storefront kits that aren't priced as jerseys (apps/web/lib/kits.ts). The basketball
+ * singlet (rim) is cut on the bib template (CB-005), so it is a normal bib at the bib's price.
+ */
+const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants", rim: "bib_n" };
 
 /** the garment a design snapshot is for: the kit it was made from, else a jersey */
 export function garmentOf(snap: unknown): Garment {
@@ -115,6 +118,8 @@ export interface PriceInput {
   trim: string;
   reversible?: boolean;
   garment?: Garment;
+  /** a set shipping fee for this order (the agent in Japan), in place of the flat-or-free rule */
+  shippingFee?: number;
 }
 
 export interface PriceBreakdown {
@@ -141,7 +146,7 @@ export function tierFor(qty: number, cfg: PricingConfig): QtyTier {
 }
 
 export function priceOrder(
-  { totalQty, fabric, trim, reversible = false, garment = "jersey" }: PriceInput,
+  { totalQty, fabric, trim, reversible = false, garment = "jersey", shippingFee: setShipping }: PriceInput,
   cfg: PricingConfig = DEFAULT_PRICING,
 ): PriceBreakdown {
   const qty = Math.max(0, Math.trunc(totalQty));
@@ -156,7 +161,9 @@ export function priceOrder(
 
   const unitPrice = Math.max(0, tierPrice + fabricSurcharge + trimSurcharge + garmentSurcharge + reversibleSurcharge);
   const subtotal = unitPrice * qty;
-  const shippingFee = subtotal === 0 || subtotal >= cfg.freeShippingOver ? 0 : cfg.shippingFlat;
+  const shippingFee = subtotal === 0 ? 0
+    : setShipping !== undefined ? Math.max(0, Math.round(setShipping))
+    : subtotal >= cfg.freeShippingOver ? 0 : cfg.shippingFlat;
   const total = subtotal + shippingFee;
 
   return {

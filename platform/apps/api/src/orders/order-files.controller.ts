@@ -46,14 +46,14 @@ export class OrderFilesController {
   @Get(":id/:kind")
   async serve(@Param("id") id: string, @Param("kind") kind: string, @Query("exp") exp: string, @Query("sig") sig: string, @Res() res: Response) {
     if (!verifyOrderFileLink(id, kind, exp, sig)) throw new NotFoundException("ลิงก์หมดอายุหรือไม่ถูกต้อง");
-    const f = await this.files.find(id);
-    const path = f && (kind === "zip" ? this.files.abs(f.path) : f.previewPath ? this.files.abs(f.previewPath) : null);
-    if (!f || !path) throw new NotFoundException("ไม่พบไฟล์");
+    const t = await this.files.target(id, kind as "zip" | "preview");
     res.setHeader("Cache-Control", "private, max-age=600");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    // in a bucket: off to a short-lived link straight to it (the bytes don't go through the API)
+    if ("url" in t) return res.redirect(302, t.url);
     const done = (err?: Error) => { if (err && !res.headersSent) res.status(404).end(); };
-    if (kind === "zip") res.download(path, f.name, done);
-    else res.sendFile(path, done);
+    if (kind === "zip") res.download(t.path, t.name, done);
+    else res.sendFile(t.path, { headers: { "Content-Type": t.contentType } }, done);
   }
 }

@@ -10,19 +10,27 @@ import OrderFiles from "../../../components/OrderFiles";
 import { STEPS } from "../../../lib/production-steps";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
+import { tri, locale, useLang } from "../../../lib/i18n";
+import { orderStatus, summaryIn } from "../../../lib/order-text";
 
-const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
-const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+/**
+ * One order, for its customer: in Thai, English or Japanese (teams in Japan
+ * order bibs by zip and pay by transfer). The full tax invoice is a Thai
+ * document, so its card shows in Thai only; the staff's notes in the history
+ * are written in Thai, so they show in Thai only too.
+ */
 
-const STATUS_TH: Record<string, string> = {
-  pending: "รอชำระเงิน", paid: "ชำระแล้ว", approved: "อนุมัติแบบแล้ว", in_production: "กำลังผลิต",
-  shipped: "จัดส่งแล้ว", delivered: "ได้รับแล้ว", completed: "เสร็จสิ้น", cancelled: "ยกเลิก", refunded: "คืนเงินแล้ว",
-};
 const FLOW = ["pending", "paid", "approved", "in_production", "shipped", "delivered", "completed"];
 
 export default function OrderDetail() {
   const id = String(useParams().id);
   const { token, loading } = useAuth();
+  const [lang, setLang] = useLang();
+  const L = tri(lang);
+  const th = lang === "th";
+  const baht = (n: number) => "฿" + (n ?? 0).toLocaleString(locale(lang));
+  const dt = (s: string) => new Date(s).toLocaleString(locale(lang), { dateStyle: "medium", timeStyle: "short" });
+  const status = (s: string) => orderStatus(lang, s);
   const [o, setO] = useState<any>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,40 +48,51 @@ export default function OrderDetail() {
   }, []);
 
   async function cancel() {
-    if (!confirm("ยกเลิกออเดอร์นี้?")) return;
+    if (!confirm(L("ยกเลิกออเดอร์นี้?", "Cancel this order?", "この注文をキャンセルしますか？"))) return;
     setBusy(true);
     try { await apiFetch(`/orders/${id}/cancel`, { method: "POST", token }); load(); }
-    catch (e: any) { setErr(e.message); }
+    catch (e: any) { setErr(th ? e.message : L("", "The order couldn't be cancelled — please contact us", "キャンセルできませんでした。お問い合わせください")); }
     finally { setBusy(false); }
   }
 
-  if (loading || (!o && !err)) return <AppShell narrow><div className="acard"><p className="asub">กำลังโหลด…</p></div></AppShell>;
-  if (err && !o) return <AppShell narrow><div className="acard"><h1 className="atitle">ไม่พบออเดอร์</h1><p className="asub">{err}</p><Link className="abtn ghost" href="/account">กลับไปบัญชี</Link></div></AppShell>;
+  const shell = (children: React.ReactNode, wide = false) => (
+    <AppShell narrow={!wide} wide={wide} lang={lang} onLang={setLang}>{children}</AppShell>
+  );
+  if (loading || (!o && !err)) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>);
+  if (err && !o) return shell(
+    <div className="acard">
+      <h1 className="atitle">{L("ไม่พบออเดอร์", "Order not found", "注文が見つかりません")}</h1>
+      <p className="asub">{th ? err : L("", "It may not be yours, or the link is wrong.", "ご本人の注文でないか、リンクが正しくない可能性があります。")}</p>
+      <Link className="abtn ghost" href="/account">{L("กลับไปบัญชี", "Back to my account", "マイアカウントへ戻る")}</Link>
+    </div>,
+  );
 
   const cancelled = o.status === "cancelled" || o.status === "refunded";
   const stepIdx = FLOW.indexOf(o.status);
   const a = o.shippingAddress;
+  const agent = o.delivery?.mode === "agent" ? o.delivery : null;
 
-  return (
-    <AppShell wide>
-      <Link href="/account" className="asub" style={{ display: "inline-block", marginBottom: 12 }}>← กลับไปบัญชีของฉัน</Link>
+  return shell(
+    <>
+      <Link href="/account" className="asub" style={{ display: "inline-block", marginBottom: 12 }}>{L("← กลับไปบัญชีของฉัน", "← Back to my account", "← マイアカウントへ戻る")}</Link>
 
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <div className="eyebrow">ออเดอร์</div>
+            <div className="eyebrow">{L("ออเดอร์", "Order", "ご注文")}</div>
             <h1 className="atitle" style={{ marginBottom: 2 }}>{o.orderNo}</h1>
-            <p className="asub">สั่งเมื่อ {dt(o.createdAt)} · {o.fabricSummary}</p>
+            <p className="asub">{L("สั่งเมื่อ", "Ordered", "ご注文日")} {dt(o.createdAt)} · {summaryIn(lang, o.fabricSummary)}</p>
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="kpivalue" style={{ color: "var(--brand)" }}>{baht(o.total)}</div>
             {o.balance && o.balance.paid > 0 && (
               <div className="dim" style={{ margin: "2px 0 6px" }}>
-                ชำระแล้ว {baht(o.balance.paid)}{o.balance.outstanding > 0 ? ` · ค้าง ${baht(o.balance.outstanding)}` : " · ครบแล้ว"}
-                {o.balance.refunded > 0 && ` · คืนเงินแล้ว ${baht(o.balance.refunded)}`}
+                {L("ชำระแล้ว", "Paid", "お支払い済み")} {baht(o.balance.paid)}
+                {o.balance.outstanding > 0 ? ` · ${L("ค้าง", "due", "残額")} ${baht(o.balance.outstanding)}` : ` · ${L("ครบแล้ว", "in full", "全額")}`}
+                {o.balance.refunded > 0 && ` · ${L("คืนเงินแล้ว", "refunded", "返金済み")} ${baht(o.balance.refunded)}`}
               </div>
             )}
-            <span className={`tag ${cancelled ? "red" : o.status === "completed" ? "green" : "blue"}`}>{STATUS_TH[o.status]}</span>
+            <span className={`tag ${cancelled ? "red" : o.status === "completed" ? "green" : "blue"}`}>{status(o.status)}</span>
           </div>
         </div>
 
@@ -84,7 +103,7 @@ export default function OrderDetail() {
               <div key={s} style={{ flex: "1 1 90px", minWidth: 90 }}>
                 <div style={{ height: 5, borderRadius: 4, background: i <= stepIdx ? "var(--brand)" : "var(--border)" }} />
                 <div className="dim" style={{ marginTop: 6, fontWeight: i === stepIdx ? 700 : 400, color: i === stepIdx ? "var(--brand)" : undefined }}>
-                  {STATUS_TH[s]}
+                  {status(s)}
                 </div>
               </div>
             ))}
@@ -93,13 +112,13 @@ export default function OrderDetail() {
 
         <div style={{ display: "flex", gap: 8, marginTop: 20, flexWrap: "wrap", alignItems: "center" }}>
           {o.status === "pending" && (
-            <button className="minibtn danger" onClick={cancel} disabled={busy}>ยกเลิกออเดอร์</button>
+            <button className="minibtn danger" onClick={cancel} disabled={busy}>{L("ยกเลิกออเดอร์", "Cancel order", "注文をキャンセル")}</button>
           )}
           {o.invoices?.length > 0 && (
-            <Link className="minibtn" href={`/orders/${o.id}/invoice`} target="_blank">🧾 ใบแจ้งหนี้ {o.invoices[0].invoiceNo}</Link>
+            <Link className="minibtn" href={`/orders/${o.id}/invoice`} target="_blank">🧾 {L("ใบแจ้งหนี้", "Invoice", "請求書")} {o.invoices[0].invoiceNo}</Link>
           )}
           {o.creditNotes?.map((c: any) => (
-            <Link key={c.id} className="minibtn" href={`/orders/${o.id}/credit-note/${c.id}`} target="_blank">↩ ใบลดหนี้ {c.creditNo} · {baht(c.amount)}</Link>
+            <Link key={c.id} className="minibtn" href={`/orders/${o.id}/credit-note/${c.id}`} target="_blank">↩ {L("ใบลดหนี้", "Credit note", "クレジットノート")} {c.creditNo} · {baht(c.amount)}</Link>
           ))}
         </div>
         {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
@@ -107,34 +126,40 @@ export default function OrderDetail() {
 
       <OrderFiles
         files={o.files}
-        title="ไฟล์งานที่ส่งมา"
-        note={["pending", "paid"].includes(o.status) ? "ทีมงานจะเปิดตรวจไฟล์ก่อนเข้าผลิต ถ้ามีปัญหาจะติดต่อกลับ" : undefined}
+        lang={lang}
+        made={!!o.madeOnWeb}
+        title={o.madeOnWeb ? L("ไฟล์งานสำหรับผลิต", "Production files", "制作データ") : L("ไฟล์งานที่ส่งมา", "The files you sent", "入稿データ")}
+        note={o.madeOnWeb
+          ? L("ระบบสร้างจากแบบของคุณ: ไฟล์พิมพ์ 1 ไฟล์ต่อตัว ใบสั่งงาน และรายชื่อ — ชำระเงินแล้วส่งเข้าผลิตทันที", "Made from your design: one print file per bib, the order sheet and the name list — they go to production as soon as you've paid.", "デザインから自動作成：1枚ごとのプリントデータ、オーダーシート、名簿。お支払い後すぐに制作に回ります。")
+          : ["pending", "paid"].includes(o.status)
+          ? L("ทีมงานจะเปิดตรวจไฟล์ก่อนเข้าผลิต ถ้ามีปัญหาจะติดต่อกลับ", "Our team checks your files before production and gets in touch if anything needs fixing.", "制作前にスタッフがデータを確認し、修正が必要な場合はご連絡します。")
+          : undefined}
       />
 
-      <ProductionTracker orderNo={o.orderNo} status={o.status} productionStep={o.productionStep} history={o.statusHistory} erp={o.erp} />
+      <ProductionTracker orderNo={o.orderNo} status={o.status} productionStep={o.productionStep} history={o.statusHistory} erp={o.erp} lang={lang} />
 
       {/* pay by transfer — the panel owns the QR, the account and the slip upload */}
       {(o.balance ? o.balance.due > 0 : o.status === "pending") && token && (
         payEnabled
-          ? <PayPanel orderId={id} token={token} onPaid={load} />
+          ? <PayPanel orderId={id} token={token} onPaid={load} lang={lang} />
           : (
             <div className="acard">
-              <div className="eyebrow">ชำระเงิน</div>
-              <h2 className="ah2" style={{ marginTop: 4 }}>ยังไม่เปิดรับชำระเงิน</h2>
-              <p className="asub">ผู้ดูแลระบบยังไม่ได้ตั้งค่าบัญชีรับเงิน — กรุณาติดต่อทีมงานเพื่อชำระเงิน</p>
+              <div className="eyebrow">{L("ชำระเงิน", "Payment", "お支払い")}</div>
+              <h2 className="ah2" style={{ marginTop: 4 }}>{L("ยังไม่เปิดรับชำระเงิน", "Payment isn't open yet", "現在お支払いを受け付けていません")}</h2>
+              <p className="asub">{L("ผู้ดูแลระบบยังไม่ได้ตั้งค่าบัญชีรับเงิน — กรุณาติดต่อทีมงานเพื่อชำระเงิน", "Please contact us to pay for this order.", "お支払い方法については、お問い合わせください。")}</p>
             </div>
           )
       )}
 
-      {o.status !== "cancelled" && token && <TaxInvoiceCard o={o} token={token} onSaved={load} />}
+      {th && o.status !== "cancelled" && token && <TaxInvoiceCard o={o} token={token} onSaved={load} />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
+      <div className="od-grid">
         <div>
           <div className="acard">
-            <h2 className="ah2">รายการ</h2>
+            <h2 className="ah2">{L("รายการ", "Items", "ご注文明細")}</h2>
             <div className="tablewrap">
               <table className="atable" style={{ minWidth: 380 }}>
-                <thead><tr><th>ไซส์</th><th>จำนวน</th><th>ราคา/ตัว</th><th>รวม</th></tr></thead>
+                <thead><tr><th>{L("ไซส์", "Size", "サイズ")}</th><th>{L("จำนวน", "Qty", "枚数")}</th><th>{L("ราคา/ตัว", "Each", "単価")}</th><th>{L("รวม", "Total", "小計")}</th></tr></thead>
                 <tbody>
                   {o.items.map((it: any) => (
                     <tr key={it.id}><td><b>{it.size}</b></td><td>{it.qty}</td><td>{baht(it.unitPrice)}</td><td>{baht(it.unitPrice * it.qty)}</td></tr>
@@ -145,10 +170,10 @@ export default function OrderDetail() {
 
             {o.items.some((i: any) => i.roster?.length) && (
               <>
-                <h2 className="ah2" style={{ marginTop: 20 }}>รายชื่อนักกีฬา</h2>
+                <h2 className="ah2" style={{ marginTop: 20 }}>{L("รายชื่อนักกีฬา", "Players", "選手名簿")}</h2>
                 <div className="tablewrap">
                   <table className="atable" style={{ minWidth: 380 }}>
-                    <thead><tr><th>ชื่อ</th><th>เบอร์</th><th>ไซส์</th></tr></thead>
+                    <thead><tr><th>{L("ชื่อ", "Name", "名前")}</th><th>{L("เบอร์", "No.", "番号")}</th><th>{L("ไซส์", "Size", "サイズ")}</th></tr></thead>
                     <tbody>
                       {o.items.flatMap((it: any) => it.roster.map((r: any) => (
                         <tr key={r.id}><td>{r.playerName || "-"}</td><td>{r.number || "-"}</td><td>{r.size}</td></tr>
@@ -158,18 +183,18 @@ export default function OrderDetail() {
                 </div>
               </>
             )}
-            {o.note && <><h2 className="ah2" style={{ marginTop: 20 }}>หมายเหตุ</h2><p className="asub">{o.note}</p></>}
+            {o.note && <><h2 className="ah2" style={{ marginTop: 20 }}>{L("หมายเหตุ", "Your note", "備考")}</h2><p className="asub">{o.note}</p></>}
           </div>
 
           <div className="acard">
-            <h2 className="ah2">ประวัติสถานะ</h2>
+            <h2 className="ah2">{L("ประวัติสถานะ", "History", "履歴")}</h2>
             <div style={{ marginTop: 10 }}>
               {o.statusHistory.map((h: any) => (
                 <div key={h.id} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span className="tag">{h.step ? `ขั้น ${h.step} · ${STEPS[h.step - 1]?.th ?? ""}` : STATUS_TH[h.status]}</span>
+                  <span className="tag">{h.step ? L(`ขั้น ${h.step} · ${STEPS[h.step - 1]?.th ?? ""}`, `Step ${h.step} · ${STEPS[h.step - 1]?.en ?? ""}`, `工程${h.step} · ${STEPS[h.step - 1]?.ja ?? ""}`) : status(h.status)}</span>
                   <div style={{ flex: 1 }}>
                     <div className="dim">{dt(h.createdAt)}</div>
-                    {h.note && <div style={{ fontSize: 13 }}>{h.note}</div>}
+                    {th && h.note && <div style={{ fontSize: 13 }}>{h.note}</div>}
                   </div>
                 </div>
               ))}
@@ -179,33 +204,42 @@ export default function OrderDetail() {
 
         <div>
           <div className="acard">
-            <h2 className="ah2">สรุปยอด</h2>
-            <Row k="ราคาสินค้า" v={baht(o.subtotal)} />
-            {o.discount > 0 && <Row k="ส่วนลด" v={"-" + baht(o.discount)} />}
-            <Row k="ค่าจัดส่ง" v={o.shippingFee === 0 ? "ฟรี" : baht(o.shippingFee)} />
+            <h2 className="ah2">{L("สรุปยอด", "Summary", "お支払い金額")}</h2>
+            <Row k={L("ราคาสินค้า", "Items", "商品代金")} v={baht(o.subtotal)} />
+            {o.discount > 0 && <Row k={L("ส่วนลด", "Discount", "割引")} v={"-" + baht(o.discount)} />}
+            <Row k={agent ? L("ค่าส่ง (ตัวแทนญี่ปุ่น)", "Shipping (agent in Japan)", "送料（日本の代理店）") : L("ค่าจัดส่ง", "Shipping", "送料")} v={o.shippingFee === 0 ? L("ฟรี", "Free", "無料") : baht(o.shippingFee)} />
             <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "10px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <b>ยอดรวม</b><b style={{ fontSize: 22, color: "var(--brand)" }}>{baht(o.total)}</b>
+              <b>{L("ยอดรวม", "Total", "合計")}</b><b style={{ fontSize: 22, color: "var(--brand)" }}>{baht(o.total)}</b>
             </div>
+            {!th && <p className="dim" style={{ marginTop: 6 }}>{L("", "Prices in Thai baht (THB)", "価格はタイバーツ（THB）表示です")}</p>}
           </div>
 
           {o.shipments?.length > 0 && (
             <div className="acard">
-              <h2 className="ah2">การจัดส่ง</h2>
+              <h2 className="ah2">{L("การจัดส่ง", "Shipping", "発送")}</h2>
               {o.shipments.map((s: any) => (
                 <div key={s.id} style={{ fontSize: 13.5, lineHeight: 1.8, marginTop: 8 }}>
-                  <div>ขนส่ง: <b>{s.courier || "-"}</b></div>
-                  <div>เลขพัสดุ: <b style={{ color: "var(--brand)", userSelect: "all" }}>{s.trackingNo || "-"}</b></div>
-                  {s.shippedAt && <div className="dim">ส่งเมื่อ {dt(s.shippedAt)}</div>}
-                  {s.deliveredAt && <div className="dim">ถึงมือผู้รับ {dt(s.deliveredAt)}</div>}
+                  <div>{L("ขนส่ง", "Courier", "配送業者")}: <b>{s.courier || "-"}</b></div>
+                  <div>{L("เลขพัสดุ", "Tracking no.", "追跡番号")}: <b style={{ color: "var(--brand)", userSelect: "all" }}>{s.trackingNo || "-"}</b></div>
+                  {s.shippedAt && <div className="dim">{L("ส่งเมื่อ", "Sent", "発送日")} {dt(s.shippedAt)}</div>}
+                  {s.deliveredAt && <div className="dim">{L("ถึงมือผู้รับ", "Delivered", "お届け日")} {dt(s.deliveredAt)}</div>}
                 </div>
               ))}
             </div>
           )}
 
-          {a && (
+          {agent ? (
             <div className="acard">
-              <h2 className="ah2">จัดส่งถึง</h2>
+              <h2 className="ah2">{L("จัดส่งถึง", "Delivery", "お届け先")}</h2>
+              <p className="dim" style={{ marginTop: 6 }}>{L("ส่งรวมให้ตัวแทนในญี่ปุ่น", "Consolidated to our agent in Japan", "日本の代理店へまとめて発送")}</p>
+              <p style={{ fontSize: 13.5, lineHeight: 1.7, marginTop: 6, whiteSpace: "pre-line" }}>
+                <b>{agent.name}</b>{agent.phone ? ` · ${agent.phone}` : ""}{"\n"}{agent.address}
+              </p>
+            </div>
+          ) : a && (
+            <div className="acard">
+              <h2 className="ah2">{L("จัดส่งถึง", "Ship to", "お届け先")}</h2>
               <p style={{ fontSize: 13.5, lineHeight: 1.7, marginTop: 8 }}>
                 <b>{a.recipient}</b> · {a.phone}<br />
                 {a.line1} {a.line2}<br />{a.district} {a.province} {a.postalCode}
@@ -214,7 +248,8 @@ export default function OrderDetail() {
           )}
         </div>
       </div>
-    </AppShell>
+    </>,
+    true,
   );
 }
 

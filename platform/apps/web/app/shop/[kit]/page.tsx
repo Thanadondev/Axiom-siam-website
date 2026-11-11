@@ -12,7 +12,7 @@ import { variantQuery } from "../../../lib/garment-options";
 import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
 import {
   kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
-  kitParts, kitFabrics, kitTrims, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
+  kitParts, kitFabrics, kitTrims, kitPriceGarment, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
   type Kit, type KitConfig, type PartId, type RosterRow, type Size,
 } from "../../../lib/kits";
 import { importLogo, importFont, listAssets, deleteAsset, LOGO_ACCEPT, FONT_ACCEPT, fontFamilyOf, registerFont, type KitAsset } from "../../../lib/kit-assets";
@@ -160,12 +160,12 @@ function Studio({ kit }: { kit: Kit }) {
   useEffect(() => {
     if (totalQty === 0) { setQuote(null); setQuoteErr(false); return; }
     const t = setTimeout(() => {
-      apiFetch<Quote>(`/orders/quote?totalQty=${totalQty}&fabric=${cfg.fabric}&trim=${cfg.trim}&reversible=false&garment=${kit.garment}`)
+      apiFetch<Quote>(`/orders/quote?totalQty=${totalQty}&fabric=${cfg.fabric}&trim=${cfg.trim}&reversible=false&garment=${kitPriceGarment(kit)}`)
         .then(q => { setQuote(q); setQuoteErr(false); })
         .catch(() => { setQuote(null); setQuoteErr(true); });
     }, 250);
     return () => clearTimeout(t);
-  }, [totalQty, cfg.fabric, cfg.trim, kit.garment]);
+  }, [totalQty, cfg.fabric, cfg.trim, kit]);
 
   const resolved = useKitAssets(cfg);
   const look = useMemo(() => ({
@@ -530,7 +530,7 @@ function Studio({ kit }: { kit: Kit }) {
                 <div className="ax-phead"><span className="ax-label" style={{ margin: 0 }}>05 / สั่งผลิต</span></div>
                 <div>
                   <h2>ไซซ์และจำนวน</h2>
-                  <p className="ax-psub">{roster.length ? `นับจากรายชื่อ ${roster.length} คน · แก้ได้ที่แท็บชื่อ-เบอร์` : "ราคาลดลงตามจำนวน"}</p>
+                  <p className="ax-psub">{roster.length ? `นับจากรายชื่อ ${roster.length} คน · แก้ได้ที่แท็บชื่อ-เบอร์` : kit.priceAs ? "ราคาเดียวทุกจำนวน" : "ราคาลดลงตามจำนวน"}</p>
                 </div>
                 <div>
                   {SIZES.map(s => (

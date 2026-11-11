@@ -27,6 +27,16 @@ export const UpdatePricingSchema = z.object({
 });
 export type UpdatePricingDto = z.infer<typeof UpdatePricingSchema>;
 
+/** the agent in Japan that bib orders by zip can ship to, consolidated */
+export const UpdateDeliverySchema = z.object({
+  agentEnabled: z.boolean().optional(),
+  agentName: z.string().trim().max(120).optional(),
+  agentAddress: z.string().trim().max(500).optional(),
+  agentPhone: z.string().trim().max(40).optional(),
+  agentFee: money.optional(),
+});
+export type UpdateDeliveryDto = z.infer<typeof UpdateDeliverySchema>;
+
 export const UpdateMarketSchema = z.object({
   commissionPct: z.coerce.number().int().min(0).max(100).optional(),
   termsVersion: z.string().min(1).max(60).optional(),

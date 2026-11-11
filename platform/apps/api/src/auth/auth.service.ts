@@ -213,9 +213,11 @@ export class AuthService {
       { sub: userId, role },
       { secret: process.env.JWT_ACCESS_SECRET, expiresIn: process.env.JWT_ACCESS_TTL ?? "15m" },
     );
+    // a random id makes each refresh token unique: two sign-ins in the same second
+    // (a double click, sign-up then sign-in) would otherwise mint the same token and clash on save
     const refreshToken = await this.jwt.signAsync(
       { sub: userId, role, typ: "refresh" },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_TTL ?? "30d" },
+      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: process.env.JWT_REFRESH_TTL ?? "30d", jwtid: randomBytes(12).toString("hex") },
     );
     await this.prisma.authToken.create({
       data: { userId, type: "refresh", token: sha256(refreshToken), expiresAt: days(30) },

@@ -59,6 +59,8 @@ export interface Kit {
   /** the trim levels that make sense for it, with labels in its own words */
   trims?: { id: TrimId; label: string }[];
   code: string;
+  /** priced as another product: the basketball singlet is cut on the bib template, so it is a normal bib (N-bib) */
+  priceAs?: "bib_n";
   /** Thai product name */
   name: string;
   /** display name on the rack */
@@ -119,13 +121,15 @@ export const KITS: Kit[] = [
   {
     id: "rim",
     garment: "jersey",
+    priceAs: "bib_n",
     code: "BK-03",
     name: "เสื้อบาสเกตบอล",
     en: "Rim",
     note: "ทรงหลวม เบอร์ใหญ่ เห็นชัดจากอัฒจันทร์",
     deck: "เสื้อบาสทรงหลวม ขอบคอและวงแขนตัดสีได้ เบอร์ขนาดใหญ่ทั้งหน้าและหลัง",
-    cutLabel: "คอวี แขนกุด ตัวยาว", cutEn: "V-neck, sleeveless, long body", cutJa: "Vネック・ノースリーブ・ロング丈",
-    cut: { sleeves: "none", neck: "v", fit: 1.1, length: 1.08 },
+    // cut on the factory's bib pattern (CB-005): a deep round (U) neck
+    cutLabel: "คอกลมลึก แขนกุด ตัวยาว", cutEn: "Scoop neck, sleeveless, long body", cutJa: "Uネック・ノースリーブ・ロング丈",
+    cut: { sleeves: "none", neck: "crew", fit: 1.1, length: 1.08 },
     theme: { bg: "#4d0f14", ink: "#f7efe6", soft: "#e4bec1", rail: "#7a2129", accent: "#ffc20e", accentInk: "#4d0f14" },
     paletteLabel: "Crimson · gold · ink",
     defaults: {
@@ -286,6 +290,11 @@ export const KITS: Kit[] = [
     },
   },
 ];
+
+/** the garment its price is looked up as (the server reads the same from the saved design: pricing.ts garmentOf) */
+export function kitPriceGarment(kit: Kit): string {
+  return kit.priceAs ?? kit.garment;
+}
 
 /** the fabrics a kit is made in (the first is its usual one) */
 export function kitFabrics(kit: Kit): FabricId[] {

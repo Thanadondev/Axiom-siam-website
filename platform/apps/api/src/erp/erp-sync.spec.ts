@@ -131,7 +131,8 @@ describe("following the ERP on a web order", () => {
     expect(orders[0]).toMatchObject({ erpOrderNo: "HJ-447", status: "in_production", productionStep: 3 });
     expect(orders[0].erpStatus.steps[0].finishedOn).toBe("2026-10-19");
     expect(history).toEqual([expect.objectContaining({ step: 3, note: "อัปเดตจาก ERP (HJ-447)", changedBy: "admin" })]);
-    expect(pushed[0].title).toBe("ออเดอร์ AX-1: ขั้นที่ 3/10 · รีด");
+    // written in the customer's language when it's sent (notify/text.ts)
+    expect(pushed[0].title).toEqual({ th: "ออเดอร์ AX-1: ขั้นที่ 3/10 · รีด", en: "Order AX-1: step 3/10 · Heat transfer", ja: "ご注文 AX-1：工程 3/10 · 転写" });
   });
 
   it("won't link a number the ERP doesn't know, or one already on another order", async () => {

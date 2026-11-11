@@ -33,6 +33,10 @@ export interface BankConfig {
   note: string;
   /** false = ordering still works, but the pay panel says "ยังไม่เปิดรับชำระ" */
   enabled: boolean;
+  /** for a transfer from abroad (teams in Japan pay into this account): the names in English and the SWIFT code */
+  bankNameEn?: string;
+  accountNameEn?: string;
+  swift?: string;
 }
 
 export const DEFAULT_BANK: BankConfig = {
@@ -45,6 +49,24 @@ export const DEFAULT_BANK: BankConfig = {
   // only "on" once someone has actually filled in an account
   enabled: Boolean(process.env.PROMPTPAY_ID || process.env.BANK_ACCOUNT_NO),
 };
+
+/**
+ * Consolidated shipping to the agent / warehouse in Japan: teams ordering bibs by
+ * zip pick it instead of an address. Off until an admin fills in the agent; its
+ * fee is per order, set by the admin (not the domestic flat-or-free rule).
+ */
+export interface DeliveryConfig {
+  agentEnabled: boolean;
+  /** shown to the customer, e.g. "Axiom Japan (Osaka warehouse)" */
+  agentName: string;
+  /** printed on the job sheet and the order; not shown before ordering */
+  agentAddress: string;
+  agentPhone: string;
+  /** baht per order */
+  agentFee: number;
+}
+export const KEY_DELIVERY = "delivery";
+export const DEFAULT_DELIVERY: DeliveryConfig = { agentEnabled: false, agentName: "", agentAddress: "", agentPhone: "", agentFee: 0 };
 
 /**
  * Reads editable config from the `settings` table with an in-memory cache.
@@ -108,9 +130,17 @@ export class SettingsService {
     return this.write<BankConfig>(KEY_BANK, patch, DEFAULT_BANK, adminId);
   }
 
+  // ---------- delivery (the agent in Japan) ----------
+  delivery() {
+    return this.read<DeliveryConfig>(KEY_DELIVERY, DEFAULT_DELIVERY);
+  }
+  saveDelivery(patch: Partial<DeliveryConfig>, adminId?: string) {
+    return this.write<DeliveryConfig>(KEY_DELIVERY, patch, DEFAULT_DELIVERY, adminId);
+  }
+
   async all() {
-    const [pricing, market, bank] = await Promise.all([this.pricing(), this.market(), this.bank()]);
-    return { pricing, market, bank };
+    const [pricing, market, bank, delivery] = await Promise.all([this.pricing(), this.market(), this.bank(), this.delivery()]);
+    return { pricing, market, bank, delivery };
   }
 
   /** call after a write from elsewhere */
