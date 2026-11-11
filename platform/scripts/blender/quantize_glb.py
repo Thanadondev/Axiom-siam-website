@@ -1,8 +1,8 @@
 """
 Shrinks a Blender-exported GLB the way the kit models were (KHR_mesh_quantization):
-POSITION as normalized int16 (the node carries the scale and offset back), NORMAL as
-normalized int8, indices as uint16 when they fit. Every other attribute (_REST,
-_RESTN, TEXCOORD_0: the web paints in pattern space from these) is kept as is.
+POSITION as normalized int16 (the node carries the scale and offset back), NORMAL and
+_RESTN (unit normals) as normalized int8, indices as uint16 when they fit. _REST and
+TEXCOORD_0 stay full floats: the web paints the pattern from _REST and measures it.
 Usage: python quantize_glb.py in.glb out.glb
 (meshopt from glTF-Transform shrinks further: npx @gltf-transform/cli@4.5.1 meshopt in.glb out.glb)
 """
