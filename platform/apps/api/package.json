@@ -17,6 +17,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1165.0",
     "@axiom/db": "*",
     "@fontsource/anton": "^5.1.0",
+    "@fontsource/noto-sans-jp": "^5.1.0",
     "@fontsource/noto-sans-thai": "^5.1.0",
     "@fontsource/sora": "^5.1.0",
     "@nestjs/common": "^10.4.0",

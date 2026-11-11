@@ -1,10 +1,10 @@
 import { Resvg } from "@resvg/resvg-js";
 import * as jpeg from "jpeg-js";
 import { drawPiece, moveShapes, type Art, type Shape } from "./draw";
-import { LAYOUT, type BibDesign, type SideLook } from "./design";
+import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
-import { cmykText, ink } from "./color";
+import { cmykText, ink, tintPng } from "./color";
 import { textShape } from "./text";
 
 /**
@@ -25,13 +25,15 @@ export interface SheetMeta {
   date: Date;
   brand?: string;
   fabric?: string;
+  /** for the graphics team, above the footer (e.g. a team font that couldn't be read) */
+  notes?: string[];
 }
 
 function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; body: string } {
   let defs = "", body = "";
   for (const s of shapes) {
     if (s.kind === "image") {
-      body += `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(s.png).toString("base64")}"/>`;
+      body += `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(s.tint ? tintPng(s.png, s.tint) : s.png).toString("base64")}"/>`;
       continue;
     }
     let clip = "";
@@ -78,7 +80,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
 
   // ---- header
   out.push({ kind: "path", segs: box(0, 0, W, 92), fill: RED });
-  const product = reversible ? "Reversible Bibs" : "Normal Bibs";
+  const product = d.kit ? `${d.kit.name} ${d.kit.code}` : reversible ? "Reversible Bibs" : "Normal Bibs";
   label(`${meta.ref} ${d.team || ""} ${product} ${SIZE_NAME[size]} size`.replace(/\s+/g, " "), 34, { x: 28, cy: 46 }, "#ffffff", out);
   label(`${meta.date.getFullYear()}.${meta.date.getMonth() + 1}.${meta.date.getDate()}`, 34, { right: W - 28, cy: 46 }, "#ffffff", out);
   label("Colours on screen may differ slightly from the printed bib.", 18, { x: 28, cy: 122 }, INK, out);
@@ -101,10 +103,15 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
       // the print sizes, as on the team's sheets
       const R = x0 + p.w * s + 24;
       if (part === "front") {
-        const F = LAYOUT.front;
-        // the number's note sits left of the piece, as on the team's sheets; the logo's and team name's right
-        if (art.show.frontNumber && art.number) callout(out, `H${Math.round(F.number.h * k)}mm`, { x: x0 + (F.number.cx * p.w - 30 * k) * s, y: y0 + (F.number.top * p.h + 42 * k) * s }, { x: x0 - 24, y: y0 + (F.number.top * p.h + 42 * k) * s });
-        if (art.show.frontLogo && art.logo) callout(out, `H${Math.round(F.logo.h * k)}mm`, { x: x0 + (F.logo.cx * p.w + 45 * k) * s, y: y0 + (F.logo.top * p.h + 42 * k) * s }, { x: R, y: y0 + (F.logo.top * p.h + 42 * k) * s });
+        const F = frontLayout(!!art.logoLeft);
+        // the note of whatever is on the viewer's left sits left of the piece, as on the team's sheets; the other's right
+        const note = (text: string, it: { cx: number; top: number }, reach: number) => {
+          const y = y0 + (it.top * p.h + 42 * k) * s;
+          const onLeft = it.cx < 0.5;
+          callout(out, text, { x: x0 + (it.cx * p.w + (onLeft ? -reach : reach) * k) * s, y }, { x: onLeft ? x0 - 24 : R, y });
+        };
+        if (art.show.frontNumber && art.number) note(`H${Math.round(F.number.h * k)}mm`, F.number, art.logoLeft ? 45 : 30);
+        if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
         if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + F.team.cy * p.h * s }, { x: R + 30, y: y0 + (F.team.cy * p.h + 50 * k) * s });
       } else {
         const B = LAYOUT.back;
@@ -143,13 +150,15 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   // colours off the factory chart, as converted, so the team can check them
   const off = [...new Set(d.sides.flatMap(sd => [sd.body, sd.patternColor, sd.ink, sd.inkOutline, sd.rib?.neck, sd.rib?.arm, sd.rib?.hem]))]
     .filter((h): h is string => !!h).map(ink).filter(i => !i.onChart);
-  if (off.length) label(`Off-chart colours, converted: ${off.map(i => `${i.hex.toUpperCase()} → ${cmykText(i.cmyk)}`).join("   ")}`, 18, { x: 28, bottom: fy - 16 }, RED, out);
+  const notes = [...(meta.notes ?? [])];
+  if (off.length) notes.push(`Off-chart colours, converted: ${off.map(i => `${i.hex.toUpperCase()} → ${cmykText(i.cmyk)}`).join("   ")}`);
+  notes.reverse().forEach((n, i) => label(n, 18, { x: 28, bottom: fy - 16 - i * 28 }, RED, out));
   out.push({ kind: "path", segs: box(0, fy, W, 86), fill: RED });
   label(`Order Sheet ${meta.ref}`, 48, { cx: W / 2, cy: fy + 43 }, "#ffffff", out);
   const total = Object.values(counts).reduce((a, b) => a + (b ?? 0), 0);
   const bySize = (Object.keys(counts) as BibSize[]).map(z => `${SIZE_NAME[z]} ${counts[z]}`).join(" · ");
   label(`${product} x ${total} pcs  (${bySize})`, 36, { cx: W / 2, top: fy + 112 }, RED, out);
-  label(`Fabric : ${meta.fabric ?? "Mesh full sublimation"}      Brand : ${meta.brand ?? "OEM"}      Pattern : ${TEMPLATE.code}`, 30, { cx: W / 2, top: fy + 172 }, RED, out);
+  label(`Fabric : ${meta.fabric ?? (d.kit?.fabric ? `${d.kit.fabric === "mesh" ? "Mesh" : d.kit.fabric} full sublimation` : "Mesh full sublimation")}      Brand : ${meta.brand ?? "OEM"}      Pattern : ${TEMPLATE.code}`, 30, { cx: W / 2, top: fy + 172 }, RED, out);
 
   const ids = { n: 0 };
   const { defs, body } = svgShapes(out, ids);

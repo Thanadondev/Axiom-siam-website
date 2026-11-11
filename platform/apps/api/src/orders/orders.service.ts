@@ -13,7 +13,8 @@ import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
 import { orderFileView } from "./order-files.service";
 import { tri, statusTitle, stepTitle } from "../notify/text";
-import { BibJobService, type BibSnapshot } from "../bibs/bib-jobs.service";
+import { BibJobService, madeOnWeb as madeByWebsite, type BibSnapshot } from "../bibs/bib-jobs.service";
+import { kitOnBib } from "../bibs/kit";
 import { BIB_SIZES } from "../bibs/template";
 
 const ORDER_SELECT = {
@@ -157,17 +158,20 @@ export class OrdersService {
 
     // a web-designed bib: build its print files now, so the team (and the NAS, once paid) gets them like an upload.
     // A failure doesn't lose the order: the team is told, and builds it again from the order board.
+    // So is a kit from the kit studio that is cut on the bib template (the basketball singlet).
+    const kitBib = !bib && !file && kitOnBib(snapshot) && !!this.bibs;
     let built = true;
-    if (bib) {
+    if (bib || kitBib) {
       try { await this.bibs!.attach(order.id); } catch (e: any) {
         built = false;
-        this.log.error(`${order.orderNo}: building the bib job failed: ${e?.message ?? e}`);
+        this.log.error(`${order.orderNo}: building the ${bib ? "bib" : "kit"} job failed: ${e?.message ?? e}`);
       }
     }
 
     await this.notify.pushAdmins(
       file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)`
         : bib ? `ออเดอร์ใหม่ ${order.orderNo} · เอี๊ยมออกแบบบนเว็บ${built ? "" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
+        : kitBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบบนเว็บ (${(snapshot as { kit: string }).kit})${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : `ออเดอร์ใหม่ ${order.orderNo}`,
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,
@@ -193,9 +197,8 @@ export class OrdersService {
     // what has been paid and what is due now (deposit, then the balance)
     const { taxInvoice, erpOrderNo, erpStatus, erpSyncedAt, files, ...rest } = o;
     // a bib designed on the web: its files were made by the website, not sent by the customer
-    const madeOnWeb = !!files?.length && !!(await this.prisma.orderItem.findFirst({
-      where: { orderId: id, designSnapshot: { path: ["kind"], equals: "bib-design" } }, select: { id: true },
-    }));
+    const first = files?.length ? await this.prisma.orderItem.findFirst({ where: { orderId: id }, select: { designSnapshot: true } }) : null;
+    const madeOnWeb = !!first && madeByWebsite(first.designSnapshot);
     return {
       ...rest,
       madeOnWeb,

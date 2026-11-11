@@ -20,6 +20,7 @@ let CreateOrderSchema: typeof import("./orders.dto").CreateOrderSchema;
 let files: any[] = [];
 let orders: any[] = [];
 let rosterRows: any[] = [];
+let designs: any[] = [];
 const prisma: any = {
   orderFile: {
     create: async ({ data, select }: any) => { const row = { orderId: null, previewPath: null, ...data, createdAt: new Date() }; files.push(row); return pick(row, select); },
@@ -31,10 +32,13 @@ const prisma: any = {
     delete: async ({ where }: any) => { files = files.filter(f => f.id !== where.id); },
   },
   address: { findFirst: async ({ where }: any) => (where.id === ADDR && where.userId === USER ? { id: ADDR } : null) },
-  design: { findFirst: async () => null },
+  design: { findFirst: async ({ where }: any) => designs.find(d => d.id === where.id && d.userId === where.userId) ?? null },
   order: {
     create: async ({ data }: any) => { const o = { id: `order-${orders.length + 1}`, orderNo: `AX-TEST-${orders.length + 1}`, createdAt: new Date(2026, 10, 11), ...data, items: data.items.create.map((i: any, k: number) => ({ id: `item-${k}`, ...i })) }; orders.push(o); return o; },
-    findUnique: async ({ where }: any) => { const o = orders.find(x => x.id === where.id); return o ? { ...o, files: files.filter(f => f.orderId === o.id) } : null; },
+    findUnique: async ({ where }: any) => {
+      const o = orders.find(x => x.id === where.id);
+      return o ? { ...o, items: o.items.map((i: any) => ({ ...i, roster: rosterRows.filter(r => r.orderItemId === i.id) })), files: files.filter(f => f.orderId === o.id) } : null;
+    },
   },
   orderRoster: { createMany: async ({ data }: any) => { rosterRows.push(...data); return { count: data.length }; } },
   $transaction: async (fn: any) => fn(prisma),
@@ -59,7 +63,7 @@ beforeAll(async () => {
   ({ CreateOrderSchema } = await import("./orders.dto"));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-beforeEach(() => { files = []; orders = []; rosterRows = []; });
+beforeEach(() => { files = []; orders = []; rosterRows = []; designs = []; });
 
 describe("uploading the zip", () => {
   it("streams it to disk under the customer's folder, named by id, with its size and sha256", async () => {
@@ -236,6 +240,49 @@ describe("ordering bibs designed on the web", () => {
     expect(files).toHaveLength(2);
     // a file order can't be rebuilt as a bib
     orders[0].items[0].designSnapshot = { kind: "file-order" };
-    await expect(bibs.attach(orders[0].id)).rejects.toThrow(/ไม่ได้ออกแบบเอี๊ยมบนเว็บ/);
+    await expect(bibs.attach(orders[0].id)).rejects.toThrow(/ไม่ได้ออกแบบบนเว็บ/);
   }, 60_000);
+});
+
+describe("ordering the basketball singlet from the kit studio (/shop/rim)", () => {
+  const DESIGN = "55555555-5555-4555-8555-555555555555";
+  // what the kit studio saves (apps/web/lib/kits.ts KitConfig + the roster)
+  const kitState = (kit = "rim") => ({
+    kind: "kit-studio", v: 1, kit,
+    colors: { body: "#ed1c24", sleeve: "#ed1c24", trim: "#ffc20e", stripe: "#ffc20e", number: "#ffffff" },
+    pattern: "chest", font: "block", fabric: "mesh", trim: "full", name: "SOMCHAI", number: "23", logo: "axiom", logoTint: false,
+  });
+  const services = async () => {
+    const { BibJobService } = await import("../bibs/bib-jobs.service");
+    const store = new OrderFilesService(prisma);
+    return new OrdersService(prisma, settings, notify, undefined, new BibJobService(prisma, store));
+  };
+
+  it("is cut on the bib template, so the order gets the same job package, named by the kit's code", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: kitState() });
+    const svc = await services();
+    const res = await svc.create(USER, CreateOrderSchema.parse({
+      designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR,
+      lines: [{ size: "M", qty: 2 }, { size: "L", qty: 1 }],
+      roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "鈴木", number: "7", size: "M" }, { playerName: "SATO", number: "4", size: "L" }],
+    }));
+    // priced as a normal bib: one price a piece, whatever the fabric and trim
+    expect(res.breakdown).toMatchObject({ garment: "bib_n", unitPrice: 252, subtotal: 252 * 3 });
+    const o = orders[0];
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ orderId: o.id, name: `${o.orderNo} BK-03 (ML).zip` });
+    const { unzipSync } = await import("fflate");
+    const names = Object.keys(unzipSync(readFileSync(join(dir, "order-files", files[0].path)))).map(n => n.replaceAll(`${o.orderNo} BK-03 (ML)`, "<job>"));
+    expect(names.filter(n => n.endsWith(".pdf")).sort()).toEqual(["<job>/L/01 No.4 SATO_ol.pdf", "<job>/M/01 No.7 鈴木_ol.pdf", "<job>/M/02 No.23 TANAKA_ol.pdf"]);
+    expect(names).toContain("<job>/<job>_M.jpg");
+    // and the order page says the website made them
+    expect(await (await import("../bibs/bib-jobs.service")).madeOnWeb(o.items[0].designSnapshot)).toBe(true);
+  }, 30_000);
+
+  it("other kits (a football shirt) get no print files: they aren't on a template yet", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
+    const svc = await services();
+    await svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] }));
+    expect(files).toHaveLength(0);
+  });
 });

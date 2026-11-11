@@ -80,6 +80,17 @@ describe("paths and outlined text", () => {
     expect(textShape("ทีมไทย", "block", { h: 40 }, { x: 0, top: 0 })!.segs.length).toBeGreaterThan(10);
     expect(textShape("  ", "block", { h: 40 }, { x: 0 })).toBeNull();
   });
+
+  it("draws Japanese names in kanji and kana, not empty boxes", () => {
+    // an empty box ("tofu") is two rectangles: ~10 segments a character, and every character the same
+    const one = (ch: string) => pathData(textShape(ch, "block", { h: 35 }, { x: 0, top: 0 })!.segs);
+    for (const ch of ["鈴", "木", "タ", "ろ", "ー"]) expect(one(ch)).not.toBe(one("\u{E000}"));
+    expect(one("鈴")).not.toBe(one("木"));
+    expect(textShape("鈴木", "block", { h: 35 }, { x: 0, top: 0 })!.segs.length).toBeGreaterThan(60);
+    // Latin in a Japanese name stays in the team's face; the order sheet's labels read Japanese too
+    expect(textShape("TANAKA 太郎", "classic", { h: 35, maxW: 380 }, { cx: 0, top: 0 })!.box.w).toBeLessThanOrEqual(380.5);
+    expect(textShape("背番号", "label", { h: 4 }, { x: 0, top: 0 })!.segs.length).toBeGreaterThan(30);
+  });
 });
 
 describe("colour", () => {
@@ -158,5 +169,60 @@ describe("the job package", () => {
     expect(mm(pdf.getPage(0).getSize().height)).toBeCloseTo(layoutFor("M", ["A"]).page.h, 0);
     expect(job.name).toContain("N-bib");
     expect(job.offChart).toEqual(["#123456 → C79.1 M39.5 Y0 K66.3"]);
+  }, 30_000);
+});
+
+describe("the kit studio's basketball singlet, on the bib template", async () => {
+  const { kitBibDesign, kitRoster, kitOnBib } = await import("./kit");
+  const snap = (over: Record<string, unknown> = {}) => ({
+    kind: "kit-studio" as const, kit: "rim",
+    colors: { body: "#ed1c24", sleeve: "#ed1c24", trim: "#ffc20e", stripe: "#ffc20e", number: "#ffffff" },
+    pattern: "diagonal", font: "classic", fabric: "B1", trim: "neckarm", name: "SOMCHAI", number: "23", logo: "axiom", logoTint: false,
+    ...over,
+  });
+
+  it("is a one-sided bib in the kit's colours, trim where the trim level puts it", () => {
+    expect(kitOnBib(snap())).toBe(true);
+    expect(kitOnBib(snap({ kit: "striker" }))).toBe(false);
+    const d = BibDesignSchema.parse(kitBibDesign(snap(), [{ name: "TANAKA", number: "7", size: "M" }]));
+    expect(d).toMatchObject({ product: "bib_n", font: "classic", logoLeft: true, axiomMark: true, kit: { id: "rim", code: "BK-03", fabric: "B1" } });
+    expect(d.sides[0]).toEqual({ body: "#ed1c24", pattern: "diagonal", patternColor: "#ffc20e", ink: "#ffffff", rib: { neck: "#ffc20e", arm: "#ffc20e", hem: "#ed1c24" } });
+    expect(d.show).toMatchObject({ frontTeam: false, frontLogo: true });
+    const plain = kitBibDesign(snap({ trim: "none", pattern: "hoops" }), []).sides[0];
+    expect(plain.pattern).toBe("rings");
+    expect(plain.rib).toBeUndefined();
+    expect(kitBibDesign(snap({ logo: "none" }), []).show.frontLogo).toBe(false);
+  });
+
+  it("one piece per shirt ordered: the names given, else the design's own name and number", () => {
+    const items = [{ size: "M", qty: 2, roster: [{ playerName: "TANAKA", number: "7", qty: 1 }] }, { size: "L", qty: 1, roster: [] }];
+    expect(kitRoster(snap(), items)).toEqual([{ name: "TANAKA", number: "7", size: "M" }, { name: "", number: "", size: "M" }, { name: "", number: "", size: "L" }]);
+    expect(kitRoster(snap(), [{ size: "XL", qty: 2, roster: [] }])).toEqual([{ name: "SOMCHAI", number: "23", size: "XL" }, { name: "SOMCHAI", number: "23", size: "XL" }]);
+  });
+
+  it("draws the kit's pattern as the 3D singlet does, the back mirrored; the logo left, the number right", () => {
+    const d = BibDesignSchema.parse(kitBibDesign(snap(), [{ name: "A", number: "7", size: "M" }]));
+    const p = piecesFor("M", "A");
+    const stripe = (part: "front" | "back") => drawPiece(p[part], part, d.sides[0], art).find(s => s.kind === "path" && s.fill === "#ffc20e" && s.clip)!;
+    // the sash's top edge, as [y at its left end, y at its right end]
+    const sash = (part: "front" | "back") => { const [a, b] = (stripe(part) as any).segs.slice(0, 2).sort((u: any, v: any) => u.x - v.x); return [a.y, b.y]; };
+    const [fl, fr] = sash("front"), [bl, br] = sash("back");
+    expect(fl).toBeLessThan(fr); // the front's sash falls to the viewer's right
+    expect(bl).toBeGreaterThan(br); // the back's the other way
+    const shapes = drawPiece(p.front, "front", d.sides[0], { ...art, number: "7", logoLeft: true, logo: { png: new Uint8Array(8), w: 100, h: 100, tint: true } });
+    const logo = shapes.find(s => s.kind === "image") as any;
+    expect(logo.tint).toBe("#ffffff");
+    expect(logo.x + logo.w / 2).toBeLessThan(p.front.w / 2);
+  });
+
+  it("builds the job: Axiom mark in one colour, named by the kit", async () => {
+    const job = await buildBibJob(kitBibDesign(snap(), [{ name: "TANAKA", number: "7", size: "M" }]), { ref: "AX-261111-K1", date: new Date(2026, 10, 11) });
+    expect(job.name).toBe("AX-261111-K1 BK-03 (M)");
+    const z = unzipSync(job.zip);
+    const pdf = await PDFDocument.load(z[`${job.name}/M/01 No.7 TANAKA_ol.pdf`]);
+    expect(pdf.getPageCount()).toBe(1);
+    expect(job.offChart).toEqual([]);
+    const json = JSON.parse(strFromU8(z[`${job.name}/${job.name}_design.json`]));
+    expect(json.design.kit).toMatchObject({ id: "rim", code: "BK-03" });
   }, 30_000);
 });

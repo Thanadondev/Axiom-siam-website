@@ -66,7 +66,6 @@ export const FONT_ACCEPT = ".ttf,.otf,.woff,.woff2";
 export const LOGO_MAX_BYTES = 8 * 1024 * 1024;
 export const FONT_MAX_BYTES = 4 * 1024 * 1024;
 /** longest side a logo is kept at: sharp at print-preview size, small enough to save */
-const LOGO_PX = 1024;
 
 // ---------------------------------------------------------------- storage
 const DB = "axiom-kit-assets";
@@ -176,27 +175,14 @@ function clearWhiteBackground(ctx: CanvasRenderingContext2D, w: number, h: numbe
   return true;
 }
 
-/** checks, trims and re-encodes an uploaded logo; throws a message for the customer */
+/**
+ * Checks, trims and re-encodes an uploaded logo; throws a message for the customer.
+ * Kept at print resolution (importPrintLogo): the kit studio's designs are printed
+ * from it (the basketball singlet's job is built from this very file).
+ */
 export async function importLogo(file: File): Promise<KitAsset> {
-  const type = file.type || (file.name.toLowerCase().endsWith(".svg") ? "image/svg+xml" : "");
-  if (!LOGO_TYPES.includes(type)) throw new Error("รองรับโลโก้ PNG, JPG, WEBP หรือ SVG");
-  if (file.size > LOGO_MAX_BYTES) throw new Error("ไฟล์โลโก้ใหญ่เกิน 8MB");
-  const src = await readAs(file, "dataURL");
-  const img = await loadImage(src);
-  let w = img.naturalWidth || 512, h = img.naturalHeight || 512;
-  if (type === "image/svg+xml" && (!img.naturalWidth || !img.naturalHeight)) { w = h = 1024; }
-  const k = Math.min(1, LOGO_PX / Math.max(w, h));
-  const cw = Math.max(1, Math.round(w * (type === "image/svg+xml" ? LOGO_PX / Math.max(w, h) : k)));
-  const ch = Math.max(1, Math.round(h * (type === "image/svg+xml" ? LOGO_PX / Math.max(w, h) : k)));
-  const c = document.createElement("canvas");
-  c.width = cw; c.height = ch;
-  const ctx = c.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0, cw, ch);
-  const cleaned = type !== "image/svg+xml" && clearWhiteBackground(ctx, cw, ch);
-  const trimmed = trimTransparent(c);
-  const data = trimmed.toDataURL("image/png");
-  if (data.length < 200) throw new Error("โลโก้ว่างเปล่า");
-  return putAsset({ id: newId("logo"), kind: "logo", name: file.name.slice(0, 80), data, cleaned, created: Date.now() });
+  const p = await importPrintLogo(file);
+  return putAsset({ id: newId("logo"), kind: "logo", name: p.name, data: p.data, cleaned: p.cleaned, created: Date.now() });
 }
 
 /** a print logo's long side: SVG is drawn this big, bigger pictures are brought down to it */
@@ -215,10 +201,9 @@ function svgAspect(text: string): number | null {
 }
 
 /**
- * A logo for printing (the bib designer): kept at the resolution it came in, up to
- * PRINT_LOGO_PX on the long side — never brought down to the studio's 1024 px —
- * and an SVG drawn at that size, so it stays sharp on the biggest bib. A plain
- * white background is cleared, as for the studio.
+ * A logo for printing (the bib designer and the kit studio): kept at the resolution
+ * it came in, up to PRINT_LOGO_PX on the long side, and an SVG drawn at that size,
+ * so it stays sharp on the biggest piece. A plain white background is cleared.
  */
 export async function importPrintLogo(file: File): Promise<PrintLogo> {
   const type = file.type || (file.name.toLowerCase().endsWith(".svg") ? "image/svg+xml" : "");

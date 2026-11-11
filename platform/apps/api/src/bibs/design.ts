@@ -9,7 +9,12 @@ import { BIB_SIZES } from "./template";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "colour must be #RRGGBB").transform(s => s.toLowerCase());
 
-export const PATTERNS = ["plain", "stripes", "hoops"] as const;
+/**
+ * The bib designer's patterns (plain, stripes, hoops), and the kit studio's as its
+ * 3D singlet shows them (/shop/rim, cut on this template): a diagonal sash, a
+ * chest band, side panels, pinstripes and rings.
+ */
+export const PATTERNS = ["plain", "stripes", "hoops", "diagonal", "chest", "side", "pin", "rings"] as const;
 
 export const SideLookSchema = z.object({
   body: hex,
@@ -46,6 +51,16 @@ export const BibDesignSchema = z.object({
     backNumber: z.boolean().default(true),
   }).default({}),
   roster: z.array(RosterRowSchema).min(1).max(500),
+  /** the chest logo on the wearer's right (the viewer's left) and the number opposite, as the kit studio places them */
+  logoLeft: z.boolean().default(false),
+  /** print the logo in one colour, the side's ink (the kit studio's "one colour" logo) */
+  logoTint: z.boolean().default(false),
+  /** with no team logo, the Axiom mark in its place (always one colour, a little smaller), as the kit studio shows it */
+  axiomMark: z.boolean().default(false),
+  /** the team's own font for names and numbers (uploaded in the kit studio); ours stand in for what it lacks */
+  fontUrl: z.string().regex(/^\/uploads\/kit-assets\/fonts\/[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/).optional(),
+  /** made in the kit studio: the kit, named on the order sheet and the job folder */
+  kit: z.object({ id: z.string().max(20), code: z.string().max(12), name: z.string().max(30), fabric: z.string().max(10).optional() }).optional(),
 }).superRefine((d, ctx) => {
   if (d.product === "bib_r" && d.sides.length !== 2) ctx.addIssue({ code: "custom", path: ["sides"], message: "a reversible bib needs both sides" });
   if (d.product === "bib_n" && d.sides.length !== 1) ctx.addIssue({ code: "custom", path: ["sides"], message: "a normal bib has one side" });
@@ -54,6 +69,12 @@ export const BibDesignSchema = z.object({
 export type SideLook = z.infer<typeof SideLookSchema>;
 export type RosterRow = z.infer<typeof RosterRowSchema>;
 export type BibDesign = z.infer<typeof BibDesignSchema>;
+
+/** the front's layout, with the logo and number swapped when the logo goes on the viewer's left */
+export function frontLayout(logoLeft: boolean) {
+  const F = LAYOUT.front;
+  return logoLeft ? { ...F, number: { ...F.number, cx: F.logo.cx }, logo: { ...F.logo, cx: F.number.cx } } : F;
+}
 
 /**
  * Where things go, as the graphics team places them on a junior (M) bib —

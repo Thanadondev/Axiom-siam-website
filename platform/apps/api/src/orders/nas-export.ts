@@ -5,6 +5,7 @@ import { pipeline } from "stream/promises";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "./order-files.service";
 import { keyOf } from "./blob-store";
+import { KITS_ON_BIB, kitOnBib } from "../bibs/kit";
 
 /**
  * The graphics team works from job folders on the NAS (\\SynologyNAS\Axiom Siam),
@@ -101,7 +102,8 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     const snap = o.items[0]?.designSnapshot as { product?: string; team?: string } | null;
     const folder = jobFolderName({
       orderNo: o.orderNo,
-      product: snap?.product ?? null,
+      // a kit from the kit studio cut on the bib template is named by its code ("BK-03")
+      product: snap?.product ?? (kitOnBib(snap) ? KITS_ON_BIB[snap.kit.toLowerCase()].code : null),
       sizes: o.items.filter(i => i.qty > 0).map(i => i.size),
       // a bib designed on the web carries the team's own name; otherwise the customer's
       team: snap?.team || o.user.companyName || o.user.fullName,

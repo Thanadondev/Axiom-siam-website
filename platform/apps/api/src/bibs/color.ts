@@ -65,3 +65,30 @@ export function pngToCmyk(png: Uint8Array): { w: number; h: number; cmyk: Uint8A
   }
   return { w: img.width, h: img.height, cmyk, alpha: seeThrough ? alpha : null };
 }
+
+/**
+ * A one-colour print of a logo: its shape (the PNG's transparency) filled with
+ * one ink, as the kit studio prints the Axiom mark or a team logo when asked.
+ * Print: the ink's own CMYK, every pixel; preview: a PNG in that colour.
+ */
+export function tintCmyk(png: Uint8Array, hex: string): { w: number; h: number; cmyk: Uint8Array; alpha: Uint8Array } {
+  const img = UPNG.decode(png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer);
+  const rgba = new Uint8Array(UPNG.toRGBA8(img)[0]);
+  const n = img.width * img.height;
+  const c = ink(hex).cmyk.map(v => Math.round((v / 100) * 255));
+  const cmyk = new Uint8Array(n * 4);
+  const alpha = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    cmyk.set(c, i * 4);
+    alpha[i] = rgba[i * 4 + 3];
+  }
+  return { w: img.width, h: img.height, cmyk, alpha };
+}
+
+export function tintPng(png: Uint8Array, hex: string): Uint8Array {
+  const img = UPNG.decode(png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer);
+  const rgba = new Uint8Array(UPNG.toRGBA8(img)[0]);
+  const v = parseInt(hex.slice(1), 16);
+  for (let i = 0; i < rgba.length; i += 4) { rgba[i] = (v >> 16) & 255; rgba[i + 1] = (v >> 8) & 255; rgba[i + 2] = v & 255; }
+  return new Uint8Array(UPNG.encode([rgba.buffer as ArrayBuffer], img.width, img.height, 0));
+}

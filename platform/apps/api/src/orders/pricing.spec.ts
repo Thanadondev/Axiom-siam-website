@@ -221,6 +221,7 @@ describe("garmentOf", () => {
     expect(garmentOf({ kind: "kit-studio", kit: "warmup" })).toBe("hoodie");
     expect(garmentOf({ kind: "kit-studio", kit: "STRIDE" })).toBe("shorts");
     expect(garmentOf({ kind: "kit-studio", kit: "striker" })).toBe("jersey");
+    expect(garmentOf({ kind: "kit-studio", kit: "rim" })).toBe("bib_n"); // the basketball singlet is cut on the bib template
     expect(garmentOf({ kit: "warmup" })).toBe("jersey"); // not a kit-studio design
     expect(garmentOf(null)).toBe("jersey");
     expect(garmentOf("warmup")).toBe("jersey");

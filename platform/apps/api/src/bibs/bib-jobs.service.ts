@@ -4,11 +4,12 @@ import { resolve } from "path";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "../orders/order-files.service";
 import { BibDesignSchema, type BibDesign } from "./design";
-import { buildBibJob } from "./job";
+import { buildBibJob, logoArt } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
 import { fitPng, PREVIEW_LOGO_PX } from "./raster";
+import { kitBibDesign, kitLogoUrl, kitOnBib, kitRoster } from "./kit";
 
 /** what a web-designed bib order keeps on its items: enough to build the job again */
 export interface BibSnapshot {
@@ -24,6 +25,11 @@ export const isBibSnapshot = (s: unknown): s is BibSnapshot => !!s && typeof s =
 
 /** a logo the kit studio stored: the browser re-encodes every logo to PNG before upload */
 const LOGO_URL = /^\/uploads\/kit-assets\/logos\/([a-f0-9]{64})\.png$/;
+/** a team font the kit studio stored */
+const FONT_URL = /^\/uploads\/kit-assets\/fonts\/([a-f0-9]{64}\.(?:ttf|otf|woff|woff2))$/;
+
+/** an order whose print files the website makes: a bib designed on the web, or a kit cut on the bib template */
+export const madeOnWeb = (s: unknown) => isBibSnapshot(s) || kitOnBib(s);
 
 /**
  * Bibs designed on the website become the same job package the graphics team
@@ -35,6 +41,7 @@ const LOGO_URL = /^\/uploads\/kit-assets\/logos\/([a-f0-9]{64})\.png$/;
 export class BibJobService {
   private readonly log = new Logger("BibJobs");
   private readonly logos = resolve(process.env.UPLOAD_DIR ?? "./uploads", "kit-assets", "logos");
+  private readonly fonts = resolve(process.env.UPLOAD_DIR ?? "./uploads", "kit-assets", "fonts");
 
   constructor(private prisma: PrismaService, private files: OrderFilesService) {}
 
@@ -49,6 +56,14 @@ export class BibJobService {
     return new Uint8Array(buf);
   }
 
+  /** the team's font file, from a URL the kit studio handed out; missing or unknown is no font (the job notes it) */
+  async font(url?: string | null): Promise<Uint8Array | undefined> {
+    const m = url ? FONT_URL.exec(url) : null;
+    if (!m) return undefined;
+    const buf = await fs.readFile(resolve(this.fonts, m[1])).catch(() => null);
+    return buf ? new Uint8Array(buf) : undefined;
+  }
+
   /** the order sheet for one size, as SVG: the designer's live preview */
   async sheet(input: unknown, logoUrl: string | undefined, size?: string) {
     const p = BibDesignSchema.safeParse(input);
@@ -60,8 +75,8 @@ export class BibJobService {
     const row = d.roster.find(r => r.size === z) ?? d.roster[0];
     const full = await this.logo(logoUrl);
     const png = full ? fitPng(full, PREVIEW_LOGO_PX) : undefined;
-    const logo = png ? { png, ...pngSize(png) } : undefined;
-    const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show }, z, counts, { ref: "PREVIEW", date: new Date() });
+    const logo = logoArt(d, png);
+    const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft }, z, counts, { ref: "PREVIEW", date: new Date() });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
   }
 
@@ -75,15 +90,25 @@ export class BibJobService {
       where: { id: orderId },
       select: {
         id: true, orderNo: true, userId: true, createdAt: true,
-        items: { select: { designSnapshot: true }, take: 1 },
+        items: { select: { designSnapshot: true, size: true, qty: true, roster: { select: { playerName: true, number: true, qty: true } } } },
         files: { select: { id: true, nasAt: true } },
       },
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     const snap = o.items[0]?.designSnapshot;
-    if (!isBibSnapshot(snap)) throw new BadRequestException("ออเดอร์นี้ไม่ได้ออกแบบเอี๊ยมบนเว็บ");
+    let design: BibDesign, logoUrl: string | undefined;
+    if (isBibSnapshot(snap)) { design = snap.design; logoUrl = snap.logoUrl; }
+    else if (kitOnBib(snap)) {
+      // a kit from the kit studio cut on the bib template (the basketball singlet): its pieces are the order's lines and names
+      design = kitBibDesign(snap, kitRoster(snap, o.items));
+      logoUrl = kitLogoUrl(snap);
+    } else throw new BadRequestException("ออเดอร์นี้ไม่ได้ออกแบบบนเว็บ");
     const t0 = Date.now();
-    const job = await buildBibJob(snap.design, { ref: o.orderNo, date: o.createdAt, logoPng: await this.logo(snap.logoUrl) });
+    const job = await buildBibJob(design, {
+      ref: o.orderNo, date: o.createdAt,
+      logoPng: await this.logo(logoUrl),
+      fontData: await this.font(design.fontUrl),
+    });
     const saved = await this.files.saveGenerated(o.userId, o.id, `${job.name}.zip`, Buffer.from(job.zip), Buffer.from(job.preview));
     // an earlier build the team hasn't taken yet goes; one already on the NAS stays on record
     for (const f of o.files) if (!f.nasAt && f.id !== saved.id) await this.files.remove(f.id);

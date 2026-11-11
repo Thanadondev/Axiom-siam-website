@@ -3,7 +3,7 @@ import {
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle,
 } from "pdf-lib";
-import { ink, pngToCmyk } from "./color";
+import { ink, pngToCmyk, tintCmyk } from "./color";
 import type { Shape } from "./draw";
 import type { Seg } from "./path";
 
@@ -30,9 +30,9 @@ export interface PrintPdf {
   offChart: string[];
 }
 
-/** a DeviceCMYK image (with a soft mask for the PNG's transparency) */
-function cmykImage(doc: PDFDocument, png: Uint8Array): PDFRef {
-  const { w, h, cmyk, alpha } = pngToCmyk(png);
+/** a DeviceCMYK image (with a soft mask for the PNG's transparency); a tint prints its shape in one ink */
+function cmykImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef {
+  const { w, h, cmyk, alpha } = tint ? tintCmyk(png, tint) : pngToCmyk(png);
   const ctx = doc.context;
   const smask = alpha ? ctx.register(ctx.flateStream(alpha, { Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "DeviceGray", BitsPerComponent: 8 })) : undefined;
   return ctx.register(ctx.flateStream(cmyk, {
@@ -48,7 +48,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
   doc.setCreator("Axiom Siam website");
   doc.setProducer("Axiom Siam website");
   const page = doc.addPage([wMm * PT, hMm * PT]);
-  const images = new Map<Uint8Array, PDFName>();
+  const images = new Map<Uint8Array, Map<string, PDFName>>();
   const offChart = new Map<string, string>();
   const cmyk = (hex: string): [number, number, number, number] => {
     const i = ink(hex);
@@ -63,8 +63,14 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
   ];
   for (const s of shapes) {
     if (s.kind === "image") {
-      let name = images.get(s.png);
-      if (!name) { name = page.node.newXObject("Image", cmykImage(doc, s.png)); images.set(s.png, name); }
+      const byTint = images.get(s.png) ?? new Map<string, PDFName>();
+      images.set(s.png, byTint);
+      let name = byTint.get(s.tint ?? "");
+      if (!name) {
+        if (s.tint) cmyk(s.tint); // an off-chart tint is reported like any colour
+        name = page.node.newXObject("Image", cmykImage(doc, s.png, s.tint));
+        byTint.set(s.tint ?? "", name);
+      }
       // the image space is a unit square, y up: flip it back
       ops.push(pushGraphicsState(), concatTransformationMatrix(s.w, 0, 0, -s.h, s.x, s.y + s.h), drawObject(name), popGraphicsState());
       continue;
