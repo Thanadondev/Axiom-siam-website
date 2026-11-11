@@ -244,10 +244,10 @@ describe("ordering bibs designed on the web", () => {
   }, 60_000);
 });
 
-describe("ordering the basketball singlet from the kit studio (/shop/rim)", () => {
+describe("ordering the basketball singlet from the kit studio (/shop/bib)", () => {
   const DESIGN = "55555555-5555-4555-8555-555555555555";
   // what the kit studio saves (apps/web/lib/kits.ts KitConfig + the roster)
-  const kitState = (kit = "rim") => ({
+  const kitState = (kit = "bib") => ({
     kind: "kit-studio", v: 1, kit,
     colors: { body: "#ed1c24", sleeve: "#ed1c24", trim: "#ffc20e", stripe: "#ffc20e", number: "#ffffff" },
     pattern: "chest", font: "block", fabric: "mesh", trim: "full", name: "SOMCHAI", number: "23", logo: "axiom", logoTint: false,

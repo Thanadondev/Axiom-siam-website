@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import LockerScene, { type LockerHandle, type LockerView } from "../../../components/LockerScene";
 import KitThumb from "../../../components/KitThumb";
-import SwatchPicker, { usePalette } from "../../../components/SwatchPicker";
+import SwatchPicker, { usePalette, nearestSwatch, swatchLabel, type Swatch } from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 import { variantQuery } from "../../../lib/garment-options";
@@ -37,6 +37,9 @@ const baht = (n: number) => "฿" + Math.round(n).toLocaleString("th-TH");
 export default function KitStudioPage() {
   const id = String(useParams().kit ?? "");
   const kit = kitById(id);
+  // an old name for a kit (/shop/rim): show its current address
+  const router = useRouter();
+  useEffect(() => { if (kit && id !== kit.id) router.replace(`/shop/${kit.id}`); }, [id, kit, router]);
   if (!kit) {
     return (
       <div className="ax" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -176,18 +179,26 @@ function Studio({ kit }: { kit: Kit }) {
 
   const part = parts[Math.min(partIdx, parts.length - 1)];
   const cur = cfg.colors[part.id];
-  const swatchName = QUICK_SWATCHES.find(s => s.hex === cur)?.name
-    ?? palette.find(s => s.c.toLowerCase() === cur)?.k
-    ?? cur.toUpperCase();
+  // the colour's name, and its number and CMYK on the factory's chart (DTP-28color-cs4.svg)
+  const onChart = palette.find(s => s.c.toLowerCase() === cur);
+  const quickName = QUICK_SWATCHES.find(s => s.hex === cur)?.name;
+  const swatchName = [quickName, onChart ? swatchLabel(onChart) : quickName ? "" : cur.toUpperCase()].filter(Boolean).join(" · ");
   const setColor = (pid: PartId, hex: string) => setCfg(c => ({ ...c, colors: { ...c.colors, [pid]: hex.toLowerCase() } }));
-  const goPart = (i: number) => { const n = parts.length; setPartIdx(((i % n) + n) % n); setHexDraft(""); };
+  const goPart = (i: number) => { const n = parts.length; setPartIdx(((i % n) + n) % n); setHexDraft(""); setSnapped(null); };
 
+  // a typed colour becomes the nearest one on the factory's chart (white: the fabric, unprinted)
+  const [snapped, setSnapped] = useState<{ typed: string; to: Swatch } | null>(null);
   const onHex = (v: string) => {
     setHexDraft(v);
-    const h = (v.startsWith("#") ? v : "#" + v).trim();
-    if (/^#[0-9a-f]{6}$/i.test(h)) setColor(part.id, h);
+    setSnapped(null);
+    const h = (v.startsWith("#") ? v : "#" + v).trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(h)) return;
+    if (h === "#ffffff" || !palette.length) { setColor(part.id, h); return; }
+    const near = nearestSwatch(palette, h)!;
+    setColor(part.id, near.c);
+    if (near.c.toLowerCase() !== h) setSnapped({ typed: h, to: near });
   };
-  const hexOffChart = !QUICK_SWATCHES.some(s => s.hex === cur) && palette.length > 0 && !palette.some(s => s.c.toLowerCase() === cur);
+  const hexOffChart = cur !== "#ffffff" && palette.length > 0 && !onChart;
 
   function preview(): string | undefined {
     try { return scene.current?.capture(900, 900) ?? undefined; } catch { return undefined; }
@@ -352,13 +363,13 @@ function Studio({ kit }: { kit: Kit }) {
                 <div>
                   <div className="ax-swatches" role="group" aria-label={`สีของ${part.label}`}>
                     {QUICK_SWATCHES.map(s => (
-                      <button key={s.hex} type="button" className="ax-sw" aria-label={s.name} aria-pressed={cur === s.hex} style={{ background: s.hex }} onClick={() => { setColor(part.id, s.hex); setHexDraft(""); }} />
+                      <button key={s.hex} type="button" className="ax-sw" aria-label={s.name} aria-pressed={cur === s.hex} style={{ background: s.hex }} onClick={() => { setColor(part.id, s.hex); setHexDraft(""); setSnapped(null); }} />
                     ))}
                   </div>
                   <p style={{ margin: "12px 0 0", fontSize: 16 }}>{swatchName}</p>
                 </div>
                 <div className="ax-pal">
-                  <SwatchPicker label="สีทั้งหมดในชาร์ตโรงงาน" value={cur} onChange={h => { setColor(part.id, h); setHexDraft(""); }} />
+                  <SwatchPicker label="สีทั้งหมดในชาร์ตโรงงาน" value={cur} onChange={h => { setColor(part.id, h); setHexDraft(""); setSnapped(null); }} />
                 </div>
                 <div>
                   <label className="ax-label" htmlFor="hex">กำหนดสีเอง (HEX)</label>
@@ -366,7 +377,8 @@ function Studio({ kit }: { kit: Kit }) {
                     <input id="hex" className="ax-field" style={{ border: 0, padding: 0, fontFamily: "var(--ax-mono)" }} value={hexDraft || cur.toUpperCase()} maxLength={7} onChange={e => onHex(e.target.value)} />
                     <span aria-hidden="true" style={{ width: 28, height: 28, flex: "none", border: "1px solid #4a4d52", background: cur }} />
                   </div>
-                  {hexOffChart && <p className="ax-err" style={{ marginTop: 8 }}>สีนี้ไม่อยู่ในชาร์ตโรงงาน สีที่พิมพ์จริงอาจต่างจากจอ</p>}
+                  {snapped && <p className="ax-psub" style={{ marginTop: 8, fontSize: 13 }}>{snapped.typed.toUpperCase()} ไม่อยู่ในชาร์ตโรงงาน · ใช้สีที่ใกล้ที่สุด {swatchLabel(snapped.to)}</p>}
+                  {hexOffChart && !snapped && <p className="ax-err" style={{ marginTop: 8 }}>สีนี้ไม่อยู่ในชาร์ตโรงงาน · เลือกสีจากชาร์ต หรือพิมพ์ HEX ใหม่เพื่อใช้สีที่ใกล้ที่สุด</p>}
                 </div>
                 {part.id === "trim" && (
                   <div>

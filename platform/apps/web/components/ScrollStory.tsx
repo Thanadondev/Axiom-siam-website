@@ -38,7 +38,7 @@ const CHAPTERS = 8;
 const timeline = (p: number) => (p < 1.5 ? p : p < 2.5 ? 1.5 : p - 1);
 const CONTACT_EMAIL = "techkairos241@gmail.com";
 const CONTACT_LINE = "@axiomsiam";
-const ORDER = ["pacer", "rim", "smash", "club", "striker"]; // the cut chapter ends on football
+const ORDER = ["pacer", "bib", "smash", "club", "striker"]; // the cut chapter ends on football
 const STORY_KITS = ORDER.map(id => KITS.find(k => k.id === id)!).filter(Boolean);
 const HERO = STORY_KITS[STORY_KITS.length - 1];
 const NAME = "SOMCHAI";
@@ -685,7 +685,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
       const loadTeam = async () => {
         if (teamLoading) return;
         teamLoading = true;
-        const ids = ["pacer", "rim", "striker", "smash", "club"];
+        const ids = ["pacer", "bib", "striker", "smash", "club"];
         const [prims, kits] = await Promise.all([
           kitReady,
           Promise.all(ids.map(id => loadJersey(THREE, KITS.find(x => x.id === id)!).catch(() => null))),

@@ -7,7 +7,7 @@ import { BIB_SIZES, type BibSize } from "./template";
  * the same job package as a bib designed on the web.
  */
 export const KITS_ON_BIB: Record<string, { code: string; name: string }> = {
-  rim: { code: "BK-03", name: "Basketball" },
+  bib: { code: "BK-03", name: "Basketball" },
 };
 
 /** what the kit studio saves with a design (apps/web/lib/kits.ts KitConfig, plus the uploaded files) */

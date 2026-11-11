@@ -10,6 +10,13 @@ import CHART from "./dtp-chart.json";
 export type Cmyk = [number, number, number, number]; // 0–100 each
 
 const chart = (CHART as { colors: Record<string, string> }).colors;
+const numbers = (CHART as { numbers?: Record<string, string> }).numbers ?? {};
+
+/** the swatch's number on the paper chart ("0031"), for the team to find it */
+export const chartNumber = (hex: string): string | undefined => numbers[hex.toLowerCase()];
+
+/** how the order sheet names an ink: "0031 C0 M75 Y100 K0" on the chart, else its plain CMYK */
+export const inkText = (hex: string) => { const n = chartNumber(hex); const t = cmykText(ink(hex).cmyk); return n ? `${n}  ${t}` : t; };
 
 /** "C0 M22.5 Y90 K0" → [0, 22.5, 90, 0] */
 export function parseCmyk(s: string): Cmyk | null {

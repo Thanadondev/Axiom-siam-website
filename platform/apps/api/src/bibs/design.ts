@@ -11,7 +11,7 @@ const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "colour must be #RRGGBB").tran
 
 /**
  * The bib designer's patterns (plain, stripes, hoops), and the kit studio's as its
- * 3D singlet shows them (/shop/rim, cut on this template): a diagonal sash, a
+ * 3D singlet shows them (/shop/bib, cut on this template): a diagonal sash, a
  * chest band, side panels, pinstripes and rings.
  */
 export const PATTERNS = ["plain", "stripes", "hoops", "diagonal", "chest", "side", "pin", "rings"] as const;

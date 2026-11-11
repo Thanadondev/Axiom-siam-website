@@ -567,7 +567,7 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
  */
 /** a bib designed on the web: its print files are made by the website; the team can make them again */
 /** kits from the kit studio cut on the bib template: their print files are made by the website (apps/api/src/bibs/kit.ts) */
-const KITS_ON_BIB = ["rim"];
+const KITS_ON_BIB = ["bib"];
 
 function BibJobLine({ o, built, token, onChanged, what }: { o: any; built: boolean; token: string; onChanged: () => void; what: string }) {
   const [busy, setBusy] = useState(false);

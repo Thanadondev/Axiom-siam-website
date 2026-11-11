@@ -119,12 +119,12 @@ export const KITS: Kit[] = [
     },
   },
   {
-    id: "rim",
+    id: "bib",
     garment: "jersey",
     priceAs: "bib_n",
     code: "BK-03",
     name: "เสื้อบาสเกตบอล",
-    en: "Rim",
+    en: "Bib",
     note: "ทรงหลวม เบอร์ใหญ่ เห็นชัดจากอัฒจันทร์",
     deck: "เสื้อบาสทรงหลวม ขอบคอและวงแขนตัดสีได้ เบอร์ขนาดใหญ่ทั้งหน้าและหลัง",
     // cut on the factory's bib pattern (CB-005): a deep round (U) neck
@@ -325,9 +325,13 @@ export function kitParts(kit: Kit): { id: PartId; label: string; hint: string }[
   });
 }
 
+/** kits renamed: the old id still finds the kit (the basketball singlet was "rim") */
+const RENAMED: Record<string, string> = { rim: "bib" };
+
 export function kitById(id: string | null | undefined): Kit | undefined {
   if (!id) return undefined;
-  return KITS.find(k => k.id === id.toLowerCase());
+  const k = id.toLowerCase();
+  return KITS.find(x => x.id === (RENAMED[k] ?? k));
 }
 
 /** ten quick picks, all from the factory chart (white = unprinted fabric) */

@@ -13,6 +13,6 @@ describe("kitLook", () => {
     expect(kitLook({ kind: "kit-studio", kit: 3 })).toBeNull();
   });
   it("caps long strings", () => {
-    expect(kitLook({ kind: "kit-studio", kit: "rim", number: "123456" })?.number).toBe("1234");
+    expect(kitLook({ kind: "kit-studio", kit: "bib", number: "123456" })?.number).toBe("1234");
   });
 });
