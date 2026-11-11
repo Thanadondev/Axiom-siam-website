@@ -37,7 +37,7 @@ describe("CreateOrderSchema", () => {
   it("coerces a numeric string quantity", () => {
     const r = CreateOrderSchema.safeParse({ ...valid, lines: [{ size: "L", qty: "12" }] });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.lines[0].qty).toBe(12);
+    if (r.success) expect(r.data.lines?.[0].qty).toBe(12);
   });
 
   it("requires a real uuid for the shipping address", () => {

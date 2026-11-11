@@ -19,9 +19,10 @@ let CreateOrderSchema: typeof import("./orders.dto").CreateOrderSchema;
 // an in-memory stand-in for the two tables these touch
 let files: any[] = [];
 let orders: any[] = [];
+let rosterRows: any[] = [];
 const prisma: any = {
   orderFile: {
-    create: async ({ data, select }: any) => { const row = { ...data, orderId: null, previewPath: null, createdAt: new Date() }; files.push(row); return pick(row, select); },
+    create: async ({ data, select }: any) => { const row = { orderId: null, previewPath: null, ...data, createdAt: new Date() }; files.push(row); return pick(row, select); },
     findFirst: async ({ where, select }: any) => { const r = files.find(f => match(f, where)); return r ? pick(r, select) : null; },
     findUnique: async ({ where, select }: any) => { const r = files.find(f => f.id === where.id); return r ? pick(r, select) : null; },
     findMany: async ({ where }: any) => files.filter(f => f.orderId === where.orderId && f.createdAt < where.createdAt.lt),
@@ -31,8 +32,11 @@ const prisma: any = {
   },
   address: { findFirst: async ({ where }: any) => (where.id === ADDR && where.userId === USER ? { id: ADDR } : null) },
   design: { findFirst: async () => null },
-  order: { create: async ({ data }: any) => { const o = { id: `order-${orders.length + 1}`, orderNo: `AX-TEST-${orders.length + 1}`, ...data, items: data.items.create.map((i: any, k: number) => ({ id: `item-${k}`, ...i })) }; orders.push(o); return o; } },
-  orderRoster: { createMany: async () => ({}) },
+  order: {
+    create: async ({ data }: any) => { const o = { id: `order-${orders.length + 1}`, orderNo: `AX-TEST-${orders.length + 1}`, createdAt: new Date(2026, 10, 11), ...data, items: data.items.create.map((i: any, k: number) => ({ id: `item-${k}`, ...i })) }; orders.push(o); return o; },
+    findUnique: async ({ where }: any) => { const o = orders.find(x => x.id === where.id); return o ? { ...o, files: files.filter(f => f.orderId === o.id) } : null; },
+  },
+  orderRoster: { createMany: async ({ data }: any) => { rosterRows.push(...data); return { count: data.length }; } },
   $transaction: async (fn: any) => fn(prisma),
 };
 const match = (row: any, where: any) => Object.entries(where).every(([k, v]) => row[k] === v);
@@ -55,7 +59,7 @@ beforeAll(async () => {
   ({ CreateOrderSchema } = await import("./orders.dto"));
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-beforeEach(() => { files = []; orders = []; });
+beforeEach(() => { files = []; orders = []; rosterRows = []; });
 
 describe("uploading the zip", () => {
   it("streams it to disk under the customer's folder, named by id, with its size and sha256", async () => {
@@ -166,4 +170,72 @@ describe("ordering bibs with the zip", () => {
     await expect(svc.create(USER, order({ fileId: mine.id, product: "bib_n" }))).rejects.toThrow(/ใช้กับออเดอร์อื่นไปแล้ว/);
     expect(orders).toHaveLength(1);
   });
+});
+
+describe("ordering bibs designed on the web", () => {
+  // a 2×2 PNG, stored where the kit studio's upload puts logos
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBkZGBgYAEUUA/0nH5SQAAAAAElFTkSuQmCC", "base64");
+  const SHA = "a".repeat(64);
+  const side = (body: string, rib = true) => ({ body, ink: "#fff200", inkOutline: "#2e3192", ...(rib ? { rib: { neck: "#231f20", arm: "#231f20", hem: "#231f20" } } : {}) });
+  const bib = (over: Record<string, unknown> = {}) => ({
+    product: "bib_r", team: "SAGINUMA FC", sides: [side("#662d91"), side("#ffffff", false)],
+    roster: [{ name: "TAICHI", number: "48", size: "M" }, { name: "SORA", number: "2", size: "M" }, { name: "SHUN", number: "1", size: "XXL" }],
+    ...over,
+  });
+  const webOrder = (over: Record<string, unknown> = {}) => ({ bib: bib(), shippingAddressId: ADDR, ...over }) as any;
+  const services = async () => {
+    const { BibJobService } = await import("../bibs/bib-jobs.service");
+    const store = new OrderFilesService(prisma);
+    const bibs = new BibJobService(prisma, store);
+    return { store, bibs, svc: new OrdersService(prisma, settings, notify, undefined, bibs) };
+  };
+
+  it("the order takes the design instead of lines, fabric and trim; not with a zip as well", () => {
+    expect(CreateOrderSchema.safeParse(webOrder()).success).toBe(true);
+    expect(CreateOrderSchema.safeParse(webOrder({ delivery: "agent", shippingAddressId: undefined })).success).toBe(true);
+    expect(CreateOrderSchema.safeParse(webOrder({ fileId: "44444444-4444-4444-8444-444444444444", product: "bib_r" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse(webOrder({ bib: bib({ sides: [side("#662d91")] }) })).success).toBe(false); // R-bib: two sides
+    expect(CreateOrderSchema.safeParse(webOrder({ logoUrl: "/uploads/../../etc/passwd" })).success).toBe(false);
+    expect(CreateOrderSchema.safeParse({ shippingAddressId: ADDR, fabric: "mesh", trim: "none" }).success).toBe(false); // no lines, no design
+  });
+
+  it("counts the bibs from the name list, prices them as bibs, and attaches the print files it builds", async () => {
+    const { svc } = await services();
+    const res = await svc.create(USER, CreateOrderSchema.parse(webOrder()));
+    expect(res.breakdown).toMatchObject({ unitPrice: 245, subtotal: 245 * 3, garment: "bib_r" });
+    const o = orders[0];
+    expect(o.fabricSummary).toBe("R-bib (2 ด้าน) · ออกแบบบนเว็บ");
+    expect(o.items.map((i: any) => [i.size, i.qty])).toEqual([["M", 2], ["XXL", 1]]);
+    expect(o.items[0].designSnapshot).toMatchObject({ kind: "bib-design", product: "bib_r", team: "SAGINUMA FC" });
+    expect(rosterRows.map(r => [r.playerName, r.number, r.size])).toEqual([["TAICHI", "48", "M"], ["SORA", "2", "M"], ["SHUN", "1", "XXL"]]);
+    // the job, as the team's own: a zip named for its NAS folder, with the order sheet as its picture
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ orderId: o.id, userId: USER, name: `${o.orderNo} R-bib (M XXL) SAGINUMA FC.zip` });
+    const z = readFileSync(join(dir, "order-files", files[0].path));
+    expect(z.subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
+    expect(files[0].sha256).toBe(createHash("sha256").update(z).digest("hex"));
+    expect(readFileSync(join(dir, "order-files", files[0].previewPath)).subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+  }, 30_000);
+
+  it("takes the team's logo only from the kit studio's store, and builds again on request", async () => {
+    const { svc, bibs } = await services();
+    await expect(svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })))).rejects.toThrow(/ไม่พบไฟล์โลโก้/);
+    expect(orders).toHaveLength(0);
+    const { mkdirSync, writeFileSync } = await import("fs");
+    mkdirSync(join(dir, "kit-assets", "logos"), { recursive: true });
+    writeFileSync(join(dir, "kit-assets", "logos", `${SHA}.png`), PNG);
+    await svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })));
+    const first = files[0].id;
+    // building again replaces a build the team hasn't taken to the NAS
+    const again = await bibs.attach(orders[0].id);
+    expect(files.map(f => f.id)).toEqual([again.fileId]);
+    expect(again.fileId).not.toBe(first);
+    // …and keeps one that's on the NAS
+    files[0].nasAt = new Date();
+    await bibs.attach(orders[0].id);
+    expect(files).toHaveLength(2);
+    // a file order can't be rebuilt as a bib
+    orders[0].items[0].designSnapshot = { kind: "file-order" };
+    await expect(bibs.attach(orders[0].id)).rejects.toThrow(/ไม่ได้ออกแบบเอี๊ยมบนเว็บ/);
+  }, 60_000);
 });

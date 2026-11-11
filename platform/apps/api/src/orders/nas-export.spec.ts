@@ -11,6 +11,7 @@ describe("a job folder's name, the way the team names them", () => {
     expect(sizeLabel(["XL", "S", "L", "M"])).toBe("SML XL");
     expect(sizeLabel(["L"])).toBe("L");
     expect(sizeLabel(["XL"])).toBe("XL");
+    expect(sizeLabel(["SPM", "M", "XXL"])).toBe("M XXL SPM");
   });
 
   it("web order, product, sizes, team", () => {

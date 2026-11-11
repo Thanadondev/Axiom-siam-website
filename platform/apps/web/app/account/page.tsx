@@ -218,6 +218,7 @@ export default function AccountPage() {
             </button>
           ))}
           <Link href="/shop" className="abtn solid" style={{ marginTop: 14 }}>{L("ออกแบบเสื้อใหม่", "Design a kit", "デザインする")}</Link>
+          <Link href="/order/bib" className="abtn ghost" style={{ marginTop: 8 }}>{L("ออกแบบเอี๊ยมบนเว็บ", "Design bibs", "ビブスをデザイン")}</Link>
           <Link href="/order/upload" className="abtn ghost" style={{ marginTop: 8 }}>{L("สั่งผลิตด้วยไฟล์ .zip", "Order with your .zip", ".zipで入稿・注文")}</Link>
         </nav>
         <div className="ax-acc-body" role="tabpanel">
@@ -231,6 +232,7 @@ export default function AccountPage() {
               <b>{L("ยังไม่มีออเดอร์", "No orders yet", "ご注文はまだありません")}</b>
               <span>{L("เลือกทรงเสื้อ ปรับสีบนโมเดล 3D แล้วสั่งผลิตได้ในไม่กี่นาที หรือส่งไฟล์งานที่ออกแบบใน Illustrator มาเป็น .zip", "Pick a kit and colour it on the 3D model, or send the artwork you made in Illustrator as a .zip.", "3Dモデルでデザインするか、Illustratorで作成したデータを.zipで入稿してください。")}</span>
               <Link href="/shop" className="abtn solid">{L("เริ่มออกแบบเสื้อ", "Start designing", "デザインを始める")}</Link>
+              <Link href="/order/bib" className="abtn ghost">{L("ออกแบบเอี๊ยมบนเว็บ", "Design bibs", "ビブスをデザイン")}</Link>
               <Link href="/order/upload" className="abtn ghost">{L("สั่งผลิตด้วยไฟล์ .zip", "Order with your .zip", ".zipで入稿・注文")}</Link>
             </div>
           )}
