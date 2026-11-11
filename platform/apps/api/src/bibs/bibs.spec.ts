@@ -101,6 +101,19 @@ describe("colour", () => {
     expect(ink("#123456").onChart).toBe(false);
     expect(naiveCmyk("#ff0000")).toEqual([0, 100, 100, 0]);
   });
+
+  it("prints the CMYK written under each swatch on the factory's chart (DTP-28color-cs4.svg), by its number", async () => {
+    const { chartNumber, inkText } = await import("./color");
+    // rows a former copy of the chart had wrong: orange, crimson, violet
+    expect(ink("#f26522").cmyk).toEqual([0, 75, 100, 0]);
+    expect(ink("#ed145b").cmyk).toEqual([0, 100, 50, 0]);
+    expect(ink("#2e3192").cmyk).toEqual([100, 100, 0, 0]);
+    expect(ink("#feecdf").cmyk).toEqual([0, 7.5, 10, 0]);
+    expect(chartNumber("#F26522")).toBe("0031");
+    expect(chartNumber("#fff200")).toBe("0001");
+    expect(inkText("#f26522")).toBe("0031  C0 M75 Y100 K0");
+    expect(inkText("#123456")).toMatch(/^C/); // off the chart: no number
+  });
 });
 
 describe("design", () => {
@@ -175,7 +188,7 @@ describe("the job package", () => {
 describe("the kit studio's basketball singlet, on the bib template", async () => {
   const { kitBibDesign, kitRoster, kitOnBib } = await import("./kit");
   const snap = (over: Record<string, unknown> = {}) => ({
-    kind: "kit-studio" as const, kit: "rim",
+    kind: "kit-studio" as const, kit: "bib",
     colors: { body: "#ed1c24", sleeve: "#ed1c24", trim: "#ffc20e", stripe: "#ffc20e", number: "#ffffff" },
     pattern: "diagonal", font: "classic", fabric: "B1", trim: "neckarm", name: "SOMCHAI", number: "23", logo: "axiom", logoTint: false,
     ...over,
@@ -185,7 +198,7 @@ describe("the kit studio's basketball singlet, on the bib template", async () =>
     expect(kitOnBib(snap())).toBe(true);
     expect(kitOnBib(snap({ kit: "striker" }))).toBe(false);
     const d = BibDesignSchema.parse(kitBibDesign(snap(), [{ name: "TANAKA", number: "7", size: "M" }]));
-    expect(d).toMatchObject({ product: "bib_n", font: "classic", logoLeft: true, axiomMark: true, kit: { id: "rim", code: "BK-03", fabric: "B1" } });
+    expect(d).toMatchObject({ product: "bib_n", font: "classic", logoLeft: true, axiomMark: true, kit: { id: "bib", code: "BK-03", fabric: "B1" } });
     expect(d.sides[0]).toEqual({ body: "#ed1c24", pattern: "diagonal", patternColor: "#ffc20e", ink: "#ffffff", rib: { neck: "#ffc20e", arm: "#ffc20e", hem: "#ed1c24" } });
     expect(d.show).toMatchObject({ frontTeam: false, frontLogo: true });
     const plain = kitBibDesign(snap({ trim: "none", pattern: "hoops" }), []).sides[0];
@@ -223,6 +236,6 @@ describe("the kit studio's basketball singlet, on the bib template", async () =>
     expect(pdf.getPageCount()).toBe(1);
     expect(job.offChart).toEqual([]);
     const json = JSON.parse(strFromU8(z[`${job.name}/${job.name}_design.json`]));
-    expect(json.design.kit).toMatchObject({ id: "rim", code: "BK-03" });
+    expect(json.design.kit).toMatchObject({ id: "bib", code: "BK-03" });
   }, 30_000);
 });

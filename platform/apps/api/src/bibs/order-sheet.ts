@@ -4,7 +4,7 @@ import { drawPiece, moveShapes, type Art, type Shape } from "./draw";
 import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
-import { cmykText, ink, tintPng } from "./color";
+import { cmykText, ink, inkText, tintPng } from "./color";
 import { textShape } from "./text";
 
 /**
@@ -141,7 +141,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
       const y = ry + 56 + i * 58;
       out.push({ kind: "path", segs: box(rx + 18, y, 44, 44), fill: rib[z], stroke: "#bcbec0", width: 2 });
       label(z === "neck" ? "Neck" : z === "arm" ? "Sleeves" : "Hem", 18, { x: rx + 76, top: y + 2 }, INK, out);
-      label(rib[z] === look.body ? "Same as body" : cmykText(ink(rib[z]).cmyk), 14, { x: rx + 76, top: y + 26 }, MUTE, out);
+      label(rib[z] === look.body ? "Same as body" : inkText(rib[z]), 14, { x: rx + 76, top: y + 26 }, MUTE, out);
     });
   });
 

@@ -26,6 +26,18 @@ describe("kit catalogue", () => {
     }
   });
 
+  it("the chart is the factory's: 280 numbered swatches, each with the CMYK printed under it", async () => {
+    const src = readFileSync(join(__dirname, "../public/designer/palette.js"), "utf8");
+    const sw: { n: string; c: string; k: string }[] = JSON.parse(src.slice(src.indexOf("["), src.lastIndexOf("]") + 1));
+    expect(sw).toHaveLength(280);
+    expect(sw.map(s => s.n)).toEqual(Array.from({ length: 280 }, (_, i) => String(i + 1).padStart(4, "0")));
+    expect(sw.find(s => s.c === "#f26522")).toEqual({ n: "0031", c: "#f26522", k: "C0 M75 Y100 K0" });
+    // a colour typed in by hex becomes the nearest swatch
+    const { nearestSwatch } = await import("../components/SwatchPicker");
+    expect(nearestSwatch(sw, "#f26623")?.n).toBe("0031");
+    expect(nearestSwatch(sw, "#fe0000")?.c).toBe("#ed1c24");
+  });
+
   it("uses colours from the factory chart (white = unprinted fabric)", () => {
     for (const k of KITS) for (const hex of Object.values(k.defaults.colors)) expect(printable(hex), `${k.id} ${hex}`).toBe(true);
     for (const s of QUICK_SWATCHES) expect(printable(s.hex), s.hex).toBe(true);

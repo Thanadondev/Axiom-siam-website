@@ -1,17 +1,42 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 /**
  * Colour picker over the production palette (palette.js — the same DTP chart
  * the factory prints from, ~280 swatches).
  *
- * 280 flat swatches is a wall of colour nobody can scan, so they're grouped by
- * hue and collapsed to one row per family until you open it. The CMYK code is
- * surfaced because that — not the hex — is what the print floor works from.
+ * Laid out as the paper chart is (DTP-28color-cs4.svg): 28 rows of 10, each row
+ * one colour family from full strength to light, in the chart's own numbers
+ * (0001-0280), so the customer and the print floor point at the same swatch.
+ * The number and CMYK are surfaced because that — not the hex — is what the
+ * print floor works from.
  */
 
-export interface Swatch { c: string; k: string }
+/** c: screen colour, k: the CMYK the factory prints, n: the swatch's number on the paper chart (0001-0280) */
+export interface Swatch { c: string; k: string; n?: string }
+
+/** a swatch as the print floor names it: "0031 · C0 M75 Y100 K0" */
+export const swatchLabel = (s: Swatch) => (s.n ? `${s.n} · ${s.k}` : s.k);
+
+/**
+ * The chart swatch nearest a colour typed in by hex, so every colour on a kit is one the
+ * factory prints from its chart. White is the fabric left unprinted and stays white.
+ */
+export function nearestSwatch(palette: Swatch[], hex: string): Swatch | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m || !palette.length) return null;
+  const rgb = (h: string) => { const v = parseInt(h.replace("#", ""), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+  const [r, g, b] = rgb(m[1]);
+  let best: Swatch | null = null, bestD = Infinity;
+  for (const s of palette) {
+    const [r2, g2, b2] = rgb(s.c);
+    // weighted for how the eye sees red, green and blue
+    const d = 2 * (r - r2) ** 2 + 4 * (g - g2) ** 2 + 3 * (b - b2) ** 2;
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
 
 declare global {
   interface Window { AXIOM_PALETTE?: Swatch[] }
@@ -34,39 +59,12 @@ export function usePalette(): Swatch[] {
   return pal;
 }
 
-// ---------- hue grouping ----------
-function hexToHsl(hex: string): [number, number, number] {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return [0, 0, 0];
-  const n = parseInt(m[1], 16);
-  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h = 0;
-  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-  else if (max === g) h = ((b - r) / d + 2) / 6;
-  else h = ((r - g) / d + 4) / 6;
-  return [h * 360, s, l];
-}
-
-const GROUPS: { id: string; label: string; test: (h: number, s: number, l: number) => boolean }[] = [
-  { id: "mono", label: "ขาว-เทา-ดำ", test: (_h, s) => s < 0.12 },
-  { id: "red", label: "แดง", test: h => h < 15 || h >= 345 },
-  { id: "orange", label: "ส้ม", test: h => h >= 15 && h < 45 },
-  { id: "yellow", label: "เหลือง", test: h => h >= 45 && h < 70 },
-  { id: "green", label: "เขียว", test: h => h >= 70 && h < 165 },
-  { id: "cyan", label: "ฟ้า", test: h => h >= 165 && h < 200 },
-  { id: "blue", label: "น้ำเงิน", test: h => h >= 200 && h < 255 },
-  { id: "purple", label: "ม่วง", test: h => h >= 255 && h < 300 },
-  { id: "pink", label: "ชมพู", test: h => h >= 300 && h < 345 },
-];
-
-function groupOf(hex: string): string {
-  const [h, s, l] = hexToHsl(hex);
-  return (GROUPS.find(g => g.test(h, s, l)) ?? GROUPS[0]).id;
+/** the chart's rows: ten swatches each, in its order */
+function chartRows(palette: Swatch[]): Swatch[][] {
+  const sorted = [...palette].sort((a, b) => (a.n ?? "").localeCompare(b.n ?? ""));
+  const rows: Swatch[][] = [];
+  for (let i = 0; i < sorted.length; i += 10) rows.push(sorted.slice(i, i + 10));
+  return rows;
 }
 
 export default function SwatchPicker({
@@ -81,21 +79,12 @@ export default function SwatchPicker({
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
-  const grouped = useMemo(() => {
-    const by: Record<string, Swatch[]> = {};
-    for (const sw of palette) {
-      const g = groupOf(sw.c);
-      (by[g] ??= []).push(sw);
-    }
-    // sort each family light -> dark so it reads like a paint chart
-    for (const k of Object.keys(by)) by[k].sort((a, b) => hexToHsl(b.c)[2] - hexToHsl(a.c)[2]);
-    return by;
-  }, [palette]);
+  const rows = useMemo(() => chartRows(palette), [palette]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     if (!term) return null;
-    return palette.filter(s => s.c.toLowerCase().includes(term) || s.k.toLowerCase().includes(term));
+    return palette.filter(s => s.c.toLowerCase().includes(term) || s.k.toLowerCase().includes(term) || (s.n ?? "").includes(term));
   }, [q, palette]);
 
   const current = palette.find(s => s.c.toLowerCase() === value?.toLowerCase());
@@ -104,8 +93,8 @@ export default function SwatchPicker({
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
         <label className="flabel" style={{ margin: 0 }}>{label}</label>
-        <span className="dim" style={{ fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
-          {current?.k ?? (value === "none" ? "ไม่มีสี" : value)}
+        <span className="dim" style={{ fontSize: 11, fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap" }}>
+          {current ? swatchLabel(current) : value === "none" ? "ไม่มีสี" : value}
         </span>
       </div>
 
@@ -131,7 +120,7 @@ export default function SwatchPicker({
         <div style={{ border: "1px solid var(--border)", borderRadius: 10, marginTop: 8, padding: 10, maxHeight: 340, overflowY: "auto" }}>
           <input
             className="ainput"
-            placeholder="ค้นหา เช่น C100 M0 หรือ #ec008c"
+            placeholder="ค้นหา เช่น 0031, C100 M0 หรือ #ec008c"
             value={q}
             onChange={e => setQ(e.target.value)}
             style={{ marginBottom: 10 }}
@@ -148,11 +137,16 @@ export default function SwatchPicker({
               ? <p className="dim" style={{ padding: "8px 2px" }}>ไม่พบสีที่ตรงกับ “{q}”</p>
               : <Grid swatches={filtered} value={value} onPick={h => { onChange(h); setOpen(false); }} />
           ) : (
-            GROUPS.filter(g => grouped[g.id]?.length).map(g => (
-              <Row key={g.id} label={`${g.label} (${grouped[g.id].length})`}>
-                <Grid swatches={grouped[g.id]} value={value} onPick={h => { onChange(h); setOpen(false); }} />
-              </Row>
-            ))
+            <div style={{ display: "grid", gridTemplateColumns: "34px repeat(10, minmax(0, 1fr))", gap: 4, alignItems: "center" }}>
+              {rows.map(row => (
+                <Fragment key={row[0].c}>
+                  <span className="dim" style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>{row[0].n}</span>
+                  {row.map(s => (
+                    <Chip key={s.c} hex={s.c} title={swatchLabel(s)} active={value?.toLowerCase() === s.c.toLowerCase()} onPick={() => { onChange(s.c); setOpen(false); }} />
+                  ))}
+                </Fragment>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -173,7 +167,7 @@ function Grid({ swatches, value, onPick }: { swatches: Swatch[]; value: string; 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(24px, 1fr))", gap: 4 }}>
       {swatches.map(s => (
-        <Chip key={s.c} hex={s.c} title={s.k} active={value?.toLowerCase() === s.c.toLowerCase()} onPick={() => onPick(s.c)} />
+        <Chip key={s.c} hex={s.c} title={swatchLabel(s)} active={value?.toLowerCase() === s.c.toLowerCase()} onPick={() => onPick(s.c)} />
       ))}
     </div>
   );
