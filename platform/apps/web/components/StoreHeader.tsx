@@ -33,7 +33,7 @@ export default function StoreHeader({
           </nav>
         )}
         <div className="ax-tools">
-          {bell && <NotifyBell />}
+          {bell && <NotifyBell lang={lang} />}
           <UserMenu loginClass="ax-login" lang={lang} />
           {onLang && (
             <div className="ax-pill" role="group" aria-label="ภาษา / Language">

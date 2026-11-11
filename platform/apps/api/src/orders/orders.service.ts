@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
@@ -12,6 +12,10 @@ import { readTaxInfo, sellerFromEnv, type TaxParty } from "./tax-invoice";
 import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
 import { orderFileView } from "./order-files.service";
+import { tri, statusTitle, stepTitle } from "../notify/text";
+import { BibJobService, madeOnWeb as madeByWebsite, type BibSnapshot } from "../bibs/bib-jobs.service";
+import { kitOnBib } from "../bibs/kit";
+import { BIB_SIZES } from "../bibs/template";
 
 const ORDER_SELECT = {
   id: true, orderNo: true, status: true, currency: true,
@@ -28,11 +32,14 @@ function makeOrderNo() {
 
 @Injectable()
 export class OrdersService {
+  private readonly log = new Logger("Orders");
   constructor(
     private prisma: PrismaService,
     private settings: SettingsService,
     private notify: NotifyService,
     private erp?: ErpSyncService,
+    /** builds the print files of bibs designed on the web */
+    private bibs?: BibJobService,
   ) {}
 
   /** live price preview for the checkout page — no side effects */
@@ -61,7 +68,12 @@ export class OrdersService {
   // ---------- create ----------
   async create(userId: string, dto: CreateOrderDto) {
     const cfg = await this.settings.pricing();
-    const lines = dto.lines.filter(l => l.qty > 0);
+    // a bib designed on the web: one piece per name on its list, counted by size
+    const bib = dto.bib ?? null;
+    const bibLines = bib ? BIB_SIZES.map(size => ({ size, qty: bib.roster.filter(r => r.size === size).length })) : null;
+    if (bib && !this.bibs) throw new ServiceUnavailableException("ยังสั่งเอี๊ยมที่ออกแบบบนเว็บไม่ได้ในขณะนี้");
+    if (bib && dto.logoUrl) await this.bibs!.logo(dto.logoUrl); // there, and a PNG, before anything is made
+    const lines: { size: string; qty: number }[] = (bibLines ?? dto.lines ?? []).filter(l => l.qty > 0);
     if (lines.length === 0) throw new BadRequestException("กรุณาระบุจำนวนอย่างน้อย 1 ไซส์");
     const totalQty = lines.reduce((s, l) => s + l.qty, 0);
     if (totalQty < cfg.minQty) throw new BadRequestException(`สั่งขั้นต่ำ ${cfg.minQty} ตัว`);
@@ -86,14 +98,16 @@ export class OrdersService {
       : null;
     if (dto.fileId && !file) throw new BadRequestException("ไม่พบไฟล์ที่อัปโหลด หรือไฟล์นี้ใช้กับออเดอร์อื่นไปแล้ว — อัปโหลดใหม่อีกครั้ง");
     if (file) snapshot = { kind: "file-order", product: dto.product, fileId: file.id, fileName: file.name };
+    if (bib) snapshot = { kind: "bib-design", product: bib.product, team: bib.team, design: bib, logoUrl: dto.logoUrl } satisfies BibSnapshot;
 
     // the garment is read from the design itself, never taken from the request
     // (a file order says what it's for: the team checks the file before production)
-    const garment = file && dto.product ? dto.product : garmentOf(snapshot);
-    // the schema requires fabric and trim unless it's a file order, whose set price ignores them
+    const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
+    // the schema requires fabric and trim unless it's a bib (file or web-designed), whose set price ignores them
     const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file
       ? `${GARMENT_LABEL[garment]} · ไฟล์ลูกค้า`
+      : bib ? `${GARMENT_LABEL[garment]} · ออกแบบบนเว็บ`
       : `${garment !== "jersey" ? `${GARMENT_LABEL[garment]} · ` : ""}${dto.fabric} · ขลิบ:${dto.trim}${dto.reversible ? " · 2 ชิ้น (reversible)" : ""}`;
 
     // prices are frozen into the order; later price changes never affect it
@@ -133,16 +147,32 @@ export class OrdersService {
     });
 
     // attach roster rows (player name/number) to the matching size line
-    if (dto.roster?.length) {
+    const roster = bib ? bib.roster.map(r => ({ playerName: r.name || undefined, number: r.number || undefined, size: r.size as string, qty: 1 })) : dto.roster;
+    if (roster?.length) {
       const bySize = new Map(order.items.map(i => [i.size, i.id]));
-      const rows = dto.roster
+      const rows = roster
         .filter(r => bySize.has(r.size))
         .map(r => ({ orderItemId: bySize.get(r.size)!, playerName: r.playerName, number: r.number, size: r.size, qty: r.qty }));
       if (rows.length) await this.prisma.orderRoster.createMany({ data: rows });
     }
 
+    // a web-designed bib: build its print files now, so the team (and the NAS, once paid) gets them like an upload.
+    // A failure doesn't lose the order: the team is told, and builds it again from the order board.
+    // So is a kit from the kit studio that is cut on the bib template (the basketball singlet).
+    const kitBib = !bib && !file && kitOnBib(snapshot) && !!this.bibs;
+    let built = true;
+    if (bib || kitBib) {
+      try { await this.bibs!.attach(order.id); } catch (e: any) {
+        built = false;
+        this.log.error(`${order.orderNo}: building the ${bib ? "bib" : "kit"} job failed: ${e?.message ?? e}`);
+      }
+    }
+
     await this.notify.pushAdmins(
-      file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)` : `ออเดอร์ใหม่ ${order.orderNo}`,
+      file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)`
+        : bib ? `ออเดอร์ใหม่ ${order.orderNo} · เอี๊ยมออกแบบบนเว็บ${built ? "" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
+        : kitBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบบนเว็บ (${(snapshot as { kit: string }).kit})${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
+        : `ออเดอร์ใหม่ ${order.orderNo}`,
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,
     );
@@ -166,8 +196,12 @@ export class OrdersService {
     if (this.erp && (await this.erp.refreshIfStale(o))) o = (await this.findOne(id, isAdmin)) ?? o;
     // what has been paid and what is due now (deposit, then the balance)
     const { taxInvoice, erpOrderNo, erpStatus, erpSyncedAt, files, ...rest } = o;
+    // a bib designed on the web: its files were made by the website, not sent by the customer
+    const first = files?.length ? await this.prisma.orderItem.findFirst({ where: { orderId: id }, select: { designSnapshot: true } }) : null;
+    const madeOnWeb = !!first && madeByWebsite(first.designSnapshot);
     return {
       ...rest,
+      madeOnWeb,
       // the customer's own print files, by signed links (owner and admins only reach here)
       files: (files ?? []).map(f => orderFileView(f, Date.now(), isAdmin)),
       balance: ledger(o, o.payments, o.refunds),
@@ -443,12 +477,13 @@ export class OrdersService {
     }
 
     // tell the customer
-    const label = STATUS_TH[dto.status] ?? dto.status;
+    // in the customer's language; a note the team typed goes as they wrote it
+    const parcel = dto.trackingNo ? `${dto.trackingNo}${dto.courier ? ` (${dto.courier})` : ""}` : "";
     await this.notify.push({
       userId: o.userId,
-      title: `ออเดอร์ ${o.orderNo}: ${label}`,
-      body: dto.status === "shipped" && dto.trackingNo
-        ? `เลขพัสดุ ${dto.trackingNo}${dto.courier ? ` (${dto.courier})` : ""}`
+      title: statusTitle(o.orderNo, dto.status),
+      body: dto.status === "shipped" && parcel
+        ? tri(`เลขพัสดุ ${parcel}`, `Tracking no. ${parcel}`, `追跡番号 ${parcel}`)
         : dto.note || undefined,
       link: `/orders/${id}`,
       email: true,
@@ -480,7 +515,7 @@ export class OrdersService {
 
     await this.notify.push({
       userId: o.userId,
-      title: `ออเดอร์ ${o.orderNo}: ขั้นที่ ${plan.step}/${SHIP_STEP} · ${stepName(plan.step)}`,
+      title: stepTitle(o.orderNo, plan.step, SHIP_STEP),
       body: dto.note || undefined,
       link: `/orders/${id}`,
     });

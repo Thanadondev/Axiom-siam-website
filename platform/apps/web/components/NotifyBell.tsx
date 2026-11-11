@@ -4,19 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
 import { apiFetch } from "../lib/api";
+import { tri, type Lang } from "../lib/i18n";
 
 interface Note { id: string; title: string; body?: string | null; link?: string | null; isRead: boolean; createdAt: string }
 
-const ago = (s: string) => {
+/** "just now", "5 minutes ago"… in the page's language */
+const ago = (s: string, lang: Lang) => {
+  const L = tri(lang);
   const m = Math.floor((Date.now() - new Date(s).getTime()) / 60000);
-  if (m < 1) return "เมื่อครู่";
-  if (m < 60) return `${m} นาทีที่แล้ว`;
+  if (m < 1) return L("เมื่อครู่", "just now", "たった今");
+  if (m < 60) return L(`${m} นาทีที่แล้ว`, `${m} min ago`, `${m}分前`);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ชม.ที่แล้ว`;
-  return `${Math.floor(h / 24)} วันที่แล้ว`;
+  if (h < 24) return L(`${h} ชม.ที่แล้ว`, `${h} h ago`, `${h}時間前`);
+  const d = Math.floor(h / 24);
+  return L(`${d} วันที่แล้ว`, `${d} d ago`, `${d}日前`);
 };
 
-export default function NotifyBell({ dropUp = false }: { dropUp?: boolean }) {
+export default function NotifyBell({ dropUp = false, lang = "th" }: { dropUp?: boolean; lang?: Lang }) {
+  const L = tri(lang);
   const { user, token } = useAuth();
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -60,21 +65,21 @@ export default function NotifyBell({ dropUp = false }: { dropUp?: boolean }) {
 
   return (
     <div className="usermenu" ref={ref}>
-      <button className="bellbtn" onClick={toggle} aria-label="การแจ้งเตือน" aria-expanded={open}>
+      <button className="bellbtn" onClick={toggle} aria-label={L("การแจ้งเตือน", "Notifications", "お知らせ")} aria-expanded={open}>
         🔔{unread > 0 && <span className="belldot">{unread > 9 ? "9+" : unread}</span>}
       </button>
 
       {open && (
         <div className={`usermenu-pop notepop${dropUp ? " up" : ""}`} role="menu">
-          <div className="usermenu-head"><b>การแจ้งเตือน</b></div>
+          <div className="usermenu-head"><b>{L("การแจ้งเตือน", "Notifications", "お知らせ")}</b></div>
           {notes.length === 0 ? (
-            <div className="dim" style={{ padding: "14px 12px" }}>ยังไม่มีการแจ้งเตือน</div>
+            <div className="dim" style={{ padding: "14px 12px" }}>{L("ยังไม่มีการแจ้งเตือน", "No notifications yet", "お知らせはまだありません")}</div>
           ) : notes.map(n => {
             const inner = (
               <>
                 <div style={{ fontSize: 13, fontWeight: n.isRead ? 500 : 700 }}>{n.title}</div>
                 {n.body && <div className="dim">{n.body}</div>}
-                <div className="dim" style={{ fontSize: 11 }}>{ago(n.createdAt)}</div>
+                <div className="dim" style={{ fontSize: 11 }}>{ago(n.createdAt, lang)}</div>
               </>
             );
             return n.link

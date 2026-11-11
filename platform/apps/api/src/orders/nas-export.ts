@@ -5,6 +5,7 @@ import { pipeline } from "stream/promises";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "./order-files.service";
 import { keyOf } from "./blob-store";
+import { KITS_ON_BIB, kitOnBib } from "../bibs/kit";
 
 /**
  * The graphics team works from job folders on the NAS (\\SynologyNAS\Axiom Siam),
@@ -18,11 +19,11 @@ import { keyOf } from "./blob-store";
  * minutes; the production board can also send it now. Off when NAS_JOBS_DIR is unset.
  */
 
-/** sizes as the team writes them in job names: "S", "ML", "SML XL", "XL" */
+/** sizes as the team writes them in job names: "S", "ML", "SML XL", "XL"; then XXL and the specials (SPM, SPL) */
 export function sizeLabel(sizes: string[]) {
   const has = new Set(sizes);
   const small = ["S", "M", "L"].filter(s => has.has(s)).join("");
-  return [small, has.has("XL") ? "XL" : ""].filter(Boolean).join(" ");
+  return [small, ...["XL", "XXL", "SPM", "SPL"].filter(s => has.has(s))].filter(Boolean).join(" ");
 }
 
 /** a folder or file name Windows and the NAS accept: no \ / : * ? " < > |, no trailing dots or spaces */
@@ -98,12 +99,14 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     if (!(PAID_ON as readonly string[]).includes(o.status)) return { ok: false, error: "ออเดอร์นี้ยังไม่ชำระเงิน" };
     if (!o.files.length) return { ok: false, error: "ออเดอร์นี้ไม่มีไฟล์งาน" };
 
-    const snap = o.items[0]?.designSnapshot as { product?: string } | null;
+    const snap = o.items[0]?.designSnapshot as { product?: string; team?: string } | null;
     const folder = jobFolderName({
       orderNo: o.orderNo,
-      product: snap?.product ?? null,
+      // a kit from the kit studio cut on the bib template is named by its code ("BK-03")
+      product: snap?.product ?? (kitOnBib(snap) ? KITS_ON_BIB[snap.kit.toLowerCase()].code : null),
       sizes: o.items.filter(i => i.qty > 0).map(i => i.size),
-      team: o.user.companyName || o.user.fullName,
+      // a bib designed on the web carries the team's own name; otherwise the customer's
+      team: snap?.team || o.user.companyName || o.user.fullName,
     });
     // the NAS folder is there (we never create the share or _webjobs ourselves)
     if (!(await fs.stat(this.root).then(s => s.isDirectory(), () => false))) return { ok: false, error: `ส่งเข้า NAS ไม่ได้: เข้าถึง ${this.root} ไม่ได้` };

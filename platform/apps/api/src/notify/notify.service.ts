@@ -1,10 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { pick, isLang, type Lang, type Text } from "./text";
 
 interface NotifyInput {
   userId: string;
-  title: string;
-  body?: string;
+  /** plain Thai, or { th, en, ja } to write it in the customer's language (User.locale) */
+  title: Text;
+  body?: Text;
   link?: string;
   /** also log an outbound email (MailService is a console stub for now) */
   email?: boolean;
@@ -21,8 +23,16 @@ export class NotifyService {
 
   constructor(private prisma: PrismaService) {}
 
-  async push({ userId, title, body, link, email }: NotifyInput) {
+  async push({ userId, title: t, body: b, link, email }: NotifyInput) {
     try {
+      // written once, in the language the customer reads (the language they last picked on the site)
+      let lang: Lang = "th";
+      if (typeof t !== "string" || (b !== undefined && typeof b !== "string")) {
+        const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { locale: true } });
+        if (isLang(u?.locale)) lang = u!.locale as Lang;
+      }
+      const title = pick(t, lang)!;
+      const body = pick(b, lang);
       await this.prisma.notification.create({
         data: { userId, title, body, link, channel: email ? "email" : "in_app" },
       });

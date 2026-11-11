@@ -8,7 +8,7 @@ import PayPanel from "../../components/PayPanel";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, type RosterRow, type Size } from "../../lib/order-draft";
-import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
+import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
 import { useKitAssets } from "../../lib/use-kit-assets";
 import "../app.css";
 import "../home.css";
@@ -100,7 +100,7 @@ function Checkout() {
 
   const totalQty = SIZES.reduce((n, s) => n + (qty[s] || 0), 0);
   // a hoodie or shorts is priced as such (the server reads the garment from the design itself)
-  const garment = design?.stateJson?.kind === "kit-studio" ? kit.garment : "jersey";
+  const garment = design?.stateJson?.kind === "kit-studio" ? kitPriceGarment(kit) : "jersey";
   useEffect(() => {
     if (totalQty === 0) { setBd(null); return; }
     const t = setTimeout(() => {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "./auth-context";
+import { apiFetch } from "./api";
 
 /**
  * The storefront's languages (the landing page and /tracking): Thai, English,
@@ -26,15 +28,28 @@ const isLang = (v: unknown): v is Lang => v === "th" || v === "en" || v === "ja"
  * The visitor's language, remembered between pages and visits (this browser
  * only). Starts in Thai, then switches to the saved choice once mounted, so
  * the server render and the first client render agree.
+ *
+ * A signed-in customer's account keeps it too (User.locale): their
+ * notifications are written in it. Saved only once the browser's choice has
+ * been read, so the first Thai render never overwrites a Japanese account.
  */
 export function useLang(): [Lang, (l: Lang) => void] {
   const [lang, setLang] = useState<Lang>("th");
+  const [ready, setReady] = useState(false);
+  const { user, token, setUser } = useAuth();
   useEffect(() => {
     try {
       const saved = localStorage.getItem(KEY);
       if (isLang(saved)) setLang(saved);
     } catch { /* storage blocked: stay in Thai */ }
+    setReady(true);
   }, []);
+  useEffect(() => {
+    if (!ready || !user || !token || user.locale === lang) return;
+    apiFetch<{ locale?: string }>("/auth/profile", { method: "PATCH", token, body: JSON.stringify({ locale: lang }) })
+      .then(() => setUser({ ...user, locale: lang }))
+      .catch(() => { /* notifications stay in the account's last language */ });
+  }, [ready, lang, user, token, setUser]);
   const choose = useCallback((l: Lang) => {
     setLang(l);
     try { localStorage.setItem(KEY, l); } catch { /* not remembered, still switched */ }

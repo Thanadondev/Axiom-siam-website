@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cleanTaxId, validThaiTaxId } from "./tax-invoice";
+import { BibDesignSchema } from "../bibs/design";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 
@@ -46,7 +47,8 @@ export const CreateOrderSchema = z.object({
   fabric: z.enum(FABRICS).optional(),
   trim: z.enum(TRIMS).optional(),
   reversible: z.boolean().optional(),
-  lines: z.array(SizeLineSchema).min(1, "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์"),
+  // a bib designed on the web counts its sizes from its own name list (bib, below)
+  lines: z.array(SizeLineSchema).min(1, "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์").optional(),
   roster: z.array(RosterRowSchema).max(500).optional(),
   // required unless the order goes to the agent in Japan (below)
   shippingAddressId: z.preprocess(emptyToUndef, z.string().uuid({ message: "กรุณาเลือกที่อยู่จัดส่ง" }).optional()),
@@ -55,12 +57,18 @@ export const CreateOrderSchema = z.object({
   /** ordering with the customer's own print files: the uploaded zip (POST /order-files) and what it's for */
   fileId: z.preprocess(emptyToUndef, z.string().uuid().optional()),
   product: z.preprocess(emptyToUndef, z.enum(FILE_PRODUCT_IDS).optional()),
+  /** a bib designed on the web (/order/bib): the website builds its print files (bibs/) */
+  bib: BibDesignSchema.optional(),
+  /** the bib's team logo, as the kit-asset upload returned it */
+  logoUrl: z.preprocess(emptyToUndef, z.string().max(200).regex(/^\/uploads\/kit-assets\/logos\/[a-f0-9]{64}\.png$/, "โลโก้ไม่ถูกต้อง").optional()),
 }).superRefine((d, ctx) => {
   if (!!d.fileId !== !!d.product) ctx.addIssue({ code: "custom", path: ["fileId"], message: "สั่งผลิตด้วยไฟล์ ต้องแนบไฟล์ .zip และเลือกสินค้า" });
   if (d.fileId && d.designId) ctx.addIssue({ code: "custom", path: ["fileId"], message: "เลือกได้อย่างเดียว: ดีไซน์บนเว็บ หรือไฟล์ของคุณเอง" });
-  if (d.delivery === "agent" && !d.fileId) ctx.addIssue({ code: "custom", path: ["delivery"], message: "ส่งผ่านตัวแทนญี่ปุ่นได้เฉพาะออเดอร์ที่สั่งด้วยไฟล์" });
+  if (d.bib && (d.fileId || d.designId)) ctx.addIssue({ code: "custom", path: ["bib"], message: "เลือกได้อย่างเดียว: ออกแบบเอี๊ยมบนเว็บ หรือไฟล์ของคุณเอง" });
+  if (!d.bib && !d.lines) ctx.addIssue({ code: "custom", path: ["lines"], message: "กรุณาระบุจำนวนอย่างน้อย 1 ไซส์" });
+  if (d.delivery === "agent" && !d.fileId && !d.bib) ctx.addIssue({ code: "custom", path: ["delivery"], message: "ส่งผ่านตัวแทนญี่ปุ่นได้เฉพาะออเดอร์เอี๊ยม" });
   if (d.delivery !== "agent" && !d.shippingAddressId) ctx.addIssue({ code: "custom", path: ["shippingAddressId"], message: "กรุณาเลือกที่อยู่จัดส่ง" });
-  if (!d.fileId) {
+  if (!d.fileId && !d.bib) {
     if (!d.fabric) ctx.addIssue({ code: "custom", path: ["fabric"], message: "กรุณาเลือกผ้า" });
     if (!d.trim) ctx.addIssue({ code: "custom", path: ["trim"], message: "กรุณาเลือกขลิบ" });
   }

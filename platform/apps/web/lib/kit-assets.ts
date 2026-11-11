@@ -66,7 +66,6 @@ export const FONT_ACCEPT = ".ttf,.otf,.woff,.woff2";
 export const LOGO_MAX_BYTES = 8 * 1024 * 1024;
 export const FONT_MAX_BYTES = 4 * 1024 * 1024;
 /** longest side a logo is kept at: sharp at print-preview size, small enough to save */
-const LOGO_PX = 1024;
 
 // ---------------------------------------------------------------- storage
 const DB = "axiom-kit-assets";
@@ -176,27 +175,73 @@ function clearWhiteBackground(ctx: CanvasRenderingContext2D, w: number, h: numbe
   return true;
 }
 
-/** checks, trims and re-encodes an uploaded logo; throws a message for the customer */
+/**
+ * Checks, trims and re-encodes an uploaded logo; throws a message for the customer.
+ * Kept at print resolution (importPrintLogo): the kit studio's designs are printed
+ * from it (the basketball singlet's job is built from this very file).
+ */
 export async function importLogo(file: File): Promise<KitAsset> {
+  const p = await importPrintLogo(file);
+  return putAsset({ id: newId("logo"), kind: "logo", name: p.name, data: p.data, cleaned: p.cleaned, created: Date.now() });
+}
+
+/** a print logo's long side: SVG is drawn this big, bigger pictures are brought down to it */
+export const PRINT_LOGO_PX = 3000;
+
+export interface PrintLogo { name: string; data: string; w: number; h: number; cleaned: boolean }
+
+/** an SVG's own proportions, from its width/height or viewBox (browsers give 150×150 when it has neither) */
+function svgAspect(text: string): number | null {
+  const tag = /<svg\b[^>]*>/i.exec(text)?.[0] ?? "";
+  const num = (a: string) => { const m = new RegExp(`\\b${a}\\s*=\\s*["']\\s*([\\d.]+)(px)?\\s*["']`, "i").exec(tag); return m ? Number(m[1]) : NaN; };
+  const w = num("width"), h = num("height");
+  if (w > 0 && h > 0) return w / h;
+  const vb = /\bviewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(tag);
+  return vb && Number(vb[1]) > 0 && Number(vb[2]) > 0 ? Number(vb[1]) / Number(vb[2]) : null;
+}
+
+/**
+ * A logo for printing (the bib designer and the kit studio): kept at the resolution
+ * it came in, up to PRINT_LOGO_PX on the long side, and an SVG drawn at that size,
+ * so it stays sharp on the biggest piece. A plain white background is cleared.
+ */
+export async function importPrintLogo(file: File): Promise<PrintLogo> {
   const type = file.type || (file.name.toLowerCase().endsWith(".svg") ? "image/svg+xml" : "");
   if (!LOGO_TYPES.includes(type)) throw new Error("รองรับโลโก้ PNG, JPG, WEBP หรือ SVG");
-  if (file.size > LOGO_MAX_BYTES) throw new Error("ไฟล์โลโก้ใหญ่เกิน 8MB");
+  if (file.size > 20 * 1024 * 1024) throw new Error("ไฟล์โลโก้ใหญ่เกิน 20MB");
+  const svg = type === "image/svg+xml";
   const src = await readAs(file, "dataURL");
   const img = await loadImage(src);
-  let w = img.naturalWidth || 512, h = img.naturalHeight || 512;
-  if (type === "image/svg+xml" && (!img.naturalWidth || !img.naturalHeight)) { w = h = 1024; }
-  const k = Math.min(1, LOGO_PX / Math.max(w, h));
-  const cw = Math.max(1, Math.round(w * (type === "image/svg+xml" ? LOGO_PX / Math.max(w, h) : k)));
-  const ch = Math.max(1, Math.round(h * (type === "image/svg+xml" ? LOGO_PX / Math.max(w, h) : k)));
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if (svg) {
+    const aspect = svgAspect(await file.text()) ?? (w && h ? w / h : 1);
+    w = aspect >= 1 ? PRINT_LOGO_PX : Math.round(PRINT_LOGO_PX * aspect);
+    h = aspect >= 1 ? Math.round(PRINT_LOGO_PX / aspect) : PRINT_LOGO_PX;
+  } else {
+    const k = Math.min(1, PRINT_LOGO_PX / Math.max(w, h));
+    w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+  }
   const c = document.createElement("canvas");
-  c.width = cw; c.height = ch;
+  c.width = w; c.height = h;
   const ctx = c.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0, cw, ch);
-  const cleaned = type !== "image/svg+xml" && clearWhiteBackground(ctx, cw, ch);
-  const trimmed = trimTransparent(c);
-  const data = trimmed.toDataURL("image/png");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, w, h);
+  const cleaned = !svg && clearWhiteBackground(ctx, w, h);
+  const out = trimTransparent(c);
+  let data = out.toDataURL("image/png");
+  // the upload limit is 8 MB: a busy photo-like logo at full size can pass it
+  if (data.length * 0.75 > 7.5 * 1024 * 1024) {
+    const k = Math.sqrt((7 * 1024 * 1024) / (data.length * 0.75));
+    const s = document.createElement("canvas");
+    s.width = Math.max(1, Math.round(out.width * k)); s.height = Math.max(1, Math.round(out.height * k));
+    const sx = s.getContext("2d")!;
+    sx.imageSmoothingQuality = "high";
+    sx.drawImage(out, 0, 0, s.width, s.height);
+    data = s.toDataURL("image/png");
+    return { name: file.name.slice(0, 80), data, w: s.width, h: s.height, cleaned };
+  }
   if (data.length < 200) throw new Error("โลโก้ว่างเปล่า");
-  return putAsset({ id: newId("logo"), kind: "logo", name: file.name.slice(0, 80), data, cleaned, created: Date.now() });
+  return { name: file.name.slice(0, 80), data, w: out.width, h: out.height, cleaned };
 }
 
 /** crops away fully transparent margins, so the logo sizes by what is actually drawn */

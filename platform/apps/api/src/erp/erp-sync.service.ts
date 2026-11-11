@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { linkWarnings } from "./link-check";
+import { stepTitle } from "../notify/text";
 import { Prisma } from "@axiom/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotifyService } from "../notify/notify.service";
@@ -161,7 +162,7 @@ export class ErpSyncService implements OnModuleInit, OnModuleDestroy {
       if (plan.step > from) {
         await this.notify.push({
           userId: o.userId,
-          title: `ออเดอร์ ${o.orderNo}: ขั้นที่ ${plan.step}/${SHIP_STEP} · ${stepName(plan.step)}`,
+          title: stepTitle(o.orderNo, plan.step, SHIP_STEP),
           link: `/orders/${o.id}`,
         });
       }

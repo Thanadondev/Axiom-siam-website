@@ -26,7 +26,7 @@ describe("kit asset checks", () => {
   });
 
   it("rejects files over the limit", () => {
-    expect(() => validateKitAsset("logo", Buffer.concat([png, Buffer.alloc(3 * 1024 * 1024)]))).toThrow(/3MB/);
+    expect(() => validateKitAsset("logo", Buffer.concat([png, Buffer.alloc(8 * 1024 * 1024)]))).toThrow(/8MB/);
   });
 
   it("decodes data URLs and rejects junk", () => {

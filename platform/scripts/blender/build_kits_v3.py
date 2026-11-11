@@ -60,7 +60,9 @@ KITS = {
     "striker": dict(sleeves="short", neck="v", cw=0.27, L=0.74, nd=0.165),
     "smash": dict(sleeves="short", neck="crew", cw=0.26, L=0.72, nd=0.095),
     "pacer": dict(sleeves="none", neck="crew", cw=0.25, L=0.72, nd=0.10),
-    "rim": dict(sleeves="none", neck="v", cw=0.29, L=0.78, nd=0.17),
+    # the basketball singlet is cut on the factory's bib pattern (CB-005): a deep round (U) neck,
+    # as deep as the pattern's (front neck 0.20-0.23 of the length on M-XL)
+    "rim": dict(sleeves="none", neck="crew", cw=0.29, L=0.78, nd=0.17),
     "club": dict(sleeves="short", neck="polo", cw=0.27, L=0.74, nd=0.085),
     # a pullover hoodie: long set-in sleeves, rib cuffs and hem, a lined hood and a kangaroo pocket
     "warmup": dict(sleeves="long", neck="hood", cw=0.29, L=0.70, nd=0.085),

@@ -19,7 +19,11 @@ export interface OrderFileView {
  * The print files a bib order came with: the job's picture and the zip to download.
  * The links are signed for an hour — reloading the page gets fresh ones.
  */
-export default function OrderFiles({ files, title, note, lang = "th" }: { files?: OrderFileView[] | null; title?: string; note?: React.ReactNode; lang?: Lang }) {
+export default function OrderFiles({ files, title, note, lang = "th", made = false }: {
+  files?: OrderFileView[] | null; title?: string; note?: React.ReactNode; lang?: Lang;
+  /** made by the website from a design (not uploaded) */
+  made?: boolean;
+}) {
   if (!files?.length) return null;
   const L = tri(lang);
   return (
@@ -34,7 +38,7 @@ export default function OrderFiles({ files, title, note, lang = "th" }: { files?
           <div>
             <div className="name">{f.name}</div>
             <div className="dim" style={{ margin: "2px 0 10px" }}>
-              {mb(f.bytes)} · {L("อัปโหลด", "uploaded", "アップロード")} {new Date(f.createdAt).toLocaleString(locale(lang), { dateStyle: "medium", timeStyle: "short" })}
+              {mb(f.bytes)} · {made ? L("สร้างเมื่อ", "made", "作成") : L("อัปโหลด", "uploaded", "アップロード")} {new Date(f.createdAt).toLocaleString(locale(lang), { dateStyle: "medium", timeStyle: "short" })}
             </div>
             {f.downloadUrl && <a className="minibtn" href={apiHref(f.downloadUrl)} download>⬇ {L("ดาวน์โหลด .zip", "Download .zip", ".zipをダウンロード")}</a>}
           </div>
