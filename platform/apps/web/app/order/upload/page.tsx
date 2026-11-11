@@ -243,7 +243,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                 "For teams who design in Illustrator: put the .ai files, a preview picture (.jpg) and the name list (Excel), if you have one, into a single zip. Our team checks the files before production.",
                 "Illustratorでデザインされたお客様向けです。.aiデータ、プレビュー画像（.jpg）、名簿（Excel・あれば）を1つのzipにまとめてください。制作前にスタッフがデータを確認します。",
               )}
-              {" · "}{L("หรือ ", "or ", "")}<Link className="dlink" href="/shop">{L("ออกแบบบนเว็บ", "design on the web", "Webでデザインする")}</Link>
+              {" · "}{L("หรือ ", "or ", "")}<Link className="dlink" href="/order/bib">{L("ออกแบบเอี๊ยมบนเว็บ", "design your bibs on the web", "Webでビブスをデザインする")}</Link>
             </p>
           </div>
 

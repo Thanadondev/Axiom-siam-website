@@ -28,6 +28,7 @@ export function summaryIn(lang: Lang, s: string | null | undefined) {
   const words: [RegExp, string, string][] = [
     [/\(2 ด้าน\)/g, "(reversible)", "（リバーシブル）"],
     [/ไฟล์ลูกค้า/g, "your files", "お客様データ"],
+    [/ออกแบบบนเว็บ/g, "designed on the web", "Webデザイン"],
     [/2 ชิ้น \(reversible\)/g, "reversible", "リバーシブル"],
     [/ขลิบ:/g, "trim: ", "パイピング: "],
     [/เสื้อวอร์มซิป/g, "Zip warm-up top", "ジップアップジャージ"],

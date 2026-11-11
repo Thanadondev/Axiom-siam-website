@@ -127,8 +127,11 @@ export default function OrderDetail() {
       <OrderFiles
         files={o.files}
         lang={lang}
-        title={L("ไฟล์งานที่ส่งมา", "The files you sent", "入稿データ")}
-        note={["pending", "paid"].includes(o.status)
+        made={!!o.madeOnWeb}
+        title={o.madeOnWeb ? L("ไฟล์งานสำหรับผลิต", "Production files", "制作データ") : L("ไฟล์งานที่ส่งมา", "The files you sent", "入稿データ")}
+        note={o.madeOnWeb
+          ? L("ระบบสร้างจากแบบของคุณ: ไฟล์พิมพ์ 1 ไฟล์ต่อตัว ใบสั่งงาน และรายชื่อ — ชำระเงินแล้วส่งเข้าผลิตทันที", "Made from your design: one print file per bib, the order sheet and the name list — they go to production as soon as you've paid.", "デザインから自動作成：1枚ごとのプリントデータ、オーダーシート、名簿。お支払い後すぐに制作に回ります。")
+          : ["pending", "paid"].includes(o.status)
           ? L("ทีมงานจะเปิดตรวจไฟล์ก่อนเข้าผลิต ถ้ามีปัญหาจะติดต่อกลับ", "Our team checks your files before production and gets in touch if anything needs fixing.", "制作前にスタッフがデータを確認し、修正が必要な場合はご連絡します。")
           : undefined}
       />

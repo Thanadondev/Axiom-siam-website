@@ -127,6 +127,36 @@ export class OrderFilesService implements OnModuleInit, OnModuleDestroy {
     return { id, preview: true };
   }
 
+  /**
+   * A job package the website built itself (a bib designed on the web: bibs/),
+   * stored like an upload and attached to its order straight away, with its
+   * order sheet as the picture.
+   */
+  async saveGenerated(userId: string, orderId: string, name: string, zip: Buffer, preview: Buffer) {
+    if (!isZipStart(zip)) throw new Error("generated job is not a zip");
+    const id = randomUUID();
+    const key = `${userId.replace(/[^a-zA-Z0-9-]/g, "")}/${id}.zip`;
+    await this.store.putBuffer(key, zip, "application/zip");
+    const previewKey = key.replace(/\.zip$/, "-preview.jpg");
+    await this.store.putBuffer(previewKey, preview, "image/jpeg");
+    return this.prisma.orderFile.create({
+      data: {
+        id, userId, orderId, name: cleanZipName(name), bytes: zip.length,
+        sha256: createHash("sha256").update(zip).digest("hex"),
+        path: pathFor(this.store, key), previewPath: pathFor(this.store, previewKey),
+      },
+      select: { id: true, name: true, bytes: true, createdAt: true },
+    });
+  }
+
+  /** a file and its picture, gone from storage and the order */
+  async remove(id: string) {
+    const f = await this.prisma.orderFile.findUnique({ where: { id }, select: { id: true, path: true, previewPath: true } });
+    if (!f) return;
+    for (const p of [f.path, f.previewPath]) if (p) await this.storeOf(p).remove(keyOf(p)).catch(e => this.log.warn(`couldn't remove ${p}: ${e?.message ?? e}`));
+    await this.prisma.orderFile.delete({ where: { id } });
+  }
+
   /** a stored file's bytes, wherever it lives (to copy into the job folder on the NAS) */
   openStored(path: string) {
     return this.storeOf(path).open(keyOf(path));
