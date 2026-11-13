@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SoonTag from "./SoonTag";
 import { tri, type Lang } from "../lib/i18n";
 
 const CONTACT_EMAIL = "techkairos241@gmail.com";
@@ -22,8 +23,8 @@ export default function StoreFooter({ lang = "th" }: { lang?: Lang }) {
         <div>
           <h4>{L("เมนู", "Menu", "メニュー")}</h4>
           <Link href="/shop">{L("ออกแบบเสื้อ", "Design", "デザイン")}</Link>
-          <Link href="/design">{L("ออกแบบขั้นสูง", "Advanced designer", "上級デザイナー")}</Link>
-          <Link href="/templates">{L("ตลาดลาย", "Designs market", "デザインマーケット")}</Link>
+          <Link href="/design">{L("ออกแบบขั้นสูง", "Advanced designer", "上級デザイナー")}<SoonTag href="/design" /></Link>
+          <Link href="/templates">{L("ตลาดลาย", "Designs market", "デザインマーケット")}<SoonTag href="/templates" /></Link>
           <Link href="/account">{L("ติดตามออเดอร์", "My orders", "注文状況")}</Link>
         </div>
         <div>

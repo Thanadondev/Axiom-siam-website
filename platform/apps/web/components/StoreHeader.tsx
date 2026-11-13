@@ -3,6 +3,7 @@
 import Link from "next/link";
 import UserMenu from "./UserMenu";
 import NotifyBell from "./NotifyBell";
+import SoonTag from "./SoonTag";
 import { LANGS, tri, type Lang } from "../lib/i18n";
 
 /** Header for the dark storefront pages (/, /shop). */
@@ -29,7 +30,7 @@ export default function StoreHeader({
           <nav className="ax-nav" aria-label={L("เมนูหลัก", "Main menu", "メインメニュー")}>
             {nav.map(n => n.href.startsWith("#")
               ? <a key={n.href} href={n.href}>{n.label}</a>
-              : <Link key={n.href} href={n.href}>{n.label}</Link>)}
+              : <Link key={n.href} href={n.href}>{n.label}<SoonTag href={n.href} /></Link>)}
           </nav>
         )}
         <div className="ax-tools">

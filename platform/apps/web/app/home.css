@@ -63,6 +63,9 @@
 .ax-nav a { text-decoration: none; color: var(--ax-ink-2); }
 .ax-nav a:hover { color: var(--ax-ink); }
 .ax-tools { display: flex; align-items: center; gap: 12px; }
+/* bibs-only launch (lib/launch.ts): a link to a page that isn't open yet */
+.ax-soon { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .04em; line-height: 1.5; vertical-align: middle; white-space: nowrap; opacity: .62; }
+.ax-story-kits .kit.is-soon .pic { opacity: .45; }
 .ax-pill { display: flex; border: 1px solid var(--ax-line-2); border-radius: 999px; overflow: hidden; }
 .ax-pill button { border: 0; background: transparent; color: var(--ax-mute); min-height: 36px; padding: 0 12px; font-size: 13px; }
 .ax-pill button[aria-pressed="true"] { background: var(--ax-ink); color: var(--ax-bg); }

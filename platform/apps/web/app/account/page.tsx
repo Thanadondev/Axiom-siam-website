@@ -10,6 +10,7 @@ import SecurityCard from "../../components/SecurityCard";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 import { tri, locale, useLang } from "../../lib/i18n";
 import { orderStatus, summaryIn } from "../../lib/order-text";
+import SoonTag from "../../components/SoonTag";
 
 interface Address {
   id: string;
@@ -262,7 +263,7 @@ export default function AccountPage() {
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="eyebrow">ดีไซน์ของฉัน</div>
-          <Link href="/design" className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>+ ออกแบบใหม่</Link>
+          <Link href="/design" className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>+ ออกแบบใหม่<SoonTag href="/design" /></Link>
         </div>
         {designs.length === 0 ? (
           <p className="asub" style={{ marginTop: 12 }}>ยังไม่มีดีไซน์ที่บันทึก — กด "ออกแบบใหม่" แล้วกดเซฟในหน้าดีไซเนอร์</p>
@@ -302,7 +303,7 @@ export default function AccountPage() {
             <div className="ax-acc-empty">
               <b>ยังไม่มีลายที่ซื้อ</b>
               <span>ลายจากดีไซเนอร์ ซื้อครั้งเดียวใช้กับทีมได้ตลอด</span>
-              <Link href="/templates" className="abtn ghost">ไปที่ตลาดลาย</Link>
+              <Link href="/templates" className="abtn ghost">ไปที่ตลาดลาย<SoonTag href="/templates" /></Link>
             </div>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>

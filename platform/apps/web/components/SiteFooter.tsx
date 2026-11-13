@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SoonTag from "./SoonTag";
 import { tri, type Lang } from "../lib/i18n";
 
 const CONTACT_EMAIL = "techkairos241@gmail.com";
@@ -22,9 +23,9 @@ export default function SiteFooter({ lang }: { lang: Lang }) {
         <div>
           <h4>{L("เมนู", "Menu", "メニュー")}</h4>
           <Link href="/shop">{L("ออกแบบเสื้อ", "Design a kit", "ユニフォームをデザイン")}</Link>
-          <Link href="/design">{L("ออกแบบขั้นสูง", "Advanced designer", "詳細デザインエディタ")}</Link>
+          <Link href="/design">{L("ออกแบบขั้นสูง", "Advanced designer", "詳細デザインエディタ")}<SoonTag href="/design" /></Link>
           <Link href="/tracking">{L("ติดตามงาน", "Track order", "注文追跡")}</Link>
-          <Link href="/templates">{L("ตลาดลาย", "Templates", "テンプレート")}</Link>
+          <Link href="/templates">{L("ตลาดลาย", "Templates", "テンプレート")}<SoonTag href="/templates" /></Link>
           <Link href="/account">{L("ติดตามออเดอร์", "Track an order", "注文履歴")}</Link>
         </div>
         <div>

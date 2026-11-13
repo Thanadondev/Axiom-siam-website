@@ -4,7 +4,8 @@ import { useMemo, type ReactNode } from "react";
 import StoreHeader from "./StoreHeader";
 import StoreFooter from "./StoreFooter";
 import JerseyStage from "./JerseyStage";
-import { KITS, defaultConfig } from "../lib/kits";
+import { KITS, defaultConfig, kitById } from "../lib/kits";
+import { OPEN_ALL, LAUNCH_KIT } from "../lib/launch";
 import { tri, type Lang } from "../lib/i18n";
 import "../app/app.css";
 import "../app/home.css";
@@ -53,8 +54,8 @@ export default function AppShell({
 }
 
 function AuthStage() {
-  // a different kit each day, so returning visitors see the range
-  const kit = useMemo(() => KITS[Math.floor(Date.now() / 86400000) % KITS.length], []);
+  // a different kit each day, so returning visitors see the range (only the bib kit while it's bibs only)
+  const kit = useMemo(() => (!OPEN_ALL && kitById(LAUNCH_KIT)) || KITS[Math.floor(Date.now() / 86400000) % KITS.length], []);
   const look = useMemo(() => {
     const c = defaultConfig(kit);
     return { colors: c.colors, pattern: c.pattern, trim: c.trim, fabric: c.fabric, name: "", number: "10", font: c.font };

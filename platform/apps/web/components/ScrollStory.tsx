@@ -8,6 +8,8 @@ import { loadThreeWithGltf, loadThreePost, hasWebGL, prefersReducedMotion } from
 import { loadJersey, type Jersey, type JerseyLook } from "../lib/jersey3d";
 import { KITS, defaultConfig, type Kit } from "../lib/kits";
 import KitThumb from "./KitThumb";
+import SoonTag from "./SoonTag";
+import { isSoon } from "../lib/launch";
 
 /**
  * The landing page as a walk through the Axiom factory floor at dusk,
@@ -1008,7 +1010,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
             {SPOTS.map((sp, i) => (
               <Link key={sp.href} href={sp.href} className="ax-spot" ref={e => { spots.current[i] = e; }} style={{ visibility: "hidden" }}>
                 <i aria-hidden="true" />
-                <span><b>{L(sp.th, sp.en, sp.ja)}</b><small>{L(sp.subTh, sp.subEn, sp.subJa)}</small></span>
+                <span><b>{L(sp.th, sp.en, sp.ja)}<SoonTag href={sp.href} /></b><small>{L(sp.subTh, sp.subEn, sp.subJa)}</small></span>
               </Link>
             ))}
           </nav>
@@ -1032,7 +1034,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
               <button type="button" className="ax-story-link" onClick={() => go(1)}>{L("เดินเข้าโรงงาน", "Walk into the factory", "工場の中へ")} <span aria-hidden="true">↓</span></button>
             </div>
             <nav className="ax-story-chips" aria-label={L("เมนู", "Menu", "メニュー")}>
-              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}</Link>)}
+              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}<SoonTag href={sp.href} /></Link>)}
             </nav>
           </div>
         </div>
@@ -1056,11 +1058,11 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
           </div>
           <div className="ax-story-kits">
             {KITS.map(k => (
-              <Link key={k.id} href={`/shop?kit=${k.id}`} className="kit">
+              <Link key={k.id} href={`/shop?kit=${k.id}`} className={`kit${isSoon(`/shop?kit=${k.id}`) ? " is-soon" : ""}`}>
                 <div className="pic" style={{ background: k.theme.bg }}><KitThumb kit={k} number={k.defaults.number} /></div>
                 <div className="meta">
                   <span className="ax-mono">{k.code}</span>
-                  <b>{th ? k.name : k.en}</b>
+                  <b>{th ? k.name : k.en}<SoonTag href={`/shop?kit=${k.id}`} /></b>
                   <small>{L(k.cutLabel, k.cutEn, k.cutJa)}{fromPrice !== null ? ` · ${L("เริ่ม ", "from ", "")}฿${Math.max(0, fromPrice + (garmentDelta[k.garment] ?? 0)).toLocaleString("th-TH")}${lang === "ja" ? "〜" : ""}` : ""}</small>
                 </div>
               </Link>
@@ -1075,7 +1077,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
           <span className="rule" />
           <p>{L("พิมพ์ซับลิเมชันลงผ้า Mesh · B1 · C1 สีสด ไม่ลอก ไม่แตก ใส่แข่งได้ทั้งฤดูกาล", "Sublimation-printed on Mesh, B1 or C1: bright colour that doesn't peel or crack, season after season.", "Mesh・B1・C1に昇華プリント。鮮やかな色ははがれず割れず、シーズンを通して着られます。")}</p>
           <div className="ax-story-tags"><span>MESH</span><span>B1</span><span>C1</span></div>
-          <Link href="/design" className="ax-story-go">{L("ออกแบบลายเองขั้นสูง", "Open the advanced designer", "詳細デザインエディタを開く")} <span aria-hidden="true">→</span></Link>
+          <Link href="/design" className="ax-story-go">{L("ออกแบบลายเองขั้นสูง", "Open the advanced designer", "詳細デザインエディタを開く")}<SoonTag href="/design" /> <span aria-hidden="true">→</span></Link>
         </div>
 
         {/* 4 — names */}
@@ -1126,7 +1128,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
               <li><span>SAMPLE</span>{L("รับออกแบบฟรีพร้อมทำตัวอย่าง", "Free design service with samples", "デザイン無料・サンプル製作対応")}</li>
               <li><span>MOQ</span>{L("MOQ ยืดหยุ่น รองรับแบรนด์เล็ก-ใหญ่", "Flexible MOQ for any brand size", "小ロットから大口まで柔軟に対応")}</li>
             </ul>
-            <Link href="/templates" className="ax-story-go">{L("ดูลายในตลาดลาย", "Browse the template market", "テンプレートマーケットを見る")} <span aria-hidden="true">→</span></Link>
+            <Link href="/templates" className="ax-story-go">{L("ดูลายในตลาดลาย", "Browse the template market", "テンプレートマーケットを見る")}<SoonTag href="/templates" /> <span aria-hidden="true">→</span></Link>
           </div>
         </div>
 
@@ -1141,7 +1143,7 @@ export default function ScrollStory({ lang }: { lang: Lang }) {
           <p className="ax-story-contact">{L("เริ่มออกแบบได้เลยโดยไม่ต้องสมัคร หรือติดต่อทีมงานเพื่อขอใบเสนอราคาและตัวอย่างผ้า", "Start designing without an account, or talk to us for a quote and fabric samples.", "アカウント登録なしですぐにデザインを始められます。お見積もりや生地サンプルはお気軽にお問い合わせください。")}
             <span className="ax-mono">{CONTACT_EMAIL} · LINE {CONTACT_LINE}</span></p>
           <nav className="ax-story-chips" aria-label={L("เมนู", "Menu", "メニュー")}>
-              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}</Link>)}
+              {SPOTS.map(sp => <Link key={sp.href} href={sp.href}>{L(sp.th, sp.en, sp.ja)}<SoonTag href={sp.href} /></Link>)}
             </nav>
         </div>
 

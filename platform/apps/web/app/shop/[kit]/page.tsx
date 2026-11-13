@@ -9,6 +9,7 @@ import SwatchPicker, { usePalette, nearestSwatch, swatchLabel, type Swatch } fro
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 import { variantQuery } from "../../../lib/garment-options";
+import { isOpen } from "../../../lib/launch";
 import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
 import {
   kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
@@ -576,7 +577,7 @@ function Studio({ kit }: { kit: Kit }) {
                 <button type="button" className="ax-btn solid sq" style={{ minHeight: 54 }} onClick={onOrder} disabled={busy !== ""}>
                   {busy === "order" ? "กำลังสร้างออเดอร์…" : user ? "สั่งผลิตเลย" : "เข้าสู่ระบบเพื่อสั่งผลิต"}
                 </button>
-                <Link href={advancedHref} className="ax-btn ghost sq">เปิดในโปรแกรมออกแบบขั้นสูง</Link>
+                {isOpen("/design") && <Link href={advancedHref} className="ax-btn ghost sq">เปิดในโปรแกรมออกแบบขั้นสูง</Link>}
               </>
             )}
 
