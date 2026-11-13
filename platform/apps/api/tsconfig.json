@@ -14,5 +14,10 @@
     "baseUrl": "./"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist"],
+  // `nest start --watch`: files customers upload (UPLOAD_DIR=./uploads) must not
+  // count as code changes, or every logo upload restarts the API mid-order
+  "watchOptions": {
+    "excludeDirectories": ["**/node_modules", "uploads", "dist", "coverage"]
+  }
 }
