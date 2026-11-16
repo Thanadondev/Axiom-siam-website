@@ -3,8 +3,8 @@
 เว็บไซต์ + แพลตฟอร์มสั่งผลิตเสื้อกีฬาออนไลน์ ครบวงจร
 ตามเอกสารออกแบบระบบ `Axiom-Siam-System-Design-v1.1.docx`
 
-> **สถานะ: Phase 0 — โครงระบบพร้อมแล้ว** ✅
-> ต่อไป: Phase 1 (Auth → หน้าเว็บ → Designer → บันทึกดีไซน์ → ขอใบเสนอราคา)
+> **สถานะ: ฟีเจอร์ Phase 1–3 ทำครบแล้ว · เปิดตัวเฉพาะเอี๊ยม (Bib)** — หน้าอื่นขึ้น Coming soon
+> รายละเอียดสิ่งที่ทำแล้วและงานค้าง: [`PROGRESS.md`](PROGRESS.md)
 
 ---
 
@@ -17,7 +17,7 @@
 | Database | PostgreSQL 16 + Prisma ORM |
 | Cache / Queue | Redis |
 | Storage | S3-compatible (Cloudflare R2 / AWS S3) |
-| Payments | Stripe (ต่างประเทศ) + Omise/Opn (ไทย: PromptPay) |
+| Payments | โอนเงิน + แนบสลิป (PromptPay QR) — แอดมินตรวจสลิป |
 
 ## 📁 โครงสร้างโปรเจกต์
 
