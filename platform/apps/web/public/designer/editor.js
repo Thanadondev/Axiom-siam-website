@@ -1081,7 +1081,7 @@ function openDoc(doc) {
   if (doc && doc.app === "axiom-roster") {
     openDoc(doc.template || {});
     const rt = document.getElementById("rosterText");
-    if (rt) rt.value = (doc.roster || []).map(r => [r.name, r.number, r.size].filter(v => v !== undefined && v !== "").join("\t")).join("\n");
+    if (rt) rt.value = (doc.roster || []).map(r => [r.name || "", r.number || "", r.size || ""].join("\t")).join("\n");
     const on = document.getElementById("orderName");
     if (on) on.value = doc.name || "";
     updateRosterCount(); updateTagInfo();
@@ -1875,9 +1875,12 @@ function setRosterTag(tag) {
 }
 function parseRoster() {
   const raw = (document.getElementById("rosterText") || {}).value || "";
-  return raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+  // a line is split before it is trimmed: a player with a number and no name is "\t12\tXL",
+  // and trimming first dropped the empty name — 12 became the name and XL the number
+  return raw.split(/\r?\n/).filter(l => l.trim()).map(l => {
     let parts = l.split(/\t|,|;|\|/).map(s => s.trim());
     if (parts.length === 1) {
+      if (/^[0-9]{1,3}$/.test(parts[0])) return { name: "", number: parts[0], size: "" };
       const t = parts[0].split(/\s+/);
       if (t.length >= 2 && /^[0-9]{1,3}$/.test(t[t.length - 1])) { const num = t.pop(); return { name: t.join(" "), number: num, size: "" }; }
       return { name: parts[0], number: "", size: "" };
@@ -2019,7 +2022,8 @@ function applyWizLayout() {
 }
 function syncWizRows() {
   const rt = document.getElementById("rosterText");
-  if (rt) rt.value = wizRows.filter(r => r.name || r.number).map(r => [r.name, r.number, r.size || TPL_SIZE].filter(v => v !== "").join("\t")).join("\n");
+  // every column kept, empty or not: a column left out moves the ones after it
+  if (rt) rt.value = wizRows.filter(r => r.name || r.number).map(r => [r.name || "", r.number || "", r.size || TPL_SIZE].join("\t")).join("\n");
   updateRosterCount();
 }
 function wizEsc(s) { return String(s == null ? "" : s).replace(/"/g, "&quot;"); }
@@ -2041,7 +2045,8 @@ function renderWizTable(body) {
   const add = document.getElementById("wizAddRow"); if (add) add.onclick = () => { wizRows.push({ name: "", number: "", size: TPL_SIZE }); renderWizTable(body); };
   const pt = document.getElementById("wizPasteToggle"); if (pt) pt.onclick = () => { const t = document.getElementById("wizPaste"), a = document.getElementById("wizPasteApply"); const show = t.style.display === "none"; t.style.display = a.style.display = show ? "block" : "none"; };
   const pa = document.getElementById("wizPasteApply"); if (pa) pa.onclick = () => {
-    const parsed = (document.getElementById("wizPaste").value || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => { const p = l.split(/\t|,|;/).map(s => s.trim()); return { name: p[0] || "", number: p[1] || "", size: (p[2] || TPL_SIZE).toUpperCase() }; });
+    // split before trimming: an Excel row with an empty name starts with a tab
+    const parsed = (document.getElementById("wizPaste").value || "").split(/\r?\n/).filter(l => l.trim()).map(l => { const p = l.split(/\t|,|;/).map(s => s.trim()); return { name: p[0] || "", number: p[1] || "", size: (p[2] || TPL_SIZE).toUpperCase() }; });
     if (parsed.length) { wizRows = parsed; renderWizTable(body); }
   };
   updateWizCount();
