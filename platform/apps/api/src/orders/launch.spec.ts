@@ -9,6 +9,12 @@ describe("bibs-only launch", () => {
     expect(launchBlock(garmentOf({ kind: "kit-studio", kit: "bib" }), {})).toBeNull();
     expect(launchBlock(garmentOf({ kind: "kit-studio", kit: "rim" }), {})).toBeNull(); // the old address of /shop/bib
   });
+  it("the bib kit made reversible is an R-bib; reversible means nothing on another kit", () => {
+    expect(garmentOf({ kind: "kit-studio", kit: "bib" })).toBe("bib_n");
+    expect(garmentOf({ kind: "kit-studio", kit: "bib", reversible: true })).toBe("bib_r");
+    expect(garmentOf({ kind: "kit-studio", kit: "bib", reversible: "yes" })).toBe("bib_n");
+    expect(garmentOf({ kind: "kit-studio", kit: "warmup", reversible: true })).toBe("hoodie");
+  });
   it("refuses everything else", () => {
     expect(launchBlock("jersey", {})).toMatch(/เฉพาะเอี๊ยม/);
     expect(launchBlock(garmentOf({ kind: "kit-studio", kit: "pacer" }), {})).toMatch(/เฉพาะเอี๊ยม/);

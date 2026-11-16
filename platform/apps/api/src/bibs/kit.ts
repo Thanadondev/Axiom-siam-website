@@ -25,6 +25,9 @@ export interface KitSnapshot {
   logoTint?: boolean;
   fontAsset?: string;
   assets?: { logo?: { url?: string }; font?: { url?: string } };
+  /** made reversible (R-bib): side B has its own colours and pattern; name, number, logo, font and trim levels are shared */
+  reversible?: boolean;
+  sideB?: { colors?: Partial<KitSnapshot["colors"]>; pattern?: string };
 }
 
 export function kitOnBib(s: unknown): s is KitSnapshot {
@@ -55,27 +58,34 @@ export function kitLogoUrl(s: KitSnapshot): string | undefined {
  */
 export function kitBibDesign(s: KitSnapshot, roster: RosterRow[]): BibDesign {
   const kit = KITS_ON_BIB[s.kit.toLowerCase()];
-  const c = s.colors;
-  const body = hex(c.body, "#ffffff");
-  const trim = hex(c.trim, body);
   // the trim levels: none · neck · neck + armholes · neck + armholes + hem (lib/kits.ts trimEdges)
   const t = s.trim;
   const on = { neck: t !== "none", arm: t === "neckarm" || t === "full", hem: t === "full" };
-  const rib = on.neck || on.arm || on.hem
-    ? { neck: on.neck ? trim : body, arm: on.arm ? trim : body, hem: on.hem ? trim : body }
-    : undefined;
+  const side = (c: Partial<KitSnapshot["colors"]>, pattern: string | undefined, fb: { body: string; ink: string }): BibDesign["sides"][number] => {
+    const body = hex(c.body, fb.body);
+    const trim = hex(c.trim, body);
+    const rib = on.neck || on.arm || on.hem
+      ? { neck: on.neck ? trim : body, arm: on.arm ? trim : body, hem: on.hem ? trim : body }
+      : undefined;
+    return {
+      body,
+      pattern: PATTERN[pattern ?? ""] ?? "plain",
+      patternColor: hex(c.stripe, body),
+      ink: hex(c.number, fb.ink),
+      ...(rib ? { rib } : {}),
+    };
+  };
+  const a = side(s.colors, s.pattern, { body: "#ffffff", ink: "#231f20" });
+  // R-bib: side B as the studio showed it; one it never saved starts white in side A's colours (lib/kits.ts defaultSideB)
+  const b = s.reversible === true
+    ? side({ body: "#ffffff", trim: s.colors.trim, stripe: s.colors.body, number: s.colors.body, ...(s.sideB?.colors ?? {}) }, s.sideB?.pattern ?? "none", { body: "#ffffff", ink: a.body })
+    : null;
   const fontUrl = typeof s.fontAsset === "string" && s.fontAsset.startsWith("font-") ? s.assets?.font?.url : undefined;
   return {
-    product: "bib_n",
+    product: b ? "bib_r" : "bib_n",
     team: "",
     font: s.font === "classic" || s.font === "thai" ? s.font : "block",
-    sides: [{
-      body,
-      pattern: PATTERN[s.pattern] ?? "plain",
-      patternColor: hex(c.stripe, body),
-      ink: hex(c.number, "#231f20"),
-      ...(rib ? { rib } : {}),
-    }],
+    sides: b ? [a, b] : [a],
     show: { frontNumber: true, frontLogo: s.logo !== "none", frontTeam: false, backName: true, backNumber: true },
     roster,
     logoLeft: true,

@@ -100,7 +100,8 @@ function Checkout() {
 
   const totalQty = SIZES.reduce((n, s) => n + (qty[s] || 0), 0);
   // a hoodie or shorts is priced as such (the server reads the garment from the design itself)
-  const garment = design?.stateJson?.kind === "kit-studio" ? kitPriceGarment(kit) : "jersey";
+  // a bib kit made reversible is an R-bib
+  const garment = design?.stateJson?.kind === "kit-studio" ? kitPriceGarment(kit, cfg) : "jersey";
   useEffect(() => {
     if (totalQty === 0) { setBd(null); return; }
     const t = setTimeout(() => {
@@ -212,7 +213,7 @@ function Checkout() {
             </div>
           )}
           <div className="ax-sover ax-stitle">
-            <span style={{ fontSize: 15, color: "#e3e1dc" }}>{isKit ? `${kit.name} · ${kit.code}` : `${design?.name ?? "แบบจากโปรแกรมออกแบบ"}${reversible ? " · สองด้าน" : ""}`}</span>
+            <span style={{ fontSize: 15, color: "#e3e1dc" }}>{isKit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : `${design?.name ?? "แบบจากโปรแกรมออกแบบ"}${reversible ? " · สองด้าน" : ""}`}</span>
             <h1>{phase === "build" ? <>เช็กให้ครบ<br />ก่อนผลิต.</> : phase === "pack" ? <>แพ็กลงกล่อง<br />แล้ว.</> : <>ส่งเข้าคิว<br />ผลิตแล้ว.</>}</h1>
             <span className="bar" aria-hidden="true" />
             <span className="ax-tagline">{order ? order.orderNo : `${totalQty} PCS`}<br />{FABRIC_OPTIONS.find(f => f.id === fabric)?.label ?? fabric}</span>
@@ -306,7 +307,7 @@ function Checkout() {
                 <p className="ax-psub">กดยืนยันแล้วออเดอร์จะอยู่ในสถานะรอชำระเงิน ยังยกเลิกได้ก่อนชำระ</p>
               </div>
               <div className="ax-ck-card">
-                <Row k="เสื้อ" v={`${kit.name} · ${kit.code}`} />
+                <Row k="เสื้อ" v={isKit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : `${design?.name ?? "แบบจากโปรแกรมออกแบบขั้นสูง"}${reversible ? " · สองด้าน" : ""}`} />
                 <Row k="ผ้า / ขลิบ" v={`${FABRIC_OPTIONS.find(f => f.id === fabric)?.label ?? fabric} · ${trimChoices.find(t => t.id === trim)?.label ?? trim}`} />
                 <Row k="ไซซ์" v={SIZES.filter(s => qty[s]).map(s => `${s} ${qty[s]}`).join(" · ")} />
                 {roster.length > 0 && <Row k="ชื่อ-เบอร์" v={`${roster.filter(r => r.playerName || r.number).length} รายชื่อ`} />}

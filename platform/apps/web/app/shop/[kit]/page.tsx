@@ -14,7 +14,8 @@ import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
 import {
   kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
   kitParts, kitFabrics, kitTrims, kitPriceGarment, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
-  type Kit, type KitConfig, type PartId, type RosterRow, type Size,
+  defaultSideB, sideLook,
+  type Kit, type KitConfig, type KitSide, type PartId, type RosterRow, type Size,
 } from "../../../lib/kits";
 import { importLogo, importFont, listAssets, deleteAsset, LOGO_ACCEPT, FONT_ACCEPT, fontFamilyOf, registerFont, type KitAsset } from "../../../lib/kit-assets";
 import { useKitAssets, uploadDesignAssets } from "../../../lib/use-kit-assets";
@@ -67,6 +68,8 @@ function Studio({ kit }: { kit: Kit }) {
   const fabricOptions = useMemo(() => FABRIC_OPTIONS.filter(f => kitFabrics(kit).includes(f.id)), [kit]);
   const trimOptions = useMemo(() => kitTrims(kit), [kit]);
   const [partIdx, setPartIdx] = useState(0);
+  // a reversible bib (R-bib): which side the colour and pattern tabs edit, and the 3D shows
+  const [side, setSide] = useState<KitSide>("A");
   const [view, setView] = useState<LockerView>("front");
   const [onMannequin, setOnMannequin] = useState(true);
   const [photo, setPhoto] = useState(false);
@@ -164,27 +167,55 @@ function Studio({ kit }: { kit: Kit }) {
   useEffect(() => {
     if (totalQty === 0) { setQuote(null); setQuoteErr(false); return; }
     const t = setTimeout(() => {
-      apiFetch<Quote>(`/orders/quote?totalQty=${totalQty}&fabric=${cfg.fabric}&trim=${cfg.trim}&reversible=false&garment=${kitPriceGarment(kit)}`)
+      apiFetch<Quote>(`/orders/quote?totalQty=${totalQty}&fabric=${cfg.fabric}&trim=${cfg.trim}&reversible=${!!cfg.reversible}&garment=${kitPriceGarment(kit, cfg)}`)
         .then(q => { setQuote(q); setQuoteErr(false); })
         .catch(() => { setQuote(null); setQuoteErr(true); });
     }, 250);
     return () => clearTimeout(t);
-  }, [totalQty, cfg.fabric, cfg.trim, kit]);
+  }, [totalQty, cfg.fabric, cfg.trim, cfg.reversible, kit]);
 
   const resolved = useKitAssets(cfg);
+  // the side being edited: side B of an R-bib has its own colours and pattern
+  const onSide = cfg.reversible ? side : "A";
+  const act = useMemo(() => sideLook(cfg, onSide), [cfg, onSide]);
   const look = useMemo(() => ({
-    colors: cfg.colors, pattern: cfg.pattern, trim: cfg.trim, fabric: cfg.fabric,
+    colors: act.colors, pattern: act.pattern, trim: cfg.trim, fabric: cfg.fabric,
     name: cfg.name.trim(), number: cfg.number, font: cfg.font,
     logo: resolved.logo, logoTint: resolved.logoTint, fontFamily: resolved.fontFamily,
-  }), [cfg, resolved.logo, resolved.logoTint, resolved.fontFamily]);
+  }), [act, cfg.trim, cfg.fabric, cfg.name, cfg.number, cfg.font, resolved.logo, resolved.logoTint, resolved.fontFamily]);
 
   const part = parts[Math.min(partIdx, parts.length - 1)];
-  const cur = cfg.colors[part.id];
+  const cur = act.colors[part.id];
   // the colour's name, and its number and CMYK on the factory's chart (DTP-28color-cs4.svg)
   const onChart = palette.find(s => s.c.toLowerCase() === cur);
   const quickName = QUICK_SWATCHES.find(s => s.hex === cur)?.name;
   const swatchName = [quickName, onChart ? swatchLabel(onChart) : quickName ? "" : cur.toUpperCase()].filter(Boolean).join(" · ");
-  const setColor = (pid: PartId, hex: string) => setCfg(c => ({ ...c, colors: { ...c.colors, [pid]: hex.toLowerCase() } }));
+  const setColor = (pid: PartId, hex: string) => setCfg(c => {
+    const v = hex.toLowerCase();
+    if (onSide === "B") { const b = sideLook(c, "B"); return { ...c, sideB: { ...b, colors: { ...b.colors, [pid]: v } } }; }
+    return { ...c, colors: { ...c.colors, [pid]: v } };
+  });
+  const setPattern = (pattern: KitConfig["pattern"]) => setCfg(c => (onSide === "B" ? { ...c, sideB: { ...sideLook(c, "B"), pattern } } : { ...c, pattern }));
+  // N-bib (one side) or R-bib (two sides, reversible), and which side is being edited
+  const sidePicker = kit.reversible ? (
+    <div>
+      <span className="ax-label">แบบเอี๊ยม</span>
+      <div className="ax-grid2">
+        <button type="button" className="ax-opt" aria-pressed={!cfg.reversible} onClick={() => { setCfg(c => ({ ...c, reversible: false })); setSide("A"); }}>
+          N-bib<small>ด้านเดียว</small>
+        </button>
+        <button type="button" className="ax-opt" aria-pressed={!!cfg.reversible} onClick={() => setCfg(c => ({ ...c, reversible: true, sideB: c.sideB ?? defaultSideB(c.colors) }))}>
+          R-bib<small>2 ด้าน กลับด้านได้</small>
+        </button>
+      </div>
+      {cfg.reversible && (
+        <div className="ax-grid2" style={{ marginTop: 10 }} role="group" aria-label="ด้านที่กำลังแก้">
+          <button type="button" className="ax-opt" aria-pressed={side === "A"} onClick={() => setSide("A")}>ด้าน A<small>ด้านหลัก</small></button>
+          <button type="button" className="ax-opt" aria-pressed={side === "B"} onClick={() => setSide("B")}>ด้าน B<small>ด้านกลับ · สีและลายของตัวเอง</small></button>
+        </div>
+      )}
+    </div>
+  ) : null;
   const goPart = (i: number) => { const n = parts.length; setPartIdx(((i % n) + n) % n); setHexDraft(""); setSnapped(null); };
 
   // a typed colour becomes the nearest one on the factory's chart (white: the fabric, unprinted)
@@ -213,7 +244,7 @@ function Studio({ kit }: { kit: Kit }) {
       token,
       body: JSON.stringify({
         name: name ?? `${kit.name} · ${cfg.name.trim() || kit.code}`,
-        mode: "single",
+        mode: cfg.reversible ? "reversible" : "single",
         // the team's logo/font files go with the design, so the factory prints exactly this
         stateJson: { ...cfg, name: cfg.name.trim(), roster, assets },
         previewUrl: preview(),
@@ -246,7 +277,7 @@ function Studio({ kit }: { kit: Kit }) {
       const designId = await saveToAccount(`${kit.name} · ${totalQty} ตัว`);
       try {
         sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
-          designId, fabric: cfg.fabric, trim: cfg.trim, reversible: false,
+          designId, fabric: cfg.fabric, trim: cfg.trim, reversible: !!cfg.reversible,
           roster: roster as RosterRow[], qty: roster.length ? undefined : qty,
         }));
       } catch { /* private mode: checkout still opens, just without the prefill */ }
@@ -290,7 +321,7 @@ function Studio({ kit }: { kit: Kit }) {
             <LockerScene ref={scene} kit={kit} look={look} view={view} mannequin={onMannequin} onFail={() => setFlat(true)} />
           ) : (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-              <KitThumb kit={kit} colors={cfg.colors} pattern={cfg.pattern} number={cfg.number} label={kit.name} style={{ width: "min(46%, 420px)" }} />
+              <KitThumb kit={kit} colors={act.colors} pattern={act.pattern} number={cfg.number} label={kit.name} style={{ width: "min(46%, 420px)" }} />
               <p className="ax-mono" style={{ textAlign: "center", padding: "0 20px" }}>เบราว์เซอร์นี้แสดง 3D ไม่ได้ · ยังปรับแต่งและสั่งผลิตได้ตามปกติ</p>
             </div>
           )}
@@ -298,7 +329,7 @@ function Studio({ kit }: { kit: Kit }) {
           {!photo && (
             <>
               <div className="ax-sover ax-stitle">
-                <span style={{ fontSize: 15, color: "#e3e1dc" }}>{kit.name} · {kit.code}</span>
+                <span style={{ fontSize: 15, color: "#e3e1dc" }}>{kit.name} · {kit.code}{cfg.reversible ? ` · R-bib ด้าน ${side}` : ""}</span>
                 <h1>ทำให้เป็น<br />ของทีม.</h1>
                 <span className="bar" aria-hidden="true" />
                 <span className="ax-tagline">ONE KIT.<br />EVERY PLAYER.<br />YOURS.</span>
@@ -358,9 +389,10 @@ function Studio({ kit }: { kit: Kit }) {
                   <span className="prog" aria-hidden="true" style={{ width: `${((partIdx + 1) / parts.length) * 100}%` }} />
                 </div>
                 <div>
-                  <h2>{part.label}</h2>
+                  <h2>{part.label}{cfg.reversible ? ` · ด้าน ${side}` : ""}</h2>
                   <p className="ax-psub">{part.hint}</p>
                 </div>
+                {sidePicker}
                 <div>
                   <div className="ax-swatches" role="group" aria-label={`สีของ${part.label}`}>
                     {QUICK_SWATCHES.map(s => (
@@ -411,9 +443,10 @@ function Studio({ kit }: { kit: Kit }) {
                   <h2>{isBottom(kit) ? "ลายกางเกง" : "ลายเสื้อ"}</h2>
                   <p className="ax-psub">เลือกลาย แล้วเปลี่ยนสีลายได้ที่แท็บสี → สีลาย</p>
                 </div>
+                {sidePicker}
                 <div className="ax-grid2">
                   {PATTERNS.map(p => (
-                    <button key={p.id} type="button" className="ax-opt left" aria-pressed={cfg.pattern === p.id} onClick={() => setCfg(c => ({ ...c, pattern: p.id }))}>
+                    <button key={p.id} type="button" className="ax-opt left" aria-pressed={act.pattern === p.id} onClick={() => setPattern(p.id)}>
                       <span style={{ fontSize: 15, color: "var(--ax-ink)" }}>{p.label}</span>
                       <small style={{ fontFamily: "var(--ax-mono)" }}>{p.code}</small>
                     </button>

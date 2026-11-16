@@ -50,7 +50,10 @@ const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts
 export function garmentOf(snap: unknown): Garment {
   if (!snap || typeof snap !== "object") return "jersey";
   const s = snap as Record<string, unknown>;
-  return s.kind === "kit-studio" && typeof s.kit === "string" ? KIT_GARMENT[s.kit.toLowerCase()] ?? "jersey" : "jersey";
+  if (s.kind !== "kit-studio" || typeof s.kit !== "string") return "jersey";
+  const g = KIT_GARMENT[s.kit.toLowerCase()] ?? "jersey";
+  // the bib kit made reversible (two sides) is an R-bib
+  return g === "bib_n" && s.reversible === true ? "bib_r" : g;
 }
 
 export interface QtyTier {

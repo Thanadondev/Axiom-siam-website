@@ -234,6 +234,23 @@ describe("the kit studio's basketball singlet, on the bib template", async () =>
     expect(kitBibDesign(snap({ logo: "none" }), []).show.frontLogo).toBe(false);
   });
 
+  it("made reversible: an R-bib, side B in its own colours and pattern, the trim levels shared", async () => {
+    const b = { colors: { body: "#ffffff", trim: "#1d4ed8", stripe: "#93c5fd", number: "#1d4ed8" }, pattern: "side" };
+    const d = BibDesignSchema.parse(kitBibDesign(snap({ reversible: true, sideB: b }), [{ name: "TANAKA", number: "7", size: "M" }]));
+    expect(d.product).toBe("bib_r");
+    expect(d.sides).toHaveLength(2);
+    expect(d.sides[0]).toMatchObject({ body: "#ed1c24", pattern: "diagonal" });
+    expect(d.sides[1]).toEqual({ body: "#ffffff", pattern: "side", patternColor: "#93c5fd", ink: "#1d4ed8", rib: { neck: "#1d4ed8", arm: "#1d4ed8", hem: "#ffffff" } });
+    // never saved side B: white in side A's colours, plain; junk colours fall back the same way
+    const fb = kitBibDesign(snap({ reversible: true, sideB: { colors: { body: "red" } } }), []).sides[1];
+    expect(fb).toMatchObject({ body: "#ffffff", pattern: "plain", ink: "#ed1c24", patternColor: "#ed1c24" });
+    expect(kitBibDesign(snap({ sideB: b }), []).product).toBe("bib_n"); // side B only counts when made reversible
+    const job = await buildBibJob(d, { ref: "AX-261116-R1", date: new Date(2026, 10, 16) });
+    const z = unzipSync(job.zip);
+    expect(Object.keys(z).filter(k => k.endsWith("_ol.pdf"))).toHaveLength(1);
+    expect(JSON.parse(strFromU8(z[`${job.name}/${job.name}_design.json`])).design.product).toBe("bib_r");
+  }, 30_000);
+
   it("one piece per shirt ordered: the names given, else the design's own name and number", () => {
     const items = [{ size: "M", qty: 2, roster: [{ playerName: "TANAKA", number: "7", qty: 1 }] }, { size: "L", qty: 1, roster: [] }];
     expect(kitRoster(snap(), items)).toEqual([{ name: "TANAKA", number: "7", size: "M" }, { name: "", number: "", size: "M" }, { name: "", number: "", size: "L" }]);

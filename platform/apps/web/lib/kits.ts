@@ -61,6 +61,8 @@ export interface Kit {
   code: string;
   /** priced as another product: the basketball singlet is cut on the bib template, so it is a normal bib (N-bib) */
   priceAs?: "bib_n";
+  /** can also be made reversible, two sides (R-bib): the bib kit */
+  reversible?: boolean;
   /** Thai product name */
   name: string;
   /** display name on the rack */
@@ -122,6 +124,7 @@ export const KITS: Kit[] = [
     id: "bib",
     garment: "jersey",
     priceAs: "bib_n",
+    reversible: true,
     code: "BK-03",
     name: "เสื้อบาสเกตบอล",
     en: "Bib",
@@ -292,7 +295,8 @@ export const KITS: Kit[] = [
 ];
 
 /** the garment its price is looked up as (the server reads the same from the saved design: pricing.ts garmentOf) */
-export function kitPriceGarment(kit: Kit): string {
+export function kitPriceGarment(kit: Kit, cfg?: Pick<KitConfig, "reversible"> | null): string {
+  if (kit.reversible && cfg?.reversible) return "bib_r";
   return kit.priceAs ?? kit.garment;
 }
 
@@ -400,6 +404,23 @@ export interface KitConfig {
   logoTint: boolean;
   /** id of the team's own name/number font in lib/kit-assets; overrides `font` */
   fontAsset?: string;
+  /** a kit that can be reversible (Kit.reversible): made with two sides, R-bib */
+  reversible?: boolean;
+  /** the reverse (side B): its own colours and pattern; the name, number, logo, font and trim levels are shared */
+  sideB?: { colors: KitColors; pattern: PatternId };
+}
+
+export type KitSide = "A" | "B";
+
+/** the reverse a kit starts with: white, in side A's colours (reads as the "away" side) */
+export function defaultSideB(colors: KitColors): { colors: KitColors; pattern: PatternId } {
+  return { colors: { body: "#ffffff", sleeve: "#ffffff", trim: colors.trim, stripe: colors.body, number: colors.body }, pattern: "none" };
+}
+
+/** the colours and pattern of one side (side B only when the kit is made reversible) */
+export function sideLook(cfg: KitConfig, side: KitSide): { colors: KitColors; pattern: PatternId } {
+  if (side === "B" && cfg.reversible) return cfg.sideB ?? defaultSideB(cfg.colors);
+  return { colors: cfg.colors, pattern: cfg.pattern };
 }
 
 export function defaultConfig(kit: Kit): KitConfig {
@@ -421,6 +442,18 @@ export function defaultConfig(kit: Kit): KitConfig {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
+function restoreColors(base: KitColors, raw: unknown): KitColors {
+  const colors = { ...base };
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    for (const k of Object.keys(colors) as PartId[]) {
+      const v = r[k];
+      if (typeof v === "string" && HEX.test(v)) colors[k] = v.toLowerCase();
+    }
+  }
+  return colors;
+}
+
 /**
  * Restores a saved config, field by field. Anything missing or malformed falls
  * back to the kit default, so an old or hand-edited blob never breaks the page.
@@ -429,14 +462,16 @@ export function restoreConfig(kit: Kit, raw: unknown): KitConfig {
   const base = defaultConfig(kit);
   if (!raw || typeof raw !== "object") return base;
   const r = raw as Record<string, any>;
-  const colors = { ...base.colors };
-  if (r.colors && typeof r.colors === "object") {
-    for (const k of Object.keys(colors) as PartId[]) {
-      if (typeof r.colors[k] === "string" && HEX.test(r.colors[k])) colors[k] = r.colors[k].toLowerCase();
-    }
-  }
+  const colors = restoreColors(base.colors, r.colors);
   const pick = <T extends string>(v: unknown, ok: readonly T[], fb: T): T => (ok.includes(v as T) ? (v as T) : fb);
+  const patterns = PATTERNS.map(p => p.id);
+  // side B only on a kit that can be reversible; it is kept while the team tries one side, so switching back restores it
+  const sideB = kit.reversible && r.sideB && typeof r.sideB === "object"
+    ? (() => { const b0 = defaultSideB(colors); return { colors: restoreColors(b0.colors, r.sideB.colors), pattern: pick(r.sideB.pattern, patterns, b0.pattern) }; })()
+    : undefined;
   return {
+    ...(kit.reversible && r.reversible === true ? { reversible: true } : {}),
+    ...(sideB ? { sideB } : {}),
     ...base,
     colors,
     pattern: pick(r.pattern, PATTERNS.map(p => p.id), base.pattern),
