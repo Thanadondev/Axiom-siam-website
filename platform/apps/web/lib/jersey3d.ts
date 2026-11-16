@@ -195,7 +195,48 @@ async function fontsReady(family: string) {
   }
 }
 
-interface Dims { W: number; top: number; hem: number; nw: number; /** chest marks' distance from the centre, as a share of W */ cx?: number; layout?: PrintLayout }
+interface Dims {
+  W: number; top: number; hem: number; nw: number;
+  /** chest marks' distance from the centre, as a share of W */ cx?: number;
+  layout?: PrintLayout;
+  /** the front panel's outer edge on the +x side (armhole or side seam), as the narrowest x between two heights */
+  edge?: (y0: number, y1: number) => number;
+}
+
+/**
+ * The print file's rule for the small front number (api bibs/draw.ts FRONT_NUMBER_CLEAR):
+ * at least 45 mm inside the cut edge and 15 mm off the centre line, on the 518.9 mm-wide
+ * M front — kept here as shares of the front's width.
+ */
+const FRONT_NUMBER_CLEAR = { edge: 45 / 518.9, centre: 15 / 518.9 };
+
+/** the narrowest +x edge of the front panel between two heights, measured from the Body's flat-pattern vertices */
+function frontEdge(meshes: any[]): (y0: number, y1: number) => number {
+  const STEP = 0.02;
+  const maxX = new Map<number, number>();
+  for (const m of meshes) {
+    const P = m.geometry.attributes._rest, N = m.geometry.attributes._restn;
+    if (!P || !N) continue;
+    // r128 hands back the stored integers of a normalized attribute
+    const nScale = N.normalized ? (N.array instanceof Int8Array ? 127 : N.array instanceof Int16Array ? 32767 : 1) : 1;
+    for (let i = 0; i < P.count; i++) {
+      // the outer face of the front, as the shader decides it
+      if (N.getZ(i) / nScale < 0.35 || P.getZ(i) < 0) continue;
+      const x = P.getX(i);
+      if (x <= 0) continue;
+      const k = Math.floor(P.getY(i) / STEP);
+      if (x > (maxX.get(k) ?? -Infinity)) maxX.set(k, x);
+    }
+  }
+  return (y0, y1) => {
+    let e = Infinity;
+    for (let k = Math.floor(Math.min(y0, y1) / STEP); k <= Math.floor(Math.max(y0, y1) / STEP); k++) {
+      const x = maxX.get(k);
+      if (x !== undefined) e = Math.min(e, x);
+    }
+    return e;
+  };
+}
 
 /**
  * The Body's paint: one material that draws the body colour, the pattern, the
@@ -381,22 +422,28 @@ vec4 diffuseColor = vec4( col, opacity );`,
       drawLogo(f, img, lx, ly, sz, tint);
     }
     if (look.number) {
-      const [nx, ny] = toPx(W * CX, top - 0.8);
-      const [mx] = toPx(0, top - 0.8);
-      let size = TS * 0.12 * (REF_WIDTH / (bb.max.x - bb.min.x));
+      // as the print file places it (api bibs/draw.ts frontNumber): centred where a one-digit
+      // number goes, then moved in to keep clear of the armhole and the centre line, and made
+      // smaller only if it can't fit between them
+      const y = top - 0.8;
+      const [nx, ny] = toPx(W * CX, y);
+      const [mx] = toPx(0, y);
+      const bw = bb.max.x - bb.min.x;
+      let size = TS * 0.12 * (REF_WIDTH / bw);
       f.font = `${weight} ${Math.round(size)}px "${fam}", sans-serif`;
-      // as the print file does (api bibs/draw.ts frontNumber): one digit sits here; a wider number keeps
-      // that digit's outer edge and grows toward the middle, not into the armhole, and is made smaller
-      // only if it would reach the centre line
-      const one = f.measureText("8").width;
       let w = f.measureText(look.number).width;
-      const room = Math.abs(mx - nx) + one / 2 - TS * 0.012;
-      if (w > room) {
-        size *= room / w;
+      // the ink's height in model units: the canvas spans the box's height top to bottom
+      const half = (size * 0.5 * (bb.max.y - bb.min.y)) / TS;
+      const e = dims.edge ? dims.edge(y - half, y + half) : Infinity;
+      const lo = mx + FRONT_NUMBER_CLEAR.centre * TS;
+      const hi = Number.isFinite(e) ? toPx(e, y)[0] - FRONT_NUMBER_CLEAR.edge * TS : TS;
+      if (w > hi - lo && hi > lo) {
+        size *= (hi - lo) / w;
         f.font = `${weight} ${Math.round(size)}px "${fam}", sans-serif`;
         w = f.measureText(look.number).width;
       }
-      f.fillText(look.number, nx + Math.sign(mx - nx) * Math.max(0, (w - one) / 2), ny);
+      const x0 = Math.min(Math.max(nx - w / 2, lo), hi - w);
+      f.fillText(look.number, x0 + w / 2, ny);
     }
     frontTex.needsUpdate = true;
 
@@ -858,7 +905,7 @@ export function buildJerseyFromModel(THREE: any, root: any, opts: { hanger?: boo
     else { m.geometry.computeBoundingBox(); bb.union(m.geometry.boundingBox); }
   }
 
-  const skin = createSkin(THREE, keep, { ...dims, nw: -1, cx: sleeved ? 0.44 : 0.33 }, bb, opts.textureSize ?? 1024, rest); // nw -1: the neck is a real opening
+  const skin = createSkin(THREE, keep, { ...dims, nw: -1, cx: sleeved ? 0.44 : 0.33, ...(rest ? { edge: frontEdge(body) } : {}) }, bb, opts.textureSize ?? 1024, rest); // nw -1: the neck is a real opening
   // a side stripe on shorts is narrower than on a shirt (the stripe starts at 0.75 of uW)
   if (layout === "shorts" || layout === "pants") skin.uniforms.uW.value = dims.W * 1.18;
   const weave = keep(weaveTexture(THREE));
