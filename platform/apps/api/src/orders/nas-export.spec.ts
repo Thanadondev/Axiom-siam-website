@@ -43,7 +43,7 @@ describe("copying a paid order's zip into its job folder on the NAS", () => {
     order: {
       findUnique: async ({ where }: any) => where.id !== order.id ? null : ({
         orderNo: order.orderNo, status: order.status, user: order.user, items: order.items,
-        files: files.filter(f => f.orderId === order.id).map(f => ({ id: f.id, name: f.name, path: f.path, nasAt: f.nasAt, nasPath: f.nasPath })),
+        files: files.filter(f => f.orderId === order.id).map(f => ({ id: f.id, name: f.name, path: f.path, bytes: f.bytes, sha256: f.sha256, createdAt: f.createdAt, nasAt: f.nasAt, nasPath: f.nasPath })),
       }),
     },
   };
@@ -111,5 +111,30 @@ describe("copying a paid order's zip into its job folder on the NAS", () => {
     expect(await nasSvc.sweep()).toEqual({ copied: 1, failed: 0 });
     expect(files.find(f => f.id === id).nasAt).toBeInstanceOf(Date);
     expect(await nasSvc.sweep()).toEqual({ copied: 0, failed: 0 });
+  });
+
+  it("a job built again after it went replaces the zip in its folder; two uploads with one name go side by side", async () => {
+    const { store, body } = await upload("AX job.zip");
+    const nasSvc = new NasExportService(prisma, store);
+    await nasSvc.exportOrder(order.id);
+    const dir = join(nas, "_webjobs", "AX-261110-6U5T R-bib (ML) J-Field Axis");
+    // the admin builds it again: a new file row, same name, other bytes
+    await new Promise(r => setTimeout(r, 5));
+    const again = zip(60_000);
+    const row = await store.saveGenerated("11111111-1111-4111-8111-111111111111", order.id, "AX job.zip", again, Buffer.from("jpg"));
+    files.find(f => f.id === row.id).orderId = order.id;
+    expect(await nasSvc.exportOrder(order.id)).toMatchObject({ ok: true, copied: 1 });
+    expect(readdirSync(dir)).toEqual(["AX job.zip"]);
+    expect(readFileSync(join(dir, "AX job.zip")).equals(again)).toBe(true);
+    expect(readFileSync(join(dir, "AX job.zip")).equals(body)).toBe(false);
+    expect(await nasSvc.exportOrder(order.id)).toMatchObject({ ok: true, copied: 0 });
+  });
+
+  it("two files of one order with the same name, sent together: the second gets (2)", async () => {
+    const { store } = await upload("same.zip");
+    await upload("same.zip");
+    const nasSvc = new NasExportService(prisma, store);
+    expect(await nasSvc.exportOrder(order.id)).toMatchObject({ ok: true, copied: 2 });
+    expect(readdirSync(join(nas, "_webjobs", "AX-261110-6U5T R-bib (ML) J-Field Axis")).sort()).toEqual(["same (2).zip", "same.zip"]);
   });
 });
