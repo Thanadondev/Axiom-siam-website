@@ -10,7 +10,7 @@
  */
 
 import { TRIMS, type TrimId } from "./garment-options";
-import { FABRICS, SIZES, type Size } from "./order-draft";
+import { FABRICS, SIZES, JERSEY_SIZES, type Size } from "./order-draft";
 
 export type PatternId = "none" | "diagonal" | "chest" | "side" | "pin" | "hoops";
 export type PartId = "body" | "sleeve" | "trim" | "stripe" | "number";
@@ -295,6 +295,21 @@ export const KITS: Kit[] = [
 ];
 
 /** the garment its price is looked up as (the server reads the same from the saved design: pricing.ts garmentOf) */
+/** the sizes a kit is made in: the bib (cut on CB-005) also in XXL (3L), everything else S–XL */
+export function kitSizes(kit: Kit): readonly Size[] {
+  return kit.priceAs === "bib_n" ? SIZES : JERSEY_SIZES;
+}
+
+/** roster lines whose size this kit isn't made in (they would otherwise quietly become M) */
+export function unknownSizes(text: string, sizes: readonly Size[]): string[] {
+  const bad: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const size = (line.split(/\t|,|;/)[2] ?? "").trim().toUpperCase();
+    if (size && !(sizes as readonly string[]).includes(size) && !bad.includes(size)) bad.push(size);
+  }
+  return bad;
+}
+
 export function kitPriceGarment(kit: Kit, cfg?: Pick<KitConfig, "reversible"> | null): string {
   if (kit.reversible && cfg?.reversible) return "bib_r";
   return kit.priceAs ?? kit.garment;
@@ -519,7 +534,7 @@ export interface RosterRow {
  * separated) or typed with commas: name, number, size. Lines that are blank
  * or a header row are skipped; an unknown size falls back to M.
  */
-export function parseRoster(text: string): RosterRow[] {
+export function parseRoster(text: string, sizes: readonly Size[] = JERSEY_SIZES): RosterRow[] {
   const rows: RosterRow[] = [];
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -530,7 +545,7 @@ export function parseRoster(text: string): RosterRow[] {
     const number = cleanNumber(num);
     if (!playerName && !number) continue;
     const up = size.toUpperCase();
-    rows.push({ playerName, number, size: (SIZES as readonly string[]).includes(up) ? (up as Size) : "M" });
+    rows.push({ playerName, number, size: (sizes as readonly string[]).includes(up) ? (up as Size) : "M" });
   }
   return rows.slice(0, 200);
 }

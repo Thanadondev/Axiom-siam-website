@@ -104,8 +104,10 @@ describe("designer → API contract", () => {
   });
 
   it("rejects a body whose roster size the designer failed to normalise", () => {
-    const bad = { ...body, roster: [{ playerName: "ก", number: "1", size: "XXL", qty: 1 }] };
+    const bad = { ...body, roster: [{ playerName: "ก", number: "1", size: "XXXL", qty: 1 }] };
     expect(CreateOrderSchema.safeParse(bad).success).toBe(false);
+    // XXL is a size (the bib's 3L): the service turns it away on anything but a bib (order-files.spec.ts)
+    expect(CreateOrderSchema.safeParse({ ...body, roster: [{ playerName: "ก", number: "1", size: "XXL", qty: 1 }] }).success).toBe(true);
   });
 
   it("rejects an order with no size lines at all", () => {

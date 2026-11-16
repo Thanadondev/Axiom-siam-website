@@ -7,8 +7,8 @@ import CheckoutScene, { type CheckoutPhase } from "../../components/CheckoutScen
 import PayPanel from "../../components/PayPanel";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
-import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, type RosterRow, type Size } from "../../lib/order-draft";
-import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
+import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, JERSEY_SIZES, type RosterRow, type Size } from "../../lib/order-draft";
+import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, kitSizes, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
 import { useKitAssets } from "../../lib/use-kit-assets";
 import "../app.css";
 import "../home.css";
@@ -134,6 +134,8 @@ function Checkout() {
   const phase: CheckoutPhase = paid ? "sent" : order ? "pack" : "build";
   // a design from the advanced designer has no 3D kit: show its own preview instead
   const isKit = isKitDesign;
+  // the sizes on offer: the bib kit also in XXL (3L); an advanced design S–XL
+  const sizes = design?.stateJson?.kind === "kit-studio" ? kitSizes(kit) : JERSEY_SIZES;
   const backHref = isKit ? `/shop/${kit.id}` : `/design?design=${designId}`;
   const addr = addresses?.find(a => a.id === addrId);
 
@@ -236,7 +238,7 @@ function Checkout() {
                 <p className="ax-psub">{roster.length ? `มีรายชื่อ ${roster.length} คนจากหน้าแบบ · เพิ่มตัวสำรองได้` : "ราคาต่อตัวลดลงเมื่อสั่งมากขึ้น"}</p>
               </div>
               <div>
-                {SIZES.map(s => (
+                {sizes.map(s => (
                   <div className="ax-step" key={s}>
                     <span style={{ fontFamily: "var(--ax-mono)", fontSize: 15 }}>
                       {s}{rosterBySize[s] > 0 && <small style={{ color: "var(--ax-mute)", marginLeft: 10 }}>รายชื่อ {rosterBySize[s]}</small>}
@@ -309,7 +311,7 @@ function Checkout() {
               <div className="ax-ck-card">
                 <Row k="เสื้อ" v={isKit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : `${design?.name ?? "แบบจากโปรแกรมออกแบบขั้นสูง"}${reversible ? " · สองด้าน" : ""}`} />
                 <Row k="ผ้า / ขลิบ" v={`${FABRIC_OPTIONS.find(f => f.id === fabric)?.label ?? fabric} · ${trimChoices.find(t => t.id === trim)?.label ?? trim}`} />
-                <Row k="ไซซ์" v={SIZES.filter(s => qty[s]).map(s => `${s} ${qty[s]}`).join(" · ")} />
+                <Row k="ไซซ์" v={sizes.filter(s => qty[s]).map(s => `${s} ${qty[s]}`).join(" · ")} />
                 {roster.length > 0 && <Row k="ชื่อ-เบอร์" v={`${roster.filter(r => r.playerName || r.number).length} รายชื่อ`} />}
                 {addr && <Row k="ส่งถึง" v={`${addr.recipient} · ${addr.province ?? ""} ${addr.postalCode}`} />}
               </div>

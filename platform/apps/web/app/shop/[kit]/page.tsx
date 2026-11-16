@@ -14,7 +14,7 @@ import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
 import {
   kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
   kitParts, kitFabrics, kitTrims, kitPriceGarment, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
-  defaultSideB, sideLook,
+  defaultSideB, sideLook, kitSizes, unknownSizes,
   type Kit, type KitConfig, type KitSide, type PartId, type RosterRow, type Size,
 } from "../../../lib/kits";
 import { importLogo, importFont, listAssets, deleteAsset, LOGO_ACCEPT, FONT_ACCEPT, fontFamilyOf, registerFont, type KitAsset } from "../../../lib/kit-assets";
@@ -154,14 +154,17 @@ function Studio({ kit }: { kit: Kit }) {
     return () => clearTimeout(t);
   }, [cfg, rosterText, qty, loaded, kit.id]);
 
-  const roster = useMemo(() => parseRoster(rosterText), [rosterText]);
+  // the sizes this kit is made in: the bib also in XXL (3L)
+  const sizes = useMemo(() => kitSizes(kit), [kit]);
+  const roster = useMemo(() => parseRoster(rosterText, sizes), [rosterText, sizes]);
+  const badSizes = useMemo(() => unknownSizes(rosterText, sizes), [rosterText, sizes]);
   const sizeCounts = useMemo(() => {
     if (!roster.length) return qty;
     const q = emptyQty();
     for (const r of roster) q[r.size]++;
     return q;
   }, [roster, qty]);
-  const totalQty = SIZES.reduce((n, s) => n + sizeCounts[s], 0);
+  const totalQty = sizes.reduce((n, s) => n + sizeCounts[s], 0);
 
   // live price from the same endpoint checkout uses
   useEffect(() => {
@@ -278,7 +281,7 @@ function Studio({ kit }: { kit: Kit }) {
       try {
         sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
           designId, fabric: cfg.fabric, trim: cfg.trim, reversible: !!cfg.reversible,
-          roster: roster as RosterRow[], qty: roster.length ? undefined : qty,
+          roster: roster as RosterRow[], qty: roster.length ? undefined : qty, sizes,
         }));
       } catch { /* private mode: checkout still opens, just without the prefill */ }
       router.push(`/checkout?design=${designId}`);
@@ -553,8 +556,9 @@ function Studio({ kit }: { kit: Kit }) {
                   <label className="ax-label" htmlFor="roster">รายชื่อทั้งทีม (วางจาก Excel)</label>
                   <textarea id="roster" className="ax-field" placeholder={"ชื่อ\tเบอร์\tไซซ์\nSOMCHAI\t10\tL\nANAN\t7\tM"} value={rosterText} onChange={e => setRosterText(e.target.value)} />
                   <p className="ax-psub" style={{ fontSize: 13 }}>
-                    หนึ่งคนต่อหนึ่งบรรทัด: ชื่อ, เบอร์, ไซซ์ ({SIZES.join(" / ")}) · {roster.length ? `อ่านได้ ${roster.length} คน กดชื่อเพื่อดูบนเสื้อ` : "ยังไม่มีรายชื่อ"}
+                    หนึ่งคนต่อหนึ่งบรรทัด: ชื่อ, เบอร์, ไซซ์ ({sizes.join(" / ")}) · {roster.length ? `อ่านได้ ${roster.length} คน กดชื่อเพื่อดูบนเสื้อ` : "ยังไม่มีรายชื่อ"}
                   </p>
+                  {badSizes.length > 0 && <p className="ax-err" role="status">ไม่มีไซซ์ {badSizes.join(", ")} สำหรับ{kit.name} · แถวนั้นนับเป็นไซซ์ M · แก้ไซซ์ในรายชื่อก่อนสั่ง</p>}
                 </div>
                 {roster.length > 0 && (
                   <div className="ax-roster" role="list">
@@ -579,7 +583,7 @@ function Studio({ kit }: { kit: Kit }) {
                   <p className="ax-psub">{roster.length ? `นับจากรายชื่อ ${roster.length} คน · แก้ได้ที่แท็บชื่อ-เบอร์` : kit.priceAs ? "ราคาเดียวทุกจำนวน" : "ราคาลดลงตามจำนวน"}</p>
                 </div>
                 <div>
-                  {SIZES.map(s => (
+                  {sizes.map(s => (
                     <div className="ax-step" key={s}>
                       <span style={{ fontFamily: "var(--ax-mono)", fontSize: 15 }}>{s}</span>
                       {roster.length ? (

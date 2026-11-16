@@ -289,6 +289,30 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
     expect(files).toHaveLength(0);
   });
 
+  it("made reversible: an R-bib at the R-bib's price, both sides in the job; XXL (3L) on the bib only", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: { ...kitState(), reversible: true, sideB: { colors: { body: "#ffffff", trim: "#ffc20e", stripe: "#ed1c24", number: "#ed1c24" }, pattern: "hoops" } } });
+    const svc = await services();
+    const res = await svc.create(USER, CreateOrderSchema.parse({
+      designId: DESIGN, fabric: "mesh", trim: "full", reversible: true, shippingAddressId: ADDR,
+      lines: [{ size: "M", qty: 1 }, { size: "XXL", qty: 1 }],
+      roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "BIG", number: "99", size: "XXL" }],
+    }));
+    expect(res.breakdown).toMatchObject({ garment: "bib_r", unitPrice: 245, subtotal: 245 * 2 });
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const z = unzipSync(readFileSync(join(dir, "order-files", files[0].path)));
+    const json = Object.entries(z).find(([n]) => n.endsWith("_design.json"))![1];
+    expect(JSON.parse(strFromU8(json)).design).toMatchObject({ product: "bib_r", sides: [{ body: "#ed1c24" }, { body: "#ffffff", pattern: "rings" }] });
+    expect(Object.keys(z).some(n => /\/XXL-3L\/01 No\.99 BIG_ol\.pdf$/.test(n))).toBe(true);
+
+    // a football shirt isn't made in XXL
+    designs.push({ id: "66666666-6666-4666-8666-666666666666", userId: USER, stateJson: kitState("striker") });
+    process.env.OPEN_ALL = "1";
+    try {
+      await expect(svc.create(USER, CreateOrderSchema.parse({ designId: "66666666-6666-4666-8666-666666666666", fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "XXL", qty: 10 }] })))
+        .rejects.toThrow(/XXL มีเฉพาะเอี๊ยม/);
+    } finally { delete process.env.OPEN_ALL; }
+  }, 30_000);
+
   it("while it's bibs only, a football shirt can't be ordered", async () => {
     designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
     const svc = await services();

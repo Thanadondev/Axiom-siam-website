@@ -106,6 +106,10 @@ export class OrdersService {
     const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
     const closed = launchBlock(garment);
     if (closed) throw new BadRequestException(closed);
+    // XXL (3L) is cut only on the bib's pattern
+    if (garment !== "bib_n" && garment !== "bib_r" && (lines.some(l => l.size === "XXL") || dto.roster?.some(r => r.size === "XXL"))) {
+      throw new BadRequestException("ไซซ์ XXL มีเฉพาะเอี๊ยม");
+    }
     // the schema requires fabric and trim unless it's a bib (file or web-designed), whose set price ignores them
     const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts, isBottom, kitPriceGarment, defaultSideB, sideLook } from "./kits";
+import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts, isBottom, kitPriceGarment, defaultSideB, sideLook, kitSizes, unknownSizes } from "./kits";
 import { FABRICS, SIZES } from "./order-draft";
 import { TRIMS } from "./garment-options";
 
@@ -140,6 +140,16 @@ describe("parseRoster", () => {
 
   it("keeps a number-only player (unnamed shirt)", () => {
     expect(parseRoster("\t23\tS")).toEqual([{ playerName: "", number: "23", size: "S" }]);
+  });
+
+  it("the bib kit is also made in XXL (3L); a size a kit isn't made in is pointed out", () => {
+    const bib = kitById("bib")!, striker = kitById("striker")!;
+    expect(kitSizes(bib)).toEqual(["S", "M", "L", "XL", "XXL"]);
+    expect(kitSizes(striker)).toEqual(["S", "M", "L", "XL"]);
+    expect(parseRoster("A,1,XXL", kitSizes(bib))[0].size).toBe("XXL");
+    expect(parseRoster("A,1,XXL", kitSizes(striker))[0].size).toBe("M");
+    expect(unknownSizes("A,1,XXL\nB,2,3l\nC,3,M\nD,4,xxl", kitSizes(striker))).toEqual(["XXL", "3L"]);
+    expect(unknownSizes("A,1,XXL\nB,2\nC,3,M", kitSizes(bib))).toEqual([]);
   });
 });
 
