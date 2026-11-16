@@ -282,7 +282,17 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
   it("other kits (a football shirt) get no print files: they aren't on a template yet", async () => {
     designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
     const svc = await services();
-    await svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] }));
+    process.env.OPEN_ALL = "1"; // football shirts open again after the bibs-only launch (orders/launch.ts)
+    try {
+      await svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] }));
+    } finally { delete process.env.OPEN_ALL; }
     expect(files).toHaveLength(0);
+  });
+
+  it("while it's bibs only, a football shirt can't be ordered", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
+    const svc = await services();
+    await expect(svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] })))
+      .rejects.toThrow(/เฉพาะเอี๊ยม/);
   });
 });

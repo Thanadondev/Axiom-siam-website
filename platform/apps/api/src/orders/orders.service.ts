@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
 import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
+import { launchBlock } from "./launch";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto, ProductionStepDto } from "./orders.dto";
 import { planStep, stepForStatus, stepName, SHIP_STEP } from "./production-steps";
@@ -103,6 +104,8 @@ export class OrdersService {
     // the garment is read from the design itself, never taken from the request
     // (a file order says what it's for: the team checks the file before production)
     const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
+    const closed = launchBlock(garment);
+    if (closed) throw new BadRequestException(closed);
     // the schema requires fabric and trim unless it's a bib (file or web-designed), whose set price ignores them
     const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file

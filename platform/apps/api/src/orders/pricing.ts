@@ -44,7 +44,7 @@ export type FileProduct = (typeof FILE_PRODUCTS)[number];
  * the storefront kits that aren't priced as jerseys (apps/web/lib/kits.ts). The basketball
  * singlet (bib) is cut on the bib template (CB-005), so it is a normal bib at the bib's price.
  */
-const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants", bib: "bib_n" };
+const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants", bib: "bib_n", rim: "bib_n" }; // rim: the bib kit's old name (/shop/rim)
 
 /** the garment a design snapshot is for: the kit it was made from, else a jersey */
 export function garmentOf(snap: unknown): Garment {
