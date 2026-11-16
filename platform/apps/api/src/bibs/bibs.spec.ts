@@ -4,7 +4,7 @@ import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
 import { textShape } from "./text";
 import { BibDesignSchema } from "./design";
-import { drawPiece } from "./draw";
+import { drawPiece, frontNumber, edgeX, FRONT_NUMBER_CLEAR } from "./draw";
 import { ink, naiveCmyk } from "./color";
 import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND } from "./template";
 import { buildBibJob } from "./job";
@@ -79,6 +79,33 @@ describe("paths and outlined text", () => {
     expect(bounds(textShape("SAGINUMA FC", "block", { w: 320, h: 50 }, { cx: 0, cy: 0 })!.segs)!.w).toBeLessThanOrEqual(320.5);
     expect(textShape("ทีมไทย", "block", { h: 40 }, { x: 0, top: 0 })!.segs.length).toBeGreaterThan(10);
     expect(textShape("  ", "block", { h: 40 }, { x: 0 })).toBeNull();
+  });
+
+  it("the front number keeps clear of the armhole, however many digits and whatever the font", () => {
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const font of ["block", "classic", "thai"] as const) for (const logoLeft of [false, true]) {
+        const one = frontNumber(p, { ...art, font, logoLeft, number: "8" })!;
+        for (const number of ["88", "188"]) {
+          const t = frontNumber(p, { ...art, font, logoLeft, number })!;
+          const b = bounds(t.segs)!;
+          const e = edgeX(cut, b.y, b.y + b.h, logoLeft ? "right" : "left", p.w / 2);
+          const gap = logoLeft ? e - (b.x + b.w) : b.x - e;
+          expect(gap, `${size} ${font} ${number}${logoLeft ? " logoLeft" : ""}`).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+          // grows toward the middle, never past it
+          if (logoLeft) expect(b.x).toBeGreaterThanOrEqual(p.w / 2 + FRONT_NUMBER_CLEAR.centre * k - 0.5);
+          else expect(b.x + b.w).toBeLessThanOrEqual(p.w / 2 - FRONT_NUMBER_CLEAR.centre * k + 0.5);
+          expect(b.h).toBeLessThanOrEqual(one.box.h + 0.5);
+        }
+      }
+    }
+    // a one-digit number in the block font is where the team's sheets put it, at full height
+    const m = piecesFor("M", "A").front!;
+    const t = frontNumber(m, { ...art, number: "7" })!;
+    expect(t.box.h).toBeCloseTo(85, 0);
+    expect(t.box.x + t.box.w / 2).toBeCloseTo(0.264 * m.w, 0);
+    // two digits in the block font still fit at full height: they move in, not shrink
+    expect(frontNumber(m, { ...art, number: "88" })!.box.h).toBeCloseTo(85, 0);
   });
 
   it("draws Japanese names in kanji and kana, not empty boxes", () => {

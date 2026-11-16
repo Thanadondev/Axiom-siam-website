@@ -1,7 +1,7 @@
 import { frontLayout, LAYOUT, type SideLook } from "./design";
 import { mapPath, parsePath, type Seg } from "./path";
 import { BASE_WIDTH, type Part, type Piece, type Rib } from "./template";
-import { textShape, type FontRef } from "./text";
+import { textShape, type FontRef, type TextShape } from "./text";
 
 /**
  * One cut piece with its artwork, as plain shapes in mm (y down, origin at the
@@ -116,6 +116,69 @@ export interface DrawOpts {
   sizeMark?: string;
 }
 
+/** points along a path, cubics sampled, for measuring against the cut line */
+function polyline(segs: Seg[]): [number, number][] {
+  const pts: [number, number][] = [];
+  let x = 0, y = 0;
+  for (const s of segs) {
+    if (s.op === "M" || s.op === "L") { x = s.x; y = s.y; pts.push([x, y]); }
+    else if (s.op === "C") {
+      for (let i = 1; i <= 16; i++) {
+        const t = i / 16, u = 1 - t;
+        pts.push([u * u * u * x + 3 * u * u * t * s.x1 + 3 * u * t * t * s.x2 + t * t * t * s.x, u * u * u * y + 3 * u * u * t * s.y1 + 3 * u * t * t * s.y2 + t * t * t * s.y]);
+      }
+      x = s.x; y = s.y;
+    }
+  }
+  return pts;
+}
+
+/**
+ * Where the cut line comes furthest in on one side of the piece between heights
+ * y0 and y1 (the armhole curves inward): the largest x left of `mid`, or the
+ * smallest right of it.
+ */
+export function edgeX(cut: Seg[], y0: number, y1: number, side: "left" | "right", mid: number): number {
+  const pts = polyline(cut);
+  let best = side === "left" ? -Infinity : Infinity;
+  for (let yy = y0; yy <= y1 + 1e-6; yy += Math.max(0.5, (y1 - y0) / 40)) {
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, ya] = pts[i], [x2, yb] = pts[(i + 1) % pts.length];
+      if (ya === yb || (ya - yy) * (yb - yy) > 0) continue;
+      const x = x1 + ((yy - ya) / (yb - ya)) * (x2 - x1);
+      if (side === "left" && x < mid) best = Math.max(best, x);
+      if (side === "right" && x > mid) best = Math.min(best, x);
+    }
+  }
+  return best;
+}
+
+/**
+ * The front number keeps clear of the armhole: at least this far (mm on the M
+ * piece) from the cut line, and this far from the piece's centre line. A one-digit
+ * number sits where the team's sheets put it; a wider one (two or three digits,
+ * a broad font) moves toward the middle, and only if it still doesn't fit is it
+ * made smaller. Before, a two-digit number in the classic or Thai font ran into
+ * the cut line.
+ */
+export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15 };
+
+export function frontNumber(p: Piece, art: Art): TextShape | null {
+  const k = p.w / BASE_WIDTH;
+  const L = frontLayout(!!art.logoLeft);
+  const at = { cx: L.number.cx * p.w, top: L.number.top * p.h };
+  let t = textShape(art.number, art.font, { h: L.number.h * k }, at);
+  if (!t) return null;
+  const mid = p.w / 2, onLeft = L.number.cx < 0.5;
+  const e = edgeX(parsePath(p.cut), t.box.y, t.box.y + t.box.h, onLeft ? "left" : "right", mid);
+  if (!Number.isFinite(e)) return t;
+  const lo = onLeft ? e + FRONT_NUMBER_CLEAR.edge * k : mid + FRONT_NUMBER_CLEAR.centre * k;
+  const hi = onLeft ? mid - FRONT_NUMBER_CLEAR.centre * k : e - FRONT_NUMBER_CLEAR.edge * k;
+  if (t.box.w > hi - lo) t = textShape(art.number, art.font, { h: L.number.h * k, maxW: hi - lo }, at)!;
+  const x = Math.min(Math.max(t.box.x, lo), hi - t.box.w);
+  return x === t.box.x ? t : { segs: mapPath(t.segs, 1, x - t.box.x, 0), box: { ...t.box, x } };
+}
+
 export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: DrawOpts = {}): Shape[] {
   const k = p.w / BASE_WIDTH;
   const cut = parsePath(p.cut);
@@ -134,7 +197,7 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
   if (part === "front") {
     const L = frontLayout(!!art.logoLeft);
     if (art.show.frontNumber) {
-      const t = textShape(art.number, art.font, { h: L.number.h * k }, { cx: L.number.cx * p.w, top: L.number.top * p.h });
+      const t = frontNumber(p, art);
       if (t) out.push(...inked(t.segs, look, k));
     }
     if (art.show.frontLogo && art.logo) {

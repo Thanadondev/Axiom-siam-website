@@ -382,8 +382,21 @@ vec4 diffuseColor = vec4( col, opacity );`,
     }
     if (look.number) {
       const [nx, ny] = toPx(W * CX, top - 0.8);
-      f.font = `${weight} ${Math.round(TS * 0.12 * (REF_WIDTH / (bb.max.x - bb.min.x)))}px "${fam}", sans-serif`;
-      f.fillText(look.number, nx, ny);
+      const [mx] = toPx(0, top - 0.8);
+      let size = TS * 0.12 * (REF_WIDTH / (bb.max.x - bb.min.x));
+      f.font = `${weight} ${Math.round(size)}px "${fam}", sans-serif`;
+      // as the print file does (api bibs/draw.ts frontNumber): one digit sits here; a wider number keeps
+      // that digit's outer edge and grows toward the middle, not into the armhole, and is made smaller
+      // only if it would reach the centre line
+      const one = f.measureText("8").width;
+      let w = f.measureText(look.number).width;
+      const room = Math.abs(mx - nx) + one / 2 - TS * 0.012;
+      if (w > room) {
+        size *= room / w;
+        f.font = `${weight} ${Math.round(size)}px "${fam}", sans-serif`;
+        w = f.measureText(look.number).width;
+      }
+      f.fillText(look.number, nx + Math.sign(mx - nx) * Math.max(0, (w - one) / 2), ny);
     }
     frontTex.needsUpdate = true;
 

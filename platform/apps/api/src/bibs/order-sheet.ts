@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import * as jpeg from "jpeg-js";
-import { drawPiece, moveShapes, type Art, type Shape } from "./draw";
+import { drawPiece, frontNumber, moveShapes, type Art, type Shape } from "./draw";
 import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
@@ -110,7 +110,9 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
           const onLeft = it.cx < 0.5;
           callout(out, text, { x: x0 + (it.cx * p.w + (onLeft ? -reach : reach) * k) * s, y }, { x: onLeft ? x0 - 24 : R, y });
         };
-        if (art.show.frontNumber && art.number) note(`H${Math.round(F.number.h * k)}mm`, F.number, art.logoLeft ? 45 : 30);
+        // the number as drawn: a wide one sits further in and may be smaller (draw.ts frontNumber)
+        const fn = art.show.frontNumber && art.number ? frontNumber(p, art) : null;
+        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: F.number.top }, art.logoLeft ? 45 : 30);
         if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
         if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + F.team.cy * p.h * s }, { x: R + 30, y: y0 + (F.team.cy * p.h + 50 * k) * s });
       } else {
