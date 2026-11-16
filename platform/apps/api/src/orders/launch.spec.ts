@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { launchBlock, bibsOnly } from "./launch";
-import { garmentOf } from "./pricing";
+import { launchBlock, bibsOnly, designerBlock } from "./launch";
+import { garmentOf, fromDesigner } from "./pricing";
 
 describe("bibs-only launch", () => {
   it("takes bib orders: web-designed, the team's zip, the bib kit from the studio", () => {
@@ -20,6 +20,17 @@ describe("bibs-only launch", () => {
     expect(launchBlock(garmentOf({ kind: "kit-studio", kit: "pacer" }), {})).toMatch(/เฉพาะเอี๊ยม/);
     expect(launchBlock(garmentOf({}), {})).toMatch(/เฉพาะเอี๊ยม/); // the advanced designer's jerseys
     expect(launchBlock("hoodie", {})).toMatch(/เฉพาะเอี๊ยม/);
+  });
+  it("the advanced designer draws on the bib pattern: N-bib or R-bib by its style, closed until everything opens", () => {
+    const order = (style: number) => ({ app: "axiom-roster", version: 1, style, roster: [], template: { app: "axiom-designer", style } });
+    expect(garmentOf(order(1))).toBe("bib_n");
+    expect(garmentOf(order(2))).toBe("bib_r");
+    expect(garmentOf({ app: "axiom-designer", style: 2 })).toBe("bib_r"); // a saved design, not an order
+    expect(garmentOf({ app: "axiom-roster", template: { style: 2 } })).toBe("bib_r");
+    expect(fromDesigner({ kind: "kit-studio", kit: "bib" })).toBeNull();
+    expect(designerBlock(true, {})).toMatch(/ยังไม่เปิดสั่งผลิต/);
+    expect(designerBlock(false, {})).toBeNull();
+    expect(designerBlock(true, { OPEN_ALL: "1" })).toBeNull();
   });
   it("opens every product with OPEN_ALL=1 or the web's NEXT_PUBLIC_OPEN_ALL=1", () => {
     expect(bibsOnly({})).toBe(true);

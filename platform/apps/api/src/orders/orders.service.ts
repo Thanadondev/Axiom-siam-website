@@ -2,8 +2,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
-import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
-import { launchBlock } from "./launch";
+import { priceOrder, priceTable, garmentOf, fromDesigner, GARMENT_LABEL } from "./pricing";
+import { launchBlock, designerBlock } from "./launch";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto, ProductionStepDto } from "./orders.dto";
 import { planStep, stepForStatus, stepName, SHIP_STEP } from "./production-steps";
@@ -104,7 +104,7 @@ export class OrdersService {
     // the garment is read from the design itself, never taken from the request
     // (a file order says what it's for: the team checks the file before production)
     const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
-    const closed = launchBlock(garment);
+    const closed = launchBlock(garment) ?? designerBlock(!bib && !file && !!fromDesigner(snapshot));
     if (closed) throw new BadRequestException(closed);
     // XXL (3L) is cut only on the bib's pattern
     if (garment !== "bib_n" && garment !== "bib_r" && (lines.some(l => l.size === "XXL") || dto.roster?.some(r => r.size === "XXL"))) {

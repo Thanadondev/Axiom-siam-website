@@ -46,9 +46,24 @@ export type FileProduct = (typeof FILE_PRODUCTS)[number];
  */
 const KIT_GARMENT: Record<string, Garment> = { warmup: "hoodie", stride: "shorts", tempo: "piste", tempozip: "piste_zip", track: "pants", bib: "bib_n", rim: "bib_n" }; // rim: the bib kit's old name (/shop/rim)
 
-/** the garment a design snapshot is for: the kit it was made from, else a jersey */
+/**
+ * A design from the advanced designer (apps/web/public/designer): it draws on the
+ * bib's own pattern (CB-005), "แบบ 1" one side, "แบบ 2" both sides. Its saved order
+ * is "axiom-roster" (the design under `template`), a plain saved design "axiom-designer".
+ */
+export function fromDesigner(snap: unknown): { reversible: boolean } | null {
+  if (!snap || typeof snap !== "object") return null;
+  const s = snap as Record<string, unknown>;
+  if (s.app !== "axiom-roster" && s.app !== "axiom-designer") return null;
+  const t = s.template && typeof s.template === "object" ? (s.template as Record<string, unknown>) : null;
+  return { reversible: Number(s.style ?? t?.style) === 2 };
+}
+
+/** the garment a design snapshot is for: the kit it was made from, a bib from the advanced designer, else a jersey */
 export function garmentOf(snap: unknown): Garment {
   if (!snap || typeof snap !== "object") return "jersey";
+  const d = fromDesigner(snap);
+  if (d) return d.reversible ? "bib_r" : "bib_n";
   const s = snap as Record<string, unknown>;
   if (s.kind !== "kit-studio" || typeof s.kit !== "string") return "jersey";
   const g = KIT_GARMENT[s.kit.toLowerCase()] ?? "jersey";
