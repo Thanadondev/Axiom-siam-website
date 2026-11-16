@@ -1,4 +1,9 @@
 # Local development services. Run: docker compose up -d
+# Pinned project name: the containers and volumes (axiom-siam_project_axiom_pgdata)
+# were first created from C:\AXIOM-SIAM_PROJECT. Without this, compose derives
+# "platform" from the folder name and collides with the existing containers.
+name: axiom-siam_project
+
 services:
   postgres:
     image: postgres:16-alpine
