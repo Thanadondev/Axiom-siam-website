@@ -43,12 +43,23 @@ export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; 
       const img = s.m
         ? `<image x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${s.m.join(" ")})" href="${href}"/>`
         : `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="${href}"/>`;
-      const inner = s.artClip ? `<g${clipOf(s.artClip)}>${img}</g>` : img;
+      const seen = s.opacity !== undefined && s.opacity < 1 ? `<g opacity="${s.opacity}">${img}</g>` : img;
+      const inner = s.artClip ? `<g${clipOf(s.artClip)}>${seen}</g>` : seen;
       body += s.clip ? `<g${clipOf(s.clip)}>${inner}</g>` : inner;
       continue;
     }
     const clip = clipOf(s.clip);
-    const paint = `fill="${s.fill ?? "none"}"` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
+    let fillRef = s.fill ?? "none";
+    if (s.grad && s.fill) {
+      const id = `g${ids.n++}`, g = s.grad, c = g.coords;
+      const stops = [...g.stops].sort((a, b) => a.o - b.o).map(t => `<stop offset="${t.o}" stop-color="${t.c}"/>`).join("");
+      defs += g.type === "linear"
+        ? `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${c[0]}" y1="${c[1]}" x2="${c[2]}" y2="${c[3]}" gradientTransform="matrix(${g.m.join(" ")})">${stops}</linearGradient>`
+        : `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${c[0]}" cy="${c[1]}" r="${c[2]}" fx="${c[3]}" fy="${c[4]}" gradientTransform="matrix(${g.m.join(" ")})">${stops}</radialGradient>`;
+      fillRef = `url(#${id})`;
+    }
+    const see = s.opacity !== undefined && s.opacity < 1 ? ` opacity="${s.opacity}"` : "";
+    const paint = `fill="${fillRef}"${see}` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
     const dash = s.stroke && s.dash?.length ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
     const path = `<path d="${pathData(s.segs)}" ${paint}${dash}${s.artClip ? clipOf(s.artClip) : ""}/>`;
     body += clip ? `<g${clip}>${path}</g>` : path;

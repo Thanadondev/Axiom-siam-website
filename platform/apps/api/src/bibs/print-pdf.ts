@@ -1,10 +1,10 @@
 import {
-  PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, setDashPattern, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
+  PDFDict, PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, setDashPattern, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
-  setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle,
+  setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle, setGraphicsState,
 } from "pdf-lib";
 import { ink, pngToRgb, tintCmyk } from "./color";
-import type { Shape } from "./draw";
+import type { Grad, Shape } from "./draw";
 import type { Seg } from "./path";
 
 /**
@@ -57,6 +57,32 @@ function pictureImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef 
   }));
 }
 
+/**
+ * A gradient as a PDF shading in CMYK (axial or radial, kept at its end
+ * colours past the ends), which Illustrator opens as a gradient: one colour
+ * blend per pair of stops, stitched along 0–1.
+ */
+function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PDFRef {
+  const ctx = doc.context;
+  const stops = [...g.stops].sort((a, b) => a.o - b.o);
+  if (stops[0].o > 0) stops.unshift({ ...stops[0], o: 0 });
+  if (stops[stops.length - 1].o < 1) stops.push({ ...stops[stops.length - 1], o: 1 });
+  if (stops.length === 1) stops.push({ ...stops[0], o: 1 });
+  const parts = [];
+  for (let i = 1; i < stops.length; i++) parts.push(ctx.obj({ FunctionType: 2, Domain: [0, 1], C0: cmyk(stops[i - 1].c), C1: cmyk(stops[i].c), N: 1 }));
+  // a hard edge (two stops at one place) needs bounds that still increase
+  const bounds: number[] = [];
+  for (let i = 1; i < stops.length - 1; i++) bounds.push(Math.min(1, Math.max(stops[i].o, (bounds[bounds.length - 1] ?? 0) + 1e-5)));
+  const fn = parts.length === 1 ? parts[0]
+    : ctx.obj({ FunctionType: 3, Domain: [0, 1], Functions: parts, Bounds: bounds, Encode: parts.flatMap(() => [0, 1]) });
+  const c = g.coords;
+  return ctx.register(ctx.obj({
+    ShadingType: g.type === "linear" ? 2 : 3, ColorSpace: "DeviceCMYK",
+    Coords: g.type === "linear" ? c : [c[3], c[4], 0, c[0], c[1], c[2]],
+    Function: fn, Extend: [true, true],
+  }));
+}
+
 export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: { title: string }): Promise<PrintPdf> {
   if (wMm > MAX_SIDE_MM || hMm > MAX_SIDE_MM) throw new Error(`print sheet ${Math.round(wMm)}×${Math.round(hMm)} mm is larger than Illustrator allows`);
   const doc = await PDFDocument.create();
@@ -70,6 +96,24 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     const i = ink(hex);
     if (!i.onChart) offChart.set(i.hex, `C${i.cmyk[0]} M${i.cmyk[1]} Y${i.cmyk[2]} K${i.cmyk[3]}`);
     return [i.cmyk[0] / 100, i.cmyk[1] / 100, i.cmyk[2] / 100, i.cmyk[3] / 100];
+  };
+  let nSh = 0;
+  const shadingName = (ref: PDFRef) => {
+    const res = page.node.normalizedEntries().Resources;
+    let dict = res.lookupMaybe(PDFName.of("Shading"), PDFDict);
+    if (!dict) { dict = doc.context.obj({}); res.set(PDFName.of("Shading"), dict); }
+    nSh += 1;
+    const name = PDFName.of("Sh" + nSh);
+    dict.set(name, ref);
+    return name;
+  };
+  const gStates = new Map<number, PDFName>();
+  const seeThrough = (op?: number): PDFOperator[] => {
+    if (op === undefined || op >= 1) return [];
+    const k = Math.round(op * 1000) / 1000;
+    let name = gStates.get(k);
+    if (!name) gStates.set(k, (name = page.node.newExtGState("GS", doc.context.register(doc.context.obj({ Type: "ExtGState", ca: k, CA: k })))));
+    return [setGraphicsState(name)];
   };
   const ops: PDFOperator[] = [
     pushGraphicsState(),
@@ -87,7 +131,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
         name = page.node.newXObject("Image", pictureImage(doc, s.png, s.tint));
         byTint.set(s.tint ?? "", name);
       }
-      ops.push(pushGraphicsState());
+      ops.push(pushGraphicsState(), ...seeThrough(s.opacity));
       if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
       if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
       // the image space is a unit square, y up: flip it back
@@ -96,9 +140,22 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
         : [concatTransformationMatrix(s.w, 0, 0, -s.h, s.x, s.y + s.h)]), drawObject(name), popGraphicsState());
       continue;
     }
-    ops.push(pushGraphicsState());
+    ops.push(pushGraphicsState(), ...seeThrough(s.opacity));
     if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
     if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
+    if (s.fill && s.grad) {
+      // the shape as a clip, the gradient painted through it; its stroke after, on top
+      const name = shadingName(shading(doc, s.grad, h => cmyk(h)));
+      ops.push(pushGraphicsState(), ...pathOps(s.segs), s.evenOdd ? PDFOperator.of(PDFOperatorNames.ClipEvenOdd) : clip(), endPath(),
+        concatTransformationMatrix(...s.grad.m), PDFOperator.of(PDFOperatorNames.ShadingFill, [name]), popGraphicsState());
+      if (s.stroke) {
+        ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
+        if (s.dash?.length) ops.push(setDashPattern(s.dash, 0));
+        ops.push(...pathOps(s.segs), stroke());
+      }
+      ops.push(popGraphicsState());
+      continue;
+    }
     if (s.fill) ops.push(setFillingCmykColor(...cmyk(s.fill)));
     if (s.stroke) ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
     if (s.stroke && s.dash?.length) ops.push(setDashPattern(s.dash, 0));

@@ -29,6 +29,16 @@ const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/).transform(s => s.toLowerCase()
 const num = z.number().finite();
 const matrix = z.tuple([num, num, num, num, num, num]);
 
+/** a gradient fill: its own space, `m` taking it to mm on the piece drawn (draw.ts Grad) */
+const Gradient = z.object({
+  type: z.enum(["linear", "radial"]),
+  coords: z.array(num).min(4).max(5),
+  stops: z.array(z.object({ o: z.number().min(0).max(1), c: hex })).min(1).max(64),
+  m: matrix,
+}).refine(g => g.coords.length === (g.type === "linear" ? 4 : 5), "linear: x1 y1 x2 y2; radial: cx cy r fx fy");
+/** see-through, 0–1 */
+const opacity = z.number().min(0).max(1).optional();
+
 /** a filled / stroked outline: `d` in its own units, `m` taking them to mm */
 const PathItem = z.object({
   d: z.string().min(1).max(600_000),
@@ -43,12 +53,16 @@ const PathItem = z.object({
   dash: z.array(z.number().min(0).max(10_000)).max(16).optional(),
   /** the artwork's own clip (a logo's clip path), already in mm on the piece drawn */
   clip: z.string().min(1).max(200_000).optional(),
+  /** a gradient fill, with `fill` its first colour */
+  grad: Gradient.optional(),
+  op: opacity,
 });
 /** a picture: `img` indexes `images`, `m` takes its unit square (y down) to mm */
 const ImageItem = z.object({
   img: z.number().int().min(0), m: matrix,
   /** a crop: the part of the picture shown, in mm on the piece drawn */
   clip: z.string().min(1).max(200_000).optional(),
+  op: opacity,
 });
 const Item = z.union([PathItem, ImageItem]);
 
@@ -255,7 +269,7 @@ export function designerPiece(
       // its own clip is in mm on the piece drawn: carried to this size with the object
       const artClip = it.clip ? transformPath(parsedOnce(it.clip), fit) : undefined;
       if ("img" in it) {
-        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut, ...(artClip ? { artClip } : {}) });
+        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut, ...(artClip ? { artClip } : {}), ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}) });
         continue;
       }
       if (!it.fill && !it.stroke) continue;
@@ -268,6 +282,8 @@ export function designerPiece(
         ...(it.eo ? { evenOdd: true } : {}),
         ...(artClip ? { artClip } : {}),
         ...(it.stroke && it.dash?.length ? { dash: it.dash.map(v => v * scale) } : {}),
+        ...(it.fill && it.grad ? { grad: { ...it.grad, m: compose(fit, it.grad.m as Affine) } } : {}),
+        ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}),
       });
     }
   }
@@ -397,7 +413,8 @@ function moveScaled(sh: Shape, dx: number, dy: number, k: number): Shape {
     const own: Affine = sh.m ?? [sh.w, 0, 0, sh.h, sh.x, sh.y];
     return { ...sh, m: compose(m, own), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m) };
   }
-  return { ...sh, segs: transformPath(sh.segs, m), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m), width: sh.width !== undefined ? sh.width * k : undefined, dash: sh.dash?.map(v => v * k) };
+  return { ...sh, segs: transformPath(sh.segs, m), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m), width: sh.width !== undefined ? sh.width * k : undefined, dash: sh.dash?.map(v => v * k),
+    ...(sh.grad ? { grad: { ...sh.grad, m: compose(m, sh.grad.m) } } : {}) };
 }
 
 // ------------------------------------------------------------ the job

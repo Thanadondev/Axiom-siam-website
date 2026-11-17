@@ -3,6 +3,8 @@ import { unzipSync, strFromU8 } from "fflate";
 import { buildDesignerJob, compose, designerFacts, designerPiece, designerRows, DesignerPrintSchema, FIT_MARGIN_MM, fitInPiece, fitToSize, patternBox, pictures, transformPath, type DesignerPrint } from "./designer-print";
 import { piecesFor } from "./template";
 import { parsePath } from "./path";
+import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import { moveShapes } from "./draw";
 
 // an 8×8 red PNG
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAAA1BMVEXmABL5rOCAAAAAC0lEQVR4nGNgQAUAABAAATm9j2UAAAAASUVORK5CYII=";
@@ -229,5 +231,62 @@ describe("found trying hard designs", () => {
     // and the print file takes them
     const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T12", date: new Date() });
     expect(job.files.some(f => f.path.endsWith("_ol.pdf"))).toBe(true);
+  });
+});
+
+describe("as Illustrator draws it", () => {
+  const grad = { type: "linear" as const, coords: [0, 0, 1, 0], stops: [{ o: 0, c: "#ed1c24" }, { o: 0.5, c: "#ffffff" }, { o: 1, c: "#231f20" }], m: [100, 0, 0, 100, 150, 150] as [number, number, number, number, number, number] };
+  const design = () => DesignerPrintSchema.parse(spec({ panels: [
+    { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+      { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24", grad, stroke: "#231f20", sw: 2 },
+      { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#0e7c3a", op: 0.5 },
+      { img: 0, m: [40, 0, 0, 40, 150, 340], op: 0.25 },
+    ] }] },
+    { side: "A", part: "back", objs: [] },
+  ], players: [] }));
+
+  it("a gradient fill and a see-through shape reach the piece, the gradient carried to the size with its shape", () => {
+    const d = design(), pics = pictures(d);
+    const front = designerPiece(d, pics, "M", "A", "front", piecesFor("M", "A").front, null);
+    const g = front.find(s => s.kind === "path" && s.grad);
+    expect(g).toMatchObject({ fill: "#ed1c24", grad: { type: "linear", stops: grad.stops } });
+    expect(front.find(s => s.kind === "path" && s.fill === "#0e7c3a")).toMatchObject({ opacity: 0.5 });
+    expect(front.find(s => s.kind === "image")).toMatchObject({ opacity: 0.25 });
+    const xl = designerPiece(d, pics, "XL", "A", "front", piecesFor("XL", "A").front, null).find(s => s.kind === "path" && s.grad)!;
+    expect(xl.kind === "path" && xl.grad!.m).not.toEqual(g!.kind === "path" && g!.grad!.m);
+  });
+
+  it("the print file has the gradient as a CMYK shading through its shape, and the see-through as a graphics state", async () => {
+    const d = design();
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T13", date: new Date() });
+    const files = unzipSync(job.zip);
+    const pdf = await PDFDocument.load(Object.entries(files).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const dicts = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict);
+    const sh = dicts.find(o => o.get(PDFName.of("ShadingType")));
+    expect((sh!.get(PDFName.of("ShadingType")) as PDFNumber).asNumber()).toBe(2);
+    expect(String(sh!.get(PDFName.of("ColorSpace")))).toBe("/DeviceCMYK");
+    expect(dicts.some(o => String(o.get(PDFName.of("ca"))) === "0.5")).toBe(true);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\/Sh1 sh/);
+    expect(content).toMatch(/\/GS\S* gs/);
+  });
+
+  it("a gradient moves with its shape when the piece is placed on the sheet", () => {
+    const d = design();
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const g = moveShapes(front, 30, 40, 2).find(s => s.kind === "path" && s.grad)!;
+    expect(g.kind === "path" && g.grad!.m).toEqual([200, 0, 0, 200, 330, 340]);
+  });
+
+  it("the order sheet draws them the same", async () => {
+    const { svgShapes } = await import("./order-sheet");
+    const d = design();
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const { defs, body } = svgShapes(front, { n: 0 });
+    expect(defs).toMatch(/<linearGradient id="g\d+" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0" gradientTransform="matrix\(100 0 0 100 150 150\)"><stop offset="0" stop-color="#ed1c24"\/>/);
+    expect(body).toMatch(/fill="url\(#g\d+\)"/);
+    expect(body).toMatch(/opacity="0.5"/);
+    expect(body).toMatch(/<g opacity="0.25"><image/);
   });
 });

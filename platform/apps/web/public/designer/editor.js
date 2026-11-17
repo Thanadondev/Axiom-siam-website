@@ -111,14 +111,38 @@ $("#right").innerHTML = `
       <div class="row"><label>ความทึบ</label><div class="num" style="flex:1"><input type="range" id="opRange" min="0" max="100" value="100"><span id="opVal" style="min-width:26px">100</span></div></div>
     </div>
   </div>
+  <div class="panel" id="gradPanel">
+    <div class="phead">Gradient · ไล่สี</div>
+    <div class="pbody">
+      <div class="btnrow" style="margin-bottom:8px">
+        <button class="mini" data-gtype="none" title="สีเดียว">■ สีเดียว</button>
+        <button class="mini" data-gtype="linear" title="ไล่สีเส้นตรง (Linear)">▤ เส้นตรง</button>
+        <button class="mini" data-gtype="radial" title="ไล่สีวงกลม (Radial)">◎ วงกลม</button>
+      </div>
+      <div id="gradEdit" style="display:none">
+        <div id="gradBar" title="คลิกบนแถบเพื่อเพิ่มจุดสี" style="position:relative;height:22px;border-radius:5px;border:1px solid var(--line2);margin:2px 7px 26px;cursor:copy"></div>
+        <div class="row"><label>มุม</label><input type="number" id="gAngle" step="15" style="width:64px"><button class="mini" id="gRev" title="กลับด้านไล่สี">⇄ กลับด้าน</button><button class="mini" id="gDel" title="ลบจุดสีที่เลือก">− จุดสี</button></div>
+        <div class="row"><label>ตำแหน่ง</label><div class="num" style="flex:1"><input type="range" id="gPos" min="0" max="100"><span id="gPosV" style="min-width:30px"></span></div></div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5">เลือกจุดสีใต้แถบ แล้วคลิกสีใน Swatches · คลิกแถบเพื่อเพิ่มจุดสี · ลากจุดสีเพื่อเลื่อน · พิมพ์ออกเป็นไล่สี CMYK แบบใน Illustrator</div>
+      </div>
+    </div>
+  </div>
   <div class="panel">
     <div class="phead">Transform</div>
     <div class="pbody">
-      <div class="grid2" style="margin-bottom:7px">
-        <div class="num"><span>W</span><input type="number" id="tW"></div>
-        <div class="num"><span>H</span><input type="number" id="tH"></div>
+      <div class="grid2" style="margin-bottom:7px" title="ตำแหน่งกึ่งกลางชิ้นงาน วัดจากมุมซ้ายบนของตัวเสื้อ (มม.)">
+        <div class="num"><span>X</span><input type="number" id="tX" step="1"></div>
+        <div class="num"><span>Y</span><input type="number" id="tY" step="1"></div>
       </div>
-      <div class="num" style="margin-bottom:9px"><span>∠</span><input type="number" id="tR" placeholder="องศา"></div>
+      <div class="grid2" style="margin-bottom:7px" title="ขนาดจริงตอนพิมพ์ (มม.)">
+        <div class="num"><span>W</span><input type="number" id="tW" step="1"></div>
+        <div class="num"><span>H</span><input type="number" id="tH" step="1"></div>
+      </div>
+      <div class="row" style="margin-bottom:9px">
+        <div class="num" style="flex:1"><span>∠</span><input type="number" id="tR" placeholder="องศา"></div>
+        <label style="min-width:0;display:flex;align-items:center;gap:4px;cursor:pointer" title="ล็อกสัดส่วน กว้าง-สูง"><input type="checkbox" id="tLock" checked>🔗</label>
+        <span style="font-size:10.5px;color:var(--muted)">มม.</span>
+      </div>
       <div class="btnrow" style="margin-bottom:7px">
         <button class="mini" data-align="left" title="ชิดซ้าย">⬅</button>
         <button class="mini" data-align="cx" title="กึ่งกลางแนวนอน">↔</button>
@@ -133,6 +157,25 @@ $("#right").innerHTML = `
         <button class="mini" data-arrange="backward" title="ลงหนึ่งชั้น">↓</button>
         <button class="mini" data-arrange="back" title="ล่างสุด">⤓</button>
       </div>
+      <div class="btnrow" style="margin-top:7px">
+        <button class="mini" data-flip="x" title="สะท้อนซ้าย-ขวา (Reflect)">⇋</button>
+        <button class="mini" data-flip="y" title="สะท้อนบน-ล่าง (Reflect)">⇵</button>
+        <button class="mini" data-dist="h" title="เว้นระยะห่างเท่ากัน แนวนอน (เลือก 3 ชิ้นขึ้นไป)">↔⋯</button>
+        <button class="mini" data-dist="v" title="เว้นระยะห่างเท่ากัน แนวตั้ง (เลือก 3 ชิ้นขึ้นไป)">↕⋮</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">จัดชิด: ชิ้นเดียว = เทียบกับตัวเสื้อ · หลายชิ้น = เทียบกันเอง</div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="phead">Pathfinder</div>
+    <div class="pbody">
+      <div class="btnrow">
+        <button class="mini" data-pf="unite" title="รวมรูปทรง (Unite) — ใช้สีของชิ้นบนสุด">⊕ รวม</button>
+        <button class="mini" data-pf="minus" title="ลบด้านหน้า (Minus Front) — ชิ้นล่างสุดถูกเจาะด้วยชิ้นที่อยู่บน">⊖ เจาะ</button>
+        <button class="mini" data-pf="intersect" title="เหลือส่วนที่ซ้อนกัน (Intersect)">⊗ ซ้อน</button>
+        <button class="mini" data-pf="exclude" title="ตัดส่วนที่ซ้อนกันออก (Exclude)">⊘ ตัดซ้อน</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">เลือก 2 ชิ้นขึ้นไป (Shift+คลิก) · ข้อความจะถูกแปลงเป็นเส้นก่อน</div>
     </div>
   </div>
   <div class="panel">
@@ -917,6 +960,7 @@ document.getElementById("filePat").addEventListener("change", ev => {
 /* ---------- apply color ---------- */
 function showCode(color) { const info = PALINFO.find(p => p.c.toLowerCase() === String(color).toLowerCase()); $("#swCode").textContent = info ? info.k : (color === "none" ? "ไม่มีสี" : color); }
 function applyColor(color) {
+  if (fillTarget === "fill" && color !== "none" && gradColor(color)) return;
   const val = color === "none" ? "rgba(0,0,0,0)" : color;
   const objs = canvas.getActiveObjects();
   if (fillTarget === "fill") fillState.fill = val; else fillState.stroke = val;
@@ -945,11 +989,35 @@ $("#swRange").oninput = e => { const v = +e.target.value; $("#swVal").textConten
 $("#swRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
 $("#opRange").oninput = e => { const v = +e.target.value; $("#opVal").textContent = v; canvas.getActiveObjects().forEach(o => o.set("opacity", v / 100)); canvas.requestRenderAll(); };
 $("#opRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
-$("#tW").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; const w = +e.target.value; if (w > 0) { o.scaleX = w / o.width; canvas.requestRenderAll(); pushHistory(); } };
-$("#tH").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; const h = +e.target.value; if (h > 0) { o.scaleY = h / o.height; canvas.requestRenderAll(); pushHistory(); } };
+/** sizes typed in mm, as printed; with the lock on, the other side follows (Illustrator's constrain proportions) */
+function setSizeMm(o, axis, mm) {
+  if (!(mm > 0)) return;
+  const c = o.getCenterPoint(), u = mm / MM_PER_UNIT;
+  const k = axis === "x" ? u / o.getScaledWidth() : u / o.getScaledHeight();
+  if ($("#tLock").checked) o.set({ scaleX: o.scaleX * k, scaleY: o.scaleY * k });
+  else if (axis === "x") o.set({ scaleX: o.scaleX * k }); else o.set({ scaleY: o.scaleY * k });
+  o.setPositionByOrigin(c, "center", "center"); o.setCoords();
+  if (clipOn) (o._objects || [o]).forEach(applyClip);
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+$("#tW").onchange = e => { const o = canvas.getActiveObject(); if (o) setSizeMm(o, "x", +e.target.value); };
+$("#tH").onchange = e => { const o = canvas.getActiveObject(); if (o) setSizeMm(o, "y", +e.target.value); };
+/** an object's centre in mm on its piece, from the piece's top-left (what the print measures) */
+function invM(m) { const d = m[0] * m[3] - m[1] * m[2]; return [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d, (m[2] * m[5] - m[3] * m[4]) / d, (m[1] * m[4] - m[0] * m[5]) / d]; }
+function centreMm(o) { const p = panels[panelOf(o)], c = o.getCenterPoint(); return p ? applyM(panelToMm(p), c.x, c.y) : [c.x * MM_PER_UNIT, c.y * MM_PER_UNIT]; }
+function setCentreMm(o, x, y) {
+  const p = panels[panelOf(o)]; if (!p) return;
+  const [cx, cy] = applyM(invM(panelToMm(p)), x, y);
+  const was = o.getCenterPoint();
+  moveBy(o, cx - was.x, cy - was.y);
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+$("#tX").onchange = e => { const o = canvas.getActiveObject(); if (o && e.target.value !== "") setCentreMm(o, +e.target.value, centreMm(o)[1]); };
+$("#tY").onchange = e => { const o = canvas.getActiveObject(); if (o && e.target.value !== "") setCentreMm(o, centreMm(o)[0], +e.target.value); };
 $("#tR").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; o.rotate(+e.target.value || 0); canvas.requestRenderAll(); pushHistory(); };
 
 function syncProps() {
+  renderGradPanel();
   const o = canvas.getActiveObject();
   const fs = document.getElementById("fontSel");
   const textish = o && isTextish(o);
@@ -979,28 +1047,257 @@ function syncProps() {
       if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
     }
   }
-  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; return; }
+  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
-  $("#fillChip").style.background = first.fill || "transparent";
+  $("#fillChip").style.background = isGrad(first.fill) ? gradCss(first.fill) : (first.fill || "transparent");
   $("#strokeChip").style.background = first.stroke || "transparent";
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
-  $("#tW").value = Math.round(o.getScaledWidth()); $("#tH").value = Math.round(o.getScaledHeight()); $("#tR").value = Math.round(o.angle || 0);
+  $("#tW").value = Math.round(o.getScaledWidth() * MM_PER_UNIT); $("#tH").value = Math.round(o.getScaledHeight() * MM_PER_UNIT); $("#tR").value = Math.round(o.angle || 0);
+  try { const [x, y] = centreMm(o); $("#tX").value = Math.round(x); $("#tY").value = Math.round(y); } catch (e) { $("#tX").value = ""; $("#tY").value = ""; }
 }
+
+/* ---------- gradient, as Illustrator's Gradient panel ---------- */
+let gradStop = 0; // the stop the swatches colour
+const isGrad = f => !!f && typeof f === "object" && Array.isArray(f.colorStops);
+/** the one shape a gradient can go on (not a group, a picture or a curved name) */
+function gradTarget() {
+  const o = canvas.getActiveObject();
+  return o && !o._objects && o.type !== "image" && !isArc(o) ? o : null;
+}
+const sortedStops = g => g.colorStops.map(s => ({ offset: s.offset, color: colorHex(s.color) || "#000000" })).sort((a, b) => a.offset - b.offset);
+const gradCss = g => `linear-gradient(90deg,${sortedStops(g).map(s => `${s.color} ${Math.round(s.offset * 100)}%`).join(",")})`;
+function gradAngle(g) { const c = g.coords; return Math.round(Math.atan2(c.y2 - c.y1, c.x2 - c.x1) * 180 / Math.PI); }
+/**
+ * A gradient across the object (Illustrator's default: through the middle, at
+ * an angle; a radial one round from the middle). In the object's own units, not
+ * as fractions of its box: a text's box is wider than its letters, and the
+ * print draws the letters' outlines, so a fraction would land elsewhere.
+ */
+function makeGrad(o, type, stops, angle) {
+  const w = o.width || 1, h = o.height || 1;
+  const a = (angle || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const half = (Math.abs(w * ca) + Math.abs(h * sa)) / 2; // reaches the box's corners along the angle
+  return new fabric.Gradient({
+    type, gradientUnits: "pixels",
+    coords: type === "linear"
+      ? { x1: w / 2 - ca * half, y1: h / 2 - sa * half, x2: w / 2 + ca * half, y2: h / 2 + sa * half }
+      : { x1: w / 2, y1: h / 2, r1: 0, x2: w / 2, y2: h / 2, r2: Math.max(w, h) / 2 },
+    colorStops: stops.slice().sort((p, q) => p.offset - q.offset).map(t => ({ offset: Math.min(1, Math.max(0, t.offset)), color: t.color })),
+  });
+}
+function setGrad(o, g, record = true) { o.set("fill", g); o.dirty = true; canvas.requestRenderAll(); renderGradPanel(); if (record) pushHistory(); }
+/** a swatch picked while a gradient is selected colours its selected stop; false when there's no gradient */
+function gradColor(color) {
+  const o = gradTarget(), g = o && o.fill;
+  if (!isGrad(g)) return false;
+  const st = sortedStops(g); st[Math.min(gradStop, st.length - 1)].color = color;
+  setGrad(o, makeGrad(o, g.type, st, gradAngle(g)));
+  showCode(color); syncProps();
+  return true;
+}
+function renderGradPanel() {
+  const panel = document.getElementById("gradPanel"); if (!panel) return;
+  const o = gradTarget(), g = o && isGrad(o.fill) ? o.fill : null;
+  panel.style.opacity = o ? "" : ".55";
+  document.querySelectorAll("[data-gtype]").forEach(b => b.classList.toggle("on", !!o && (g ? g.type : "none") === b.dataset.gtype));
+  $("#gradEdit").style.display = g ? "" : "none";
+  if (!g) return;
+  const st = sortedStops(g); gradStop = Math.min(gradStop, st.length - 1);
+  const bar = $("#gradBar");
+  bar.style.background = gradCss(g);
+  bar.innerHTML = "";
+  st.forEach((s, i) => {
+    const m = document.createElement("div");
+    m.className = "gstop" + (i === gradStop ? " on" : ""); m.style.left = (s.offset * 100) + "%"; m.style.background = s.color;
+    m.title = `${s.color} · ${Math.round(s.offset * 100)}%`;
+    m.onpointerdown = ev => {
+      ev.stopPropagation(); ev.preventDefault();
+      gradStop = i; renderGradPanel();
+      const r = bar.getBoundingClientRect(); let moved = false;
+      const move = e2 => {
+        moved = true;
+        const now = sortedStops(o.fill), me = now[gradStop];
+        me.offset = Math.min(1, Math.max(0, (e2.clientX - r.left) / r.width));
+        const ordered = now.slice().sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+        setGrad(o, makeGrad(o, g.type, ordered, gradAngle(o.fill)), false);
+      };
+      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (moved) pushHistory(); };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    };
+    bar.appendChild(m);
+  });
+  $("#gAngle").value = gradAngle(g); $("#gAngle").disabled = g.type !== "linear";
+  $("#gPos").value = Math.round(st[gradStop].offset * 100); $("#gPosV").textContent = Math.round(st[gradStop].offset * 100) + "%";
+  $("#gDel").disabled = st.length <= 2;
+}
+document.querySelectorAll("[data-gtype]").forEach(b => b.onclick = () => {
+  const o = gradTarget(); if (!o) { toast("เลือกรูปทรงหรือข้อความก่อน", "info"); return; }
+  const t = b.dataset.gtype, f = o.fill;
+  if (t === "none") { if (isGrad(f)) { o.set("fill", sortedStops(f)[0].color); canvas.requestRenderAll(); pushHistory(); syncProps(); } return; }
+  // Illustrator's default for a flat colour: the colour fading to black
+  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: colorHex(f) || "#ffffff" }, { offset: 1, color: "#231f20" }];
+  gradStop = 0;
+  setGrad(o, makeGrad(o, t, stops, isGrad(f) && f.type === "linear" ? gradAngle(f) : 0));
+  syncProps();
+});
+$("#gradBar").onpointerdown = ev => {
+  const o = gradTarget(); if (!o || !isGrad(o.fill) || ev.target !== ev.currentTarget) return;
+  const r = ev.currentTarget.getBoundingClientRect(), at = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+  const st = sortedStops(o.fill);
+  // the colour already there, as Illustrator adds a stop
+  const i = Math.max(1, st.findIndex(s => s.offset >= at)), a = st[Math.max(0, i - 1)], b = st[Math.min(st.length - 1, i)];
+  const k = b.offset > a.offset ? (at - a.offset) / (b.offset - a.offset) : 0;
+  const ca = new fabric.Color(a.color).getSource(), cb = new fabric.Color(b.color).getSource();
+  const color = "#" + [0, 1, 2].map(j => Math.round(ca[j] + (cb[j] - ca[j]) * k).toString(16).padStart(2, "0")).join("");
+  const me = { offset: at, color };
+  const ordered = st.concat(me).sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+  setGrad(o, makeGrad(o, o.fill.type, ordered, gradAngle(o.fill)));
+};
+$("#gAngle").onchange = e => { const o = gradTarget(); if (o && isGrad(o.fill) && o.fill.type === "linear") setGrad(o, makeGrad(o, "linear", sortedStops(o.fill), +e.target.value || 0)); };
+$("#gPos").oninput = e => {
+  const o = gradTarget(); if (!o || !isGrad(o.fill)) return;
+  const st = sortedStops(o.fill), me = st[gradStop]; me.offset = (+e.target.value) / 100;
+  const ordered = st.sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+  setGrad(o, makeGrad(o, o.fill.type, ordered, gradAngle(o.fill)), false);
+};
+$("#gPos").onchange = () => pushHistory();
+$("#gRev").onclick = () => { const o = gradTarget(); if (o && isGrad(o.fill)) setGrad(o, makeGrad(o, o.fill.type, sortedStops(o.fill).map(s => ({ offset: 1 - s.offset, color: s.color })), gradAngle(o.fill))); };
+$("#gDel").onclick = () => {
+  const o = gradTarget(); if (!o || !isGrad(o.fill)) return;
+  const st = sortedStops(o.fill); if (st.length <= 2) return;
+  st.splice(gradStop, 1); gradStop = Math.max(0, gradStop - 1);
+  setGrad(o, makeGrad(o, o.fill.type, st, gradAngle(o.fill)));
+};
+
+/* ---------- Pathfinder (as Illustrator's): shapes combined into one outline, by paper.js ---------- */
+let paperReady = null;
+function loadPaper() {
+  return paperReady || (paperReady = new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.18/paper-core.min.js";
+    s.onload = () => { paper.setup(new paper.Size(1, 1)); ok(window.paper); };
+    s.onerror = () => { paperReady = null; bad(new Error("paper.js")); };
+    document.head.appendChild(s);
+  }));
+}
+/** an object's filled area as one paper.js outline in canvas units (text outlined first); null when it has none */
+async function areaOf(o) {
+  const keep = o.clipPath; o.clipPath = null;
+  let svg; try { svg = o.toSVG(); } finally { o.clipPath = keep; }
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">${svg}</svg>`);
+  const root = paper.project.importSVG(r.svg, { insert: false, expandShapes: true });
+  let area = null;
+  const parts = root.getItems({ match: x => (x instanceof paper.Path || x instanceof paper.CompoundPath) && !(x.parent instanceof paper.CompoundPath) });
+  for (const c of parts) {
+    if (c.clipMask || !c.fillColor || c.fillColor.alpha === 0) continue;
+    const p = c.clone({ insert: false });
+    p.applyMatrix = true; // its own transform into its points
+    if (c.parent) p.transform(c.parent.globalMatrix);
+    area = area ? area.unite(p, { insert: false }) : p;
+  }
+  return area;
+}
+/** the paint a result takes (Illustrator: the top object's, or the bottom one's for Minus Front) */
+function paintOf(o) {
+  const src = o._objects ? (o._objects.find(x => x.fill && x.fill !== "rgba(0,0,0,0)") || o._objects[0]) : o;
+  return { fill: src.fill, stroke: src.stroke, strokeWidth: src.strokeWidth || 0, opacity: o.opacity ?? 1, paintFirst: src.paintFirst };
+}
+async function pathfinder(op) {
+  const objs = canvas.getActiveObjects().slice();
+  if (objs.length < 2) { toast("เลือกอย่างน้อย 2 ชิ้น (Shift+คลิก) ก่อนใช้ Pathfinder", "info"); return; }
+  if (objs.some(o => o.type === "image")) { toast("รูปภาพใช้ Pathfinder ไม่ได้ — ใช้กับรูปทรง ข้อความ หรือโลโก้ SVG", "warn"); return; }
+  if (objs.some(o => o.rosterTag)) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ รวมกับชิ้นอื่นไม่ได้", "warn"); return; }
+  try { await loadPaper(); } catch (e) { toast("โหลดเครื่องมือ Pathfinder ไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  canvas.discardActiveObject(); // each object back in canvas units
+  const all = canvas.getObjects();
+  const order = objs.sort((a, b) => all.indexOf(a) - all.indexOf(b)); // bottom first
+  const areas = [];
+  for (const o of order) { const a = await areaOf(o); if (a) areas.push(a); }
+  if (areas.length < 2) { toast("ต้องมีรูปทรงที่มีสีพื้นอย่างน้อย 2 ชิ้น", "warn"); return; }
+  let res;
+  if (op === "unite") res = areas.reduce((a, b) => a.unite(b, { insert: false }));
+  else if (op === "minus") res = areas.slice(1).reduce((a, b) => a.subtract(b, { insert: false }), areas[0]);
+  else if (op === "intersect") res = areas.reduce((a, b) => a.intersect(b, { insert: false }));
+  else res = areas.reduce((a, b) => a.exclude(b, { insert: false }));
+  const d = res && res.pathData;
+  if (!d || !(Math.abs(res.area) > 0.01)) { toast(op === "intersect" ? "รูปทรงไม่ได้ซ้อนกัน — ไม่มีส่วนที่เหลือ" : "ไม่มีรูปทรงเหลือ", "warn"); return; }
+  const from = op === "minus" ? order[0] : order[order.length - 1];
+  const paint = paintOf(from);
+  const shape = new fabric.Path(d, { fillRule: "evenodd", strokeUniform: false, ...paint, fill: isGrad(paint.fill) ? sortedStops(paint.fill)[0].color : paint.fill });
+  if (isGrad(paint.fill)) shape.set("fill", makeGrad(shape, paint.fill.type, sortedStops(paint.fill), gradAngle(paint.fill)));
+  const at = all.indexOf(from);
+  order.forEach(o => canvas.remove(o));
+  canvas.insertAt(shape, Math.min(at - order.filter(o => all.indexOf(o) < at).length, canvas.getObjects().length));
+  if (clipOn) applyClip(shape);
+  canvas.setActiveObject(shape); canvas.requestRenderAll();
+  refreshLayers(); syncProps(); pushHistory();
+  toast({ unite: "รวมรูปทรงแล้ว", minus: "เจาะรูปทรงแล้ว", intersect: "เหลือส่วนที่ซ้อนกันแล้ว", exclude: "ตัดส่วนที่ซ้อนกันแล้ว" }[op], "ok");
+}
+document.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => pathfinder(b.dataset.pf));
 
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
-document.querySelectorAll("[data-align]").forEach(b => b.onclick = () => {
+function moveBy(o, dx, dy) {
+  o.set({ left: o.left + dx, top: o.top + dy }); o.setCoords();
+  if (clipOn) (o.type === "activeSelection" ? o._objects : [o]).forEach(applyClip);
+}
+/** the selection taken apart (each object in canvas units), and put back after */
+function eachSelected(fn) {
+  const sel = canvas.getActiveObject(); if (!sel) return;
+  const multi = sel.type === "activeSelection", objs = multi ? sel.getObjects().slice() : [sel];
+  if (multi) canvas.discardActiveObject();
+  fn(objs, multi);
+  if (multi) canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+document.querySelectorAll("[data-align]").forEach(b => b.onclick = () => eachSelected((objs, multi) => {
+  const a = b.dataset.align, boxes = objs.map(o => o.getBoundingRect(true, true));
+  let L, T, R, B;
+  if (multi) {
+    L = Math.min(...boxes.map(q => q.left)); T = Math.min(...boxes.map(q => q.top));
+    R = Math.max(...boxes.map(q => q.left + q.width)); B = Math.max(...boxes.map(q => q.top + q.height));
+  } else {
+    const p = panels[panelOf(objs[0])] || { x: 0, y: 0, w: ART.w, h: ART.h };
+    L = p.x; T = p.y; R = p.x + p.w; B = p.y + p.h;
+  }
+  objs.forEach((o, i) => {
+    const q = boxes[i];
+    const dx = a === "left" ? L - q.left : a === "right" ? R - (q.left + q.width) : a === "cx" ? (L + R) / 2 - (q.left + q.width / 2) : 0;
+    const dy = a === "top" ? T - q.top : a === "bottom" ? B - (q.top + q.height) : a === "cy" ? (T + B) / 2 - (q.top + q.height / 2) : 0;
+    moveBy(o, dx, dy);
+  });
+}));
+document.querySelectorAll("[data-flip]").forEach(b => b.onclick = () => {
   const o = canvas.getActiveObject(); if (!o) return;
-  const w = o.getScaledWidth(), h = o.getScaledHeight();
-  const a = b.dataset.align;
-  if (a === "left") o.set({ left: 0 + (o.originX === "center" ? w / 2 : 0) });
-  if (a === "right") o.set({ left: ART.w - (o.originX === "center" ? w / 2 : w) });
-  if (a === "cx") o.set({ left: ART.w / 2 - (o.originX === "center" ? 0 : w / 2) });
-  if (a === "top") o.set({ top: 0 + (o.originY === "center" ? h / 2 : 0) });
-  if (a === "bottom") o.set({ top: ART.h - (o.originY === "center" ? h / 2 : h) });
-  if (a === "cy") o.set({ top: ART.h / 2 - (o.originY === "center" ? 0 : h / 2) });
-  o.setCoords(); canvas.requestRenderAll(); pushHistory();
+  const k = b.dataset.flip === "x" ? "flipX" : "flipY";
+  if (o.type !== "activeSelection") { o.set(k, !o[k]); if (clipOn) applyClip(o); canvas.requestRenderAll(); pushHistory(); return; }
+  // several: each mirrored about the selection's middle, as Illustrator reflects a selection
+  eachSelected(objs => {
+    const boxes = objs.map(x => x.getBoundingRect(true, true));
+    const mid = k === "flipX" ? (Math.min(...boxes.map(q => q.left)) + Math.max(...boxes.map(q => q.left + q.width))) / 2
+      : (Math.min(...boxes.map(q => q.top)) + Math.max(...boxes.map(q => q.top + q.height))) / 2;
+    objs.forEach(x => {
+      const c = x.getCenterPoint();
+      x.set(k, !x[k]); x.set("angle", -(x.angle || 0));
+      x.setPositionByOrigin(k === "flipX" ? new fabric.Point(2 * mid - c.x, c.y) : new fabric.Point(c.x, 2 * mid - c.y), "center", "center");
+      x.setCoords(); if (clipOn) applyClip(x);
+    });
+  });
+});
+document.querySelectorAll("[data-dist]").forEach(b => b.onclick = () => {
+  const o = canvas.getActiveObject();
+  if (!o || o.type !== "activeSelection" || o._objects.length < 3) { toast("เลือก 3 ชิ้นขึ้นไปเพื่อเว้นระยะเท่ากัน", "info"); return; }
+  eachSelected(objs => {
+    const h = b.dataset.dist === "h";
+    const items = objs.map(x => ({ x, q: x.getBoundingRect(true, true) })).sort((p, r) => h ? p.q.left - r.q.left : p.q.top - r.q.top);
+    const start = h ? items[0].q.left : items[0].q.top;
+    const end = h ? Math.max(...items.map(i => i.q.left + i.q.width)) : Math.max(...items.map(i => i.q.top + i.q.height));
+    const total = items.reduce((s, i) => s + (h ? i.q.width : i.q.height), 0);
+    const gap = (end - start - total) / (items.length - 1);
+    let at = start;
+    items.forEach(i => { const d = at - (h ? i.q.left : i.q.top); moveBy(i.x, h ? d : 0, h ? 0 : d); at += (h ? i.q.width : i.q.height) + gap; });
+  });
 });
 document.querySelectorAll("[data-arrange]").forEach(b => b.onclick = () => {
   const o = canvas.getActiveObject(); if (!o) return;
@@ -2134,17 +2431,76 @@ function panelToMm(p) {
 function colorHex(v) {
   try { const c = new fabric.Color(v); return c.getAlpha() === 0 ? null : "#" + c.toHex().toLowerCase(); } catch (e) { return null; }
 }
-/** a paint, as a flat colour: a gradient prints as its first stop */
+/** a gradient and the ones it takes its stops and settings from (href), nearest first */
+function gradChain(doc, id) {
+  const chain = [];
+  for (let n = doc.getElementById(id); n && chain.length < 8 && !chain.includes(n);) {
+    chain.push(n);
+    const h = n.getAttribute("href") || n.getAttribute("xlink:href");
+    n = h && h[0] === "#" ? doc.getElementById(h.slice(1)) : null;
+  }
+  return chain;
+}
+/** a paint, as a flat colour: a gradient's first stop (the gradient itself is gradientIn's) */
 function paintHex(v, el, warn) {
   if (!v || v === "none") return null;
   const u = /url\(["']?#([^"')]+)/.exec(v);
   if (u) {
-    const g = el.ownerDocument.getElementById(u[1]);
-    const stop = g && g.querySelector("stop");
-    warn.add("ไล่สี (gradient) พิมพ์เป็นสีเดียว");
+    const chain = gradChain(el.ownerDocument, u[1]);
+    const holder = chain.find(n => n.querySelector("stop"));
+    const stop = holder && holder.querySelector("stop");
+    if (!stop) warn.add("ลวดลาย (pattern) พิมพ์ไม่ได้");
     return stop ? colorHex(getComputedStyle(stop).stopColor) : null;
   }
   return colorHex(v);
+}
+/**
+ * A gradient fill for the print (draw.ts Grad): linear or radial, its stops,
+ * and the matrix from its own space to mm on the piece, from the gradient's
+ * units (the shape's box, or its user space) and gradientTransform. Null when
+ * the paint isn't one.
+ */
+function gradientIn(el, svg, v, toMm, warn) {
+  const u = /url\(["']?#([^"')]+)/.exec(v || ""); if (!u) return null;
+  const chain = gradChain(el.ownerDocument, u[1]), g = chain[0]; if (!g) return null;
+  const tag = g.tagName.toLowerCase(), type = tag === "lineargradient" ? "linear" : tag === "radialgradient" ? "radial" : null;
+  if (!type) return null;
+  const attr = n => { for (const x of chain) if (x.hasAttribute(n)) return x.getAttribute(n); return null; };
+  const holder = chain.find(x => x.querySelector("stop")); if (!holder) return null;
+  const stops = []; let last = 0;
+  for (const s of holder.querySelectorAll("stop")) {
+    const ov = s.getAttribute("offset") || "0", st = getComputedStyle(s), c = colorHex(st.stopColor);
+    const o = Math.min(1, Math.max(last, /%$/.test(ov) ? parseFloat(ov) / 100 : parseFloat(ov) || 0));
+    if (!c) continue;
+    if (parseFloat(st.stopOpacity) < 0.999) warn.add("ไล่สีที่จางเป็นโปร่งใสพิมพ์เป็นสีทึบ");
+    stops.push({ o: r4(o), c }); last = o;
+  }
+  if (!stops.length) return null;
+  if ((attr("spreadMethod") || "pad") !== "pad") warn.add("ไล่สีแบบวนซ้ำ (repeat/reflect) พิมพ์แบบต่อสีปลาย");
+  let bb; try { bb = el.getBBox(); } catch (e) { return null; }
+  if (!(bb.width > 0 && bb.height > 0)) return null;
+  const onBox = (attr("gradientUnits") || "objectBoundingBox") === "objectBoundingBox";
+  // a length: a fraction of the box (objectBoundingBox, or a % in user space), else user units
+  const L = (n, d, axis) => {
+    const s = attr(n); const pct = s == null ? d : /%$/.test(s) ? parseFloat(s) / 100 : null;
+    if (onBox) return pct != null ? pct : parseFloat(s);
+    if (pct == null) return parseFloat(s);
+    return axis === "x" ? bb.x + pct * bb.width : axis === "y" ? bb.y + pct * bb.height : pct * Math.hypot(bb.width, bb.height) / Math.SQRT2;
+  };
+  let coords;
+  if (type === "linear") coords = [L("x1", 0, "x"), L("y1", 0, "y"), L("x2", 1, "x"), L("y2", 0, "y")];
+  else {
+    const cx = L("cx", 0.5, "x"), cy = L("cy", 0.5, "y");
+    coords = [cx, cy, L("r", 0.5, "r"), attr("fx") != null ? L("fx", 0.5, "x") : cx, attr("fy") != null ? L("fy", 0.5, "y") : cy];
+  }
+  if (coords.some(n => !isFinite(n))) return null;
+  const ctm = el.getCTM(); if (!ctm) return null;
+  let m = mulM(toMm, [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f]);
+  if (onBox) m = mulM(m, [bb.width, 0, 0, bb.height, bb.x, bb.y]);
+  const tEl = chain.find(x => x.hasAttribute("gradientTransform"));
+  const t = tEl && tEl.gradientTransform && tEl.gradientTransform.baseVal.consolidate();
+  if (t) m = mulM(m, [t.matrix.a, t.matrix.b, t.matrix.c, t.matrix.d, t.matrix.e, t.matrix.f]);
+  return { type, coords: coords.map(r4), stops, m: m.map(r4) };
 }
 function ellipseD(cx, cy, rx, ry) {
   const k = 0.5522847498, ox = rx * k, oy = ry * k;
@@ -2246,7 +2602,6 @@ async function printObj(o, ctx, onPanel) {
     let op = 1;
     for (let n = el; n && n !== svg; n = n.parentElement) { const v = parseFloat(getComputedStyle(n).opacity); op *= isNaN(v) ? 1 : v; }
     if (op <= 0) continue;
-    if (op < 0.999) ctx.warn.add("ความโปร่งใสพิมพ์เป็นสีทึบ");
     const ctm = el.getCTM(); if (!ctm) continue;
     const m = mulM(toMm, [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f]);
     if (el.tagName.toLowerCase() === "image") {
@@ -2255,7 +2610,7 @@ async function printObj(o, ctx, onPanel) {
       try {
         const idx = await printImage(href, ctx.images, ctx.seen);
         const crop = clipInMm(el, svg, toMm);
-        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4), ...(crop ? { clip: crop } : {}) });
+        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4), ...(crop ? { clip: crop } : {}), ...(op < 0.999 ? { op: r4(op) } : {}) });
       } catch (e) { ctx.fail.add("รูปที่โหลดไม่ได้"); }
       continue;
     }
@@ -2264,7 +2619,12 @@ async function printObj(o, ctx, onPanel) {
     const stroke = parseFloat(cs.strokeOpacity) === 0 ? null : paintHex(cs.stroke, el, ctx.warn);
     const sw = nf(cs.strokeWidth);
     const it = { d, m: m.map(r4) };
-    if (fill && !/^(line|polyline)$/i.test(el.tagName)) it.fill = fill;
+    if (fill && !/^(line|polyline)$/i.test(el.tagName)) {
+      it.fill = fill;
+      const g = gradientIn(el, svg, cs.fill, toMm, ctx.warn);
+      if (g) it.grad = g;
+    }
+    if (stroke && /url\(/.test(cs.stroke)) ctx.warn.add("เส้นขอบไล่สีพิมพ์เป็นสีเดียว");
     if (stroke && sw > 0) {
       it.stroke = stroke; it.sw = r4(sw);
       const dash = String(cs.strokeDasharray || "").split(/[\s,]+/).map(parseFloat).filter(v => v >= 0);
@@ -2272,11 +2632,17 @@ async function printObj(o, ctx, onPanel) {
     }
     if (!it.fill && !it.stroke) continue;
     if (cs.fillRule === "evenodd") it.eo = true;
+    // see-through: the object's and its groups', times the paint's own
+    const fo = parseFloat(cs.fillOpacity), so = parseFloat(cs.strokeOpacity);
+    const seeFill = op * (isNaN(fo) ? 1 : fo), seeStroke = op * (isNaN(so) ? 1 : so);
+    const see = it.fill ? seeFill : seeStroke;
+    if (see < 0.999) it.op = r4(see);
     const clip = clipInMm(el, svg, toMm);
     if (clip) it.clip = clip;
     // a keyline drawn under the fill (Fabric's paintFirst "stroke"): two shapes, the stroke first
     if (it.fill && it.stroke && /^stroke/.test(String(cs.paintOrder || ""))) {
-      const { fill: f, ...under } = it;
+      const { fill: f, grad: g0, op: o0, ...under } = it;
+      if (seeStroke < 0.999) under.op = r4(seeStroke);
       items.push(under);
       const { stroke: s1, sw: s2, dash: s3, ...over } = it;
       items.push(over);

@@ -95,7 +95,10 @@
   .btnrow{display:flex;gap:6px;flex-wrap:wrap}
   .mini{background:var(--tool);border:1px solid var(--line2);border-radius:6px;padding:7px;font-size:13px;flex:1;display:flex;align-items:center;justify-content:center;min-width:34px}
   .mini:hover{background:var(--toolhover)}
-  .mini.danger:hover{background:var(--danger);border-color:var(--danger)}
+  .mini.on{border-color:var(--accent);color:var(--accent2)}
+.gstop{position:absolute;top:24px;width:12px;height:14px;margin-left:-6px;border:2px solid var(--line2);border-radius:3px 3px 6px 6px;cursor:pointer}
+.gstop.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(242,101,34,.35)}
+.mini.danger:hover{background:var(--danger);border-color:var(--danger)}
 
   /* swatches */
   .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;max-height:150px;overflow-y:auto;padding-right:2px}

@@ -15,6 +15,10 @@ export type Shape =
     artClip?: Seg[];
     /** a dashed stroke: dash and gap lengths, mm */
     dash?: number[];
+    /** a gradient fill, in place of `fill` (which stays its first colour, for anything that draws one colour) */
+    grad?: Grad;
+    /** see-through: 0–1 (1, or none, is solid) */
+    opacity?: number;
   }
   | {
     kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string;
@@ -22,7 +26,23 @@ export type Shape =
     m?: Affine;
     clip?: Seg[];
     artClip?: Seg[];
+    opacity?: number;
   };
+
+/**
+ * A gradient fill as Illustrator makes one: linear between two points, or
+ * radial about a centre (with its focus), with colour stops 0–1 along it;
+ * past the ends it keeps the end colours. `coords` are in the gradient's own
+ * space, which `m` takes onto the page (mm): a gradient squashed or turned
+ * with its shape stays with it.
+ */
+export interface Grad {
+  type: "linear" | "radial";
+  /** linear: x1 y1 x2 y2; radial: cx cy r fx fy */
+  coords: number[];
+  stops: { o: number; c: string }[];
+  m: Affine;
+}
 
 /** an SVG matrix: x' = a·x + c·y + e, y' = b·x + d·y + f */
 export type Affine = [number, number, number, number, number, number];
@@ -251,5 +271,6 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
 export function moveShapes(shapes: Shape[], dx: number, dy: number, k = 1): Shape[] {
   return shapes.map(s => s.kind === "image"
     ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy) }
-    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined, dash: s.dash?.map(v => v * k) });
+    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined, dash: s.dash?.map(v => v * k),
+      ...(s.grad ? { grad: { ...s.grad, m: [s.grad.m[0] * k, s.grad.m[1] * k, s.grad.m[2] * k, s.grad.m[3] * k, s.grad.m[4] * k + dx, s.grad.m[5] * k + dy] as Affine } } : {}) });
 }
