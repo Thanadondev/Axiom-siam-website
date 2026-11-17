@@ -92,6 +92,13 @@ describe("copying a paid order's zip into its job folder on the NAS", () => {
     expect(readdirSync(dir)).toHaveLength(1);
   });
 
+  it("a job the website built names its folder itself (an advanced design: R-bib and the team from its print data)", async () => {
+    order.items = [{ size: "M", qty: 5, designSnapshot: { app: "axiom-designer", printId: "p" } }];
+    const { store } = await upload("AX-261110-6U5T R-bib (M) TEST HAMAMIDAIRA.zip");
+    const r = await new NasExportService(prisma, store).exportOrder(order.id);
+    expect(r).toMatchObject({ ok: true, folder: "AX-261110-6U5T R-bib (M) TEST HAMAMIDAIRA" });
+  });
+
   it("not before it's paid, and not when the NAS can't be reached — then the next sweep does it", async () => {
     const { store, id } = await upload("job.zip");
     const nasSvc = new NasExportService(prisma, store);

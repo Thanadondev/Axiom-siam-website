@@ -115,7 +115,10 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     if (!o.files.length) return { ok: false, error: "ออเดอร์นี้ไม่มีไฟล์งาน" };
 
     const snap = o.items[0]?.designSnapshot as { product?: string; team?: string } | null;
-    const folder = jobFolderName({
+    // a job the website built ("AX-… R-bib (M) team") names its own folder: an advanced design keeps
+    // its product and team in its print data, not in the order, which only knew the customer's company
+    const built = [...o.files].reverse().find(f => f.name.startsWith(`${o.orderNo} `) && /\.zip$/i.test(f.name));
+    const folder = built ? safeName(built.name.replace(/\.zip$/i, "")) : jobFolderName({
       orderNo: o.orderNo,
       // a kit from the kit studio cut on the bib template is named by its code ("BK-03")
       product: snap?.product ?? (kitOnBib(snap) ? KITS_ON_BIB[snap.kit.toLowerCase()].code : null),
