@@ -1,5 +1,5 @@
 import {
-  PDFDocument, PDFName, PDFOperator, PDFRef, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
+  PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle,
 } from "pdf-lib";
@@ -71,15 +71,21 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
         name = page.node.newXObject("Image", cmykImage(doc, s.png, s.tint));
         byTint.set(s.tint ?? "", name);
       }
+      ops.push(pushGraphicsState());
+      if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
       // the image space is a unit square, y up: flip it back
-      ops.push(pushGraphicsState(), concatTransformationMatrix(s.w, 0, 0, -s.h, s.x, s.y + s.h), drawObject(name), popGraphicsState());
+      ops.push(...(s.m
+        ? [concatTransformationMatrix(...s.m), concatTransformationMatrix(1, 0, 0, -1, 0, 1)]
+        : [concatTransformationMatrix(s.w, 0, 0, -s.h, s.x, s.y + s.h)]), drawObject(name), popGraphicsState());
       continue;
     }
     ops.push(pushGraphicsState());
     if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
     if (s.fill) ops.push(setFillingCmykColor(...cmyk(s.fill)));
     if (s.stroke) ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
-    ops.push(...pathOps(s.segs), s.fill && s.stroke ? fillAndStroke() : s.fill ? fill() : stroke());
+    // an even-odd fill (a ring drawn as two outlines in the same direction) keeps its hole
+    ops.push(...pathOps(s.segs), s.fill && s.stroke ? (s.evenOdd ? PDFOperator.of(PDFOperatorNames.FillEvenOddAndStroke) : fillAndStroke())
+      : s.fill ? (s.evenOdd ? PDFOperator.of(PDFOperatorNames.FillEvenOdd) : fill()) : stroke());
     ops.push(popGraphicsState());
   }
   ops.push(popGraphicsState());

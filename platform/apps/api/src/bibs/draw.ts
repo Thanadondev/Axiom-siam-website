@@ -9,8 +9,16 @@ import { textShape, type FontRef, type TextShape } from "./text";
  * so what the customer approves is what goes to the printer.
  */
 export type Shape =
-  | { kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[] }
-  | { kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string };
+  | { kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[]; evenOdd?: boolean }
+  | {
+    kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string;
+    /** in place of x/y/w/h: the matrix [a b c d e f] that takes the image's unit square (y down) onto the page — a turned picture */
+    m?: Affine;
+    clip?: Seg[];
+  };
+
+/** an SVG matrix: x' = a·x + c·y + e, y' = b·x + d·y + f */
+export type Affine = [number, number, number, number, number, number];
 
 export interface Art {
   font: FontRef;
@@ -235,6 +243,6 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
 /** shapes moved by (dx, dy) */
 export function moveShapes(shapes: Shape[], dx: number, dy: number, k = 1): Shape[] {
   return shapes.map(s => s.kind === "image"
-    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k }
+    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy) }
     : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined });
 }

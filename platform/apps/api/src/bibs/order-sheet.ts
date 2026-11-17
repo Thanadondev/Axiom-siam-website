@@ -29,32 +29,37 @@ export interface SheetMeta {
   notes?: string[];
 }
 
-function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; body: string } {
+export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; body: string } {
   let defs = "", body = "";
+  const clipOf = (segs?: Seg[]) => {
+    if (!segs) return "";
+    const id = `c${ids.n++}`;
+    defs += `<clipPath id="${id}"><path d="${pathData(segs)}"/></clipPath>`;
+    return ` clip-path="url(#${id})"`;
+  };
   for (const s of shapes) {
     if (s.kind === "image") {
-      body += `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(s.tint ? tintPng(s.png, s.tint) : s.png).toString("base64")}"/>`;
+      const href = `data:image/png;base64,${Buffer.from(s.tint ? tintPng(s.png, s.tint) : s.png).toString("base64")}`;
+      const img = s.m
+        ? `<image x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${s.m.join(" ")})" href="${href}"/>`
+        : `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="${href}"/>`;
+      body += s.clip ? `<g${clipOf(s.clip)}>${img}</g>` : img;
       continue;
     }
-    let clip = "";
-    if (s.clip) {
-      const id = `c${ids.n++}`;
-      defs += `<clipPath id="${id}"><path d="${pathData(s.clip)}"/></clipPath>`;
-      clip = ` clip-path="url(#${id})"`;
-    }
-    const paint = `fill="${s.fill ?? "none"}"` + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
+    const clip = clipOf(s.clip);
+    const paint = `fill="${s.fill ?? "none"}"` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
     body += `<path d="${pathData(s.segs)}" ${paint}${clip}/>`;
   }
   return { defs, body };
 }
 
-const label = (text: string, h: number, at: Parameters<typeof textShape>[3], fill: string, out: Shape[]) => {
+export const label = (text: string, h: number, at: Parameters<typeof textShape>[3], fill: string, out: Shape[]) => {
   const t = textShape(text, "label", { h }, at, 1);
   if (t) out.push({ kind: "path", segs: t.segs, fill });
   return t?.box;
 };
 const line = (x0: number, y0: number, x1: number, y1: number): Seg[] => [{ op: "M", x: x0, y: y0 }, { op: "L", x: x1, y: y1 }];
-const box = (x: number, y: number, w: number, h: number): Seg[] => [
+export const box = (x: number, y: number, w: number, h: number): Seg[] => [
   { op: "M", x, y }, { op: "L", x: x + w, y }, { op: "L", x: x + w, y: y + h }, { op: "L", x, y: y + h }, { op: "Z" },
 ];
 
