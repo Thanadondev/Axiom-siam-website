@@ -202,8 +202,25 @@ $("#right").innerHTML = `
   </div>
 `;
 
+/* Fabric splits text into characters with no regard for marks: a Thai upper vowel and tone
+   mark became letters of their own, so letter spacing pushed them off their consonant (ที่นี่
+   showed and printed without its tone marks) and the cursor stopped inside a syllable.
+   A letter and its marks are one character here. */
+function keepMarksOnLetters() {
+  const split = fabric.util.string.graphemeSplit;
+  fabric.util.string.graphemeSplit = function (text) {
+    const out = [];
+    for (const g of split.call(this, text)) {
+      if (out.length && /^\p{M}+$/u.test(g) && out[out.length - 1] !== "\n") out[out.length - 1] += g;
+      else out.push(g);
+    }
+    return out;
+  };
+}
+
 /* ---------- canvas init ---------- */
 function initCanvas() {
+  keepMarksOnLetters();
   // selection handles in the Axiom accent, readable on the dark stage
   fabric.Object.prototype.set({
     borderColor: "#f26522", cornerColor: "#f26522", cornerStrokeColor: "#0d0e10",
@@ -1323,6 +1340,28 @@ const OUTLINE_TWINS = {
   "times new roman": "Tinos", "times": "Tinos", "liberation serif": "Tinos",
   "courier new": "Cousine", "courier": "Cousine", "liberation mono": "Cousine",
 };
+/* Glyphs are placed by fontkit, which applies the font's own layout rules (GSUB / GPOS):
+   a Thai tone mark over an upper vowel is raised (ที่, พี่) and one over ป / ฝ / ฟ moves
+   clear of the tall stroke (ปู่). opentype.js drew every glyph at its default spot, so those
+   marks landed inside the vowel or the stroke and vanished from the print. Loaded only when
+   a print file is made (fontkit.min.js: npm run build:fontkit). */
+let fontkitLoading = null;
+function loadFontkit() {
+  if (window.fontkit) return Promise.resolve(window.fontkit);
+  return fontkitLoading || (fontkitLoading = new Promise(res => {
+    const s = document.createElement("script");
+    s.src = "fontkit.min.js";
+    s.onload = () => res(window.fontkit || null);
+    s.onerror = () => { fontkitLoading = null; res(null); };
+    document.head.appendChild(s);
+  }));
+}
+/** the opentype.js font, with its fontkit twin from the same bytes for layout (none: drawn glyph by glyph) */
+async function withShaper(font, buf) {
+  const fk = await loadFontkit();
+  try { if (fk) font._fk = fk.create(new Uint8Array(buf)); } catch (e) { /* glyph by glyph, as before */ }
+  return font;
+}
 async function loadOutlineFont(family, weight, text) {
   family = OUTLINE_TWINS[String(family).toLowerCase()] || family;
   const key = `${family}|${weight}${text ? "|" + text : ""}`;
@@ -1332,7 +1371,8 @@ async function loadOutlineFont(family, weight, text) {
   try {
     const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}${text ? "&text=" + encodeURIComponent(text) : ""}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const font = opentype.parse(await res.arrayBuffer());
+    const buf = await res.arrayBuffer();
+    const font = await withShaper(opentype.parse(buf), buf);
     // bold asked of a family with no bold: the browser draws the regular thickened (synthetic bold)
     const served = res.headers.get("X-Font-Weight");
     if (+weight >= 600 && served && +served < 600) font._fauxBold = true;
@@ -1396,17 +1436,44 @@ function textToPath(t, fonts) {
   if (!Array.isArray(fonts)) fonts = [fonts];
   const size = parseFloat(t.getAttribute("font-size") || t.style.fontSize || "40");
   const spacing = parseFloat(t.style.letterSpacing || "0") || 0;
-  const pick = ch => fonts.find(f => hasGlyph(f, ch)) || fonts[0];
-  // the text split where its font changes, so each run is shaped (kerned) by its own font
+  // a letter keeps its vowels and tone marks: the cluster is drawn by one font, laid out together
+  const pick = cl => fonts.find(f => [...cl].every(ch => hasGlyph(f, ch))) || fonts.find(f => hasGlyph(f, [...cl][0])) || fonts[0];
+  const clusters = text => {
+    const out = [];
+    for (const ch of text) { if (out.length && /\p{M}/u.test(ch)) out[out.length - 1] += ch; else out.push(ch); }
+    return out;
+  };
+  // the text split where its font changes, so each run is shaped (kerned, marks placed) by its own font
   const pieces = text => {
     const out = [];
-    for (const ch of text) {
-      const f = pick(ch), last = out[out.length - 1];
-      if (last && last.font === f && !spacing) last.text += ch; else out.push({ font: f, text: ch });
+    for (const cl of clusters(text)) {
+      const f = pick(cl), last = out[out.length - 1];
+      if (last && last.font === f) last.text += cl; else out.push({ font: f, text: cl });
     }
     return out;
   };
-  const width = text => pieces(text).reduce((w, pc) => w + pc.font.getAdvanceWidth(pc.text, size), 0) + spacing * Math.max(0, [...text].length - 1);
+  /** one piece drawn from x on baseline y: its path data and how far it moves on (letter spacing after each spacing glyph) */
+  const drawPiece = (pc, x, y) => {
+    const fk = pc.font._fk;
+    if (fk) {
+      const k = size / fk.unitsPerEm, run = fk.layout(pc.text);
+      let d = "", at = x;
+      run.glyphs.forEach((g, i) => {
+        const p = run.positions[i];
+        d += g.path.scale(k, -k).translate(at + p.xOffset * k, y - p.yOffset * k).toSVG() + " ";
+        at += p.xAdvance * k + (p.xAdvance > 0 ? spacing : 0);
+      });
+      return { d, adv: at - x };
+    }
+    if (!spacing) return { d: pc.font.getPath(pc.text, x, y, size).toPathData(3) + " ", adv: pc.font.getAdvanceWidth(pc.text, size) };
+    let d = "", at = x;
+    for (const cl of clusters(pc.text)) {
+      d += pc.font.getPath(cl, at, y, size).toPathData(3) + " ";
+      at += pc.font.getAdvanceWidth(cl, size) + spacing;
+    }
+    return { d, adv: at - x };
+  };
+  const width = text => Math.max(0, pieces(text).reduce((w, pc) => w + drawPiece(pc, 0, 0).adv, 0) - spacing);
 
   // Fabric writes one <tspan> per line (or per char), each carrying the
   // absolute x/y of its baseline. That is precisely what opentype wants.
@@ -1424,9 +1491,9 @@ function textToPath(t, fonts) {
     let x = run.x;
     if (anchor !== "start") { const w = width(run.text); x -= anchor === "middle" ? w / 2 : w; }
     for (const pc of pieces(run.text)) {
-      const pd = pc.font.getPath(pc.text, x, run.y, size).toPathData(3) + " ";
+      const { d: pd, adv } = drawPiece(pc, x, run.y);
       if (pc.font._fauxBold) dBold += pd; else d += pd;
-      x += pc.font.getAdvanceWidth(pc.text, size) + (spacing ? spacing : 0);
+      x += adv;
     }
   }
   if (!d.trim() && !dBold.trim()) { t.remove(); return; }
@@ -1677,6 +1744,7 @@ async function importFontFile(file) {
   } catch (e) { toast("เบราว์เซอร์ใช้ฟอนต์นี้ไม่ได้: " + (e.message || ""), "err"); return; }
 
   // 2) let the exporter outline it — this is why the factory file stays correct
+  await withShaper(font, buf);
   importedFonts.set(family, font);
   for (const w of ["400", "700"]) fontCache.set(`${family}|${w}`, font);
   if (!IMPORTED_GROUP.fonts.includes(family)) IMPORTED_GROUP.fonts.push(family);
