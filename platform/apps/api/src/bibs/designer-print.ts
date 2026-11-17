@@ -9,7 +9,7 @@ import { BIB_SIZES, layoutFor, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type Bib
 import { textShape } from "./text";
 import { xlsx } from "./xlsx";
 import { inkText } from "./color";
-import type { BuiltJob } from "./job";
+import { yieldToOthers, type BuiltJob } from "./job";
 
 /**
  * A design from the advanced designer (apps/web/public/designer), made ready to
@@ -446,6 +446,7 @@ export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta
       const out = await printPdf(shapes, page.w, page.h, { title: `${name} ${SIZE_NAME[size]} ${file}` });
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
+      await yieldToOthers();
     }
     const fabricName = meta.fabricId ? `${meta.fabricId === "mesh" ? "Mesh" : meta.fabricId} full sublimation` : meta.fabric;
     const { svg } = designerSheetSvg(d, pics, size, rs[0], counts, { ...meta, fabric: fabricName, notes });

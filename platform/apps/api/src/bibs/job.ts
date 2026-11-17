@@ -10,6 +10,9 @@ import { xlsx } from "./xlsx";
 import { fitPng, PRINT_LOGO_PX } from "./raster";
 import { AXIOM_MARK_PNG } from "./axiom-mark";
 
+/** a big job takes seconds of CPU: between bibs, the API answers its other customers */
+export const yieldToOthers = () => new Promise<void>(r => setImmediate(r));
+
 /** the Axiom mark beside a team logo, as the kit studio sizes them (0.12 against 0.15) */
 const MARK_SCALE = 0.8;
 
@@ -105,6 +108,7 @@ export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: 
       const out = await bibFile(d, size, r, tag, logo, tf.font, `${name} ${SIZE_NAME[size]} ${file}`);
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
+      await yieldToOthers();
     }
     const { svg } = orderSheetSvg(d, artFor(d, rows[0], logo, tf.font), size, counts, sheetMeta);
     const jpg = orderSheetJpeg(svg);

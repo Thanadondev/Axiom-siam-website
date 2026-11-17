@@ -34,6 +34,14 @@ function makeOrderNo() {
 @Injectable()
 export class OrdersService {
   private readonly log = new Logger("Orders");
+  /** print jobs being built after an order was placed, by order id */
+  private readonly building = new Map<string, Promise<void>>();
+
+  /** waits for an order's print job, if one is still being built (tests; a shutdown could too) */
+  async built(orderId: string): Promise<void> {
+    await this.building.get(orderId);
+  }
+
   constructor(
     private prisma: PrismaService,
     private settings: SettingsService,
@@ -173,20 +181,13 @@ export class OrdersService {
       if (rows.length) await this.prisma.orderRoster.createMany({ data: rows });
     }
 
-    // a web-designed bib: build its print files now, so the team (and the NAS, once paid) gets them like an upload.
+    // a web-designed bib: its print files are built, so the team (and the NAS, once paid) gets them like an upload.
+    // So is a kit from the kit studio cut on the bib template, and an advanced design with its print data.
+    // Built after the customer has their answer (200 bibs take ~10 s); the team is told once it's done.
     // A failure doesn't lose the order: the team is told, and builds it again from the order board.
-    // So is a kit from the kit studio that is cut on the bib template (the basketball singlet).
     const kitBib = !bib && !file && kitOnBib(snapshot) && !!this.bibs;
     const designerBib = !!designerPrint && !!this.bibs;
-    let built = true;
-    if (bib || kitBib || designerBib) {
-      try { await this.bibs!.attach(order.id); } catch (e: any) {
-        built = false;
-        this.log.error(`${order.orderNo}: building the ${bib ? "bib" : "kit"} job failed: ${e?.message ?? e}`);
-      }
-    }
-
-    await this.notify.pushAdmins(
+    const tellTeam = (built: boolean) => this.notify.pushAdmins(
       file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)`
         : bib ? `ออเดอร์ใหม่ ${order.orderNo} · เอี๊ยมออกแบบบนเว็บ${built ? "" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : kitBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบบนเว็บ (${(snapshot as { kit: string }).kit})${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
@@ -195,6 +196,20 @@ export class OrdersService {
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,
     );
+    if (bib || kitBib || designerBib) {
+      const job = (async () => {
+        let built = true;
+        try { await this.bibs!.attach(order.id); } catch (e: any) {
+          built = false;
+          this.log.error(`${order.orderNo}: building the ${bib ? "bib" : designerBib ? "advanced design" : "kit"} job failed: ${e?.message ?? e}`);
+        }
+        await tellTeam(built).catch(e => this.log.warn(`${order.orderNo}: telling the team failed: ${e?.message ?? e}`));
+      })();
+      this.building.set(order.id, job);
+      void job.finally(() => this.building.delete(order.id));
+    } else {
+      await tellTeam(true);
+    }
 
     return { ...order, items: undefined, breakdown: p, message: `สร้างออเดอร์ ${order.orderNo} แล้ว` };
   }

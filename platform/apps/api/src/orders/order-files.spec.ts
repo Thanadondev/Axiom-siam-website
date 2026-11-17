@@ -206,6 +206,7 @@ describe("ordering bibs designed on the web", () => {
   it("counts the bibs from the name list, prices them as bibs, and attaches the print files it builds", async () => {
     const { svc } = await services();
     const res = await svc.create(USER, CreateOrderSchema.parse(webOrder()));
+    await svc.built(res.id);
     expect(res.breakdown).toMatchObject({ unitPrice: 245, subtotal: 245 * 3, garment: "bib_r" });
     const o = orders[0];
     expect(o.fabricSummary).toBe("R-bib (2 ด้าน) · ออกแบบบนเว็บ");
@@ -228,7 +229,8 @@ describe("ordering bibs designed on the web", () => {
     const { mkdirSync, writeFileSync } = await import("fs");
     mkdirSync(join(dir, "kit-assets", "logos"), { recursive: true });
     writeFileSync(join(dir, "kit-assets", "logos", `${SHA}.png`), PNG);
-    await svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })));
+    const made = await svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })));
+    await svc.built(made.id);
     const first = files[0].id;
     // building again replaces a build the team hasn't taken to the NAS
     const again = await bibs.attach(orders[0].id);
@@ -266,6 +268,7 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
       lines: [{ size: "M", qty: 2 }, { size: "L", qty: 1 }],
       roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "鈴木", number: "7", size: "M" }, { playerName: "SATO", number: "4", size: "L" }],
     }));
+    await svc.built(res.id);
     // priced as a normal bib: one price a piece, whatever the fabric and trim
     expect(res.breakdown).toMatchObject({ garment: "bib_n", unitPrice: 252, subtotal: 252 * 3 });
     const o = orders[0];
@@ -297,6 +300,7 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
       lines: [{ size: "M", qty: 1 }, { size: "XXL", qty: 1 }],
       roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "BIG", number: "99", size: "XXL" }],
     }));
+    await svc.built(res.id);
     expect(res.breakdown).toMatchObject({ garment: "bib_r", unitPrice: 245, subtotal: 245 * 2 });
     const { unzipSync, strFromU8 } = await import("fflate");
     const z = unzipSync(readFileSync(join(dir, "order-files", files[0].path)));
