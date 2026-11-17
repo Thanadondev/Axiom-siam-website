@@ -370,3 +370,15 @@ describe("an R-bib's two sides", () => {
     expect(designerFacts(d).sides.map(s => s.body)).toEqual(["#fff200", "#ed1c24"]);
   });
 });
+
+describe("a busy design", () => {
+  it("still makes its print file (an AI pattern: thousands of shapes, more operators than one call can take)", async () => {
+    const items = Array.from({ length: 16000 }, (_, i) => ({ d: square((i % 120) * 4, Math.floor(i / 120) * 4, 3), m: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], fill: "#ed1c24" }));
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [240, 270], w: 480, h: 540, items }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T16", date: new Date() });
+    expect(job.files.some(f => f.path.endsWith("_ol.pdf"))).toBe(true);
+  }, 60_000);
+});

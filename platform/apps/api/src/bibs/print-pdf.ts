@@ -167,6 +167,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     ops.push(popGraphicsState());
   }
   ops.push(popGraphicsState());
-  page.pushOperators(...ops);
+  // in batches: a busy design (an AI pattern, a detailed logo) has more operators than one call can take as arguments
+  for (let i = 0; i < ops.length; i += 20_000) page.pushOperators(...ops.slice(i, i + 20_000));
   return { pdf: await doc.save(), offChart: [...offChart].map(([h, c]) => `${h} → ${c}`) };
 }
