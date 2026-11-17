@@ -289,6 +289,20 @@ $("#right").innerHTML = `
         </div>
         <div id="aiMsg" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5"></div>
         <div class="patgrid" id="aiResults" style="grid-template-columns:repeat(4,1fr)"></div>
+        <div id="aiTweak" style="display:none;margin-top:8px;padding-top:7px;border-top:1px solid var(--line2)">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:5px">ปรับลายที่ใส่อยู่ (ไม่ต้องเรียก AI ใหม่)</div>
+          <div class="btnrow">
+            <button class="mini" data-aitw="smaller" title="ลายเล็กลง">− ขนาด</button>
+            <button class="mini" data-aitw="bigger" title="ลายใหญ่ขึ้น">＋ ขนาด</button>
+            <button class="mini" data-aitw="fainter" title="ลายจางลง (อ่านเบอร์/ชื่อง่ายขึ้น)">จางลง</button>
+            <button class="mini" data-aitw="stronger" title="ลายเข้มขึ้น">เข้มขึ้น</button>
+          </div>
+          <div class="btnrow" style="margin-top:5px">
+            <button class="mini" data-aitw="shuffle" title="สุ่มตำแหน่งลายใหม่ (สีและแบบเดิม)">🎲 สุ่มใหม่</button>
+            <button class="mini" data-aitw="swap" title="สลับสีพื้นกับสีลาย">⇄ สลับสี</button>
+            <button class="mini" data-aitw="turn" title="หมุนลาย 45°">↻ 45°</button>
+          </div>
+        </div>
       </div>
       <div class="btnrow">
         <button class="mini" id="patUp" title="อัปโหลดลาย (คลิปเข้าทรงเสื้อ)">⬆ อัปโหลดลาย</button>
@@ -1109,6 +1123,7 @@ function setPattern(src) {
   applyGarment();
 }
 function showBodySide() {
+  if (typeof aiShowTweak === "function") setTimeout(aiShowTweak, 0);
   const row = document.getElementById("sideRow"); if (!row) return;
   row.style.display = curStyle === 2 ? "flex" : "none";
   document.querySelectorAll("[data-bside]").forEach(b => b.classList.toggle("on", b.dataset.bside === bodySide));
@@ -1124,7 +1139,7 @@ const bodyPickEl = document.getElementById("bodyPick"); if (bodyPickEl) bodyPick
 const trimPickEl = document.getElementById("trimPick"); if (trimPickEl) trimPickEl.oninput = e => setTrimColor(e.target.value);
 const bodyWhiteEl = document.getElementById("bodyWhite"); if (bodyWhiteEl) bodyWhiteEl.onclick = () => setBodyColor("#ffffff");
 $("#patUp").onclick = () => document.getElementById("filePat").click();
-$("#patClr").onclick = () => { lastPat = null; setPattern(null); aiTargets().forEach(i => aiOnPanel(i).forEach(o => canvas.remove(o))); canvas.requestRenderAll(); refreshLayers(); toast("ล้างลายแล้ว"); };
+$("#patClr").onclick = () => { lastPat = null; setPattern(null); aiTargets().forEach(i => aiOnPanel(i).forEach(o => canvas.remove(o))); canvas.requestRenderAll(); refreshLayers(); aiShowTweak(); toast("ล้างลายแล้ว"); };
 document.getElementById("filePat").addEventListener("change", ev => {
   const f = ev.target.files[0]; if (!f) return;
   const r = new FileReader();
@@ -1794,7 +1809,7 @@ function aiTargets() {
 function lockAi(o) {
   if (!o || !o._aiPattern) return;
   o.set({ lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, selectable: false, evented: false });
-  if (canvas && canvas.getObjects().includes(o)) applyClip(o); else setTimeout(() => applyClip(o), 0);
+  if (canvas && canvas.getObjects().includes(o)) applyClip(o); else setTimeout(() => { applyClip(o); aiShowTweak(); }, 0);
 }
 const aiOnPanel = i => userObjects().filter(o => o._aiPattern && o._aiPanel === panels[i].id);
 function aiThumb(spec) {
@@ -1829,9 +1844,33 @@ async function applyAiPattern(spec) {
     canvas.insertAt(g, 0);
     g.setCoords(); applyClip(g);
   }
-  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory();
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); aiShowTweak();
   $("#aiMsg").textContent = `ใส่ลาย “${spec.name}” แล้ว${curStyle === 2 && bodySide !== "both" ? (bodySide === "A" ? " (ด้านนอก)" : " (ด้านใน)") : ""} · ปลดล็อกได้ในแผง Layers`;
 }
+/** the recipe on the side chosen (the first piece that has one) */
+function aiCurrent() {
+  for (const i of aiTargets()) { const o = aiOnPanel(i)[0]; if (o && o.aiSpec) return o.aiSpec; }
+  return null;
+}
+function aiShowTweak() { const t = document.getElementById("aiTweak"); if (t) t.style.display = aiCurrent() ? "" : "none"; }
+/** a small change to the recipe on the side chosen, drawn again: no AI call */
+function aiTweak(kind) {
+  const cur = aiCurrent(); if (!cur) return;
+  const s = JSON.parse(JSON.stringify(cur)), lim = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const layers = s.layers || [];
+  if (kind === "smaller" || kind === "bigger") layers.forEach(l => { l.scale = lim((l.scale || 1) * (kind === "bigger" ? 1.25 : 0.8), 0.3, 3); });
+  if (kind === "fainter" || kind === "stronger") layers.forEach(l => { l.opacity = lim((l.opacity ?? 1) * (kind === "stronger" ? 1.25 : 0.75), 0.1, 1); });
+  if (kind === "shuffle") layers.forEach(l => { l.seed = ((l.seed || 1) * 7 + 13) % 100000; });
+  if (kind === "turn") layers.forEach(l => { l.angle = (((l.angle || 0) + 45 + 180) % 360) - 180; });
+  if (kind === "swap" && layers.length) {
+    // the background and the main motif (the top layer) trade colours: yellow bolts on black → black bolts on yellow
+    const top = layers[layers.length - 1], bg = s.background.colors.slice(), fg = top.colors.slice();
+    s.background.colors = fg.length > 1 || s.background.type === "solid" ? fg : [fg[0], fg[0]];
+    top.colors = bg;
+  }
+  applyAiPattern(s);
+}
+document.querySelectorAll("[data-aitw]").forEach(b => b.onclick = () => aiTweak(b.dataset.aitw));
 function aiReply(m) {
   if (!aiWaiting || m.id !== aiWaiting.id) return;
   aiWaiting = null; $("#aiGo").disabled = false; $("#aiGo").textContent = "✨ ออกแบบ";
