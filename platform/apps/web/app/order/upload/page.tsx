@@ -337,6 +337,11 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                     {SIZES.map(z => <span key={z}>{z} <b>{fromList.counts[z]}</b></span>)}
                     <span>= <b>{L(`${fromList.total} ตัว`, `${fromList.total} pieces`, `${fromList.total}枚`)}</b></span>
                   </div>
+                  {fromList.fromExample && (
+                    <p className="dim" style={{ margin: 0 }}>
+                      {L("อ่านจากชีตตัวอย่าง (記入例) เพราะชีตรายชื่อว่าง — ตรวจจำนวนให้ตรงก่อนใช้", "Read from the example sheet (記入例), as the order sheet is empty — check the counts before using them", "注文シートが空のため、記入例シートから読み取りました。枚数をご確認ください")}
+                    </p>
+                  )}
                   {unknown.length > 0 && (
                     <p className="ou-warn" style={{ margin: 0 }}>
                       ⚠ {L("ในรายชื่อมีไซส์ที่เราไม่ได้ผลิต", "The list has sizes we don't make", "名簿に当社で製作していないサイズがあります")}: {unknown.map(([t, n]) => `${t} × ${n}`).join(", ")}

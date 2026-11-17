@@ -31,6 +31,8 @@ export interface SizeCount {
   unknown: Record<string, number>;
   /** "header": found a サイズ/size header; "column": no header, a column of sizes (one piece a row) */
   how: "header" | "column";
+  /** read from the worked-example sheet (記入例): the customer filled that one in and left the order sheet empty */
+  fromExample?: boolean;
 }
 
 type Grid = Map<number, Map<number, string>>;
@@ -50,10 +52,21 @@ const colIndex = (ref: string) => ref.replace(/\d+/g, "").split("").reduce((n, c
 const isSizeHead = (v: string) => v.length <= 12 && /サイズ|サイス|size/i.test(v) && !/^[・※└*＊]/.test(v) && !/[はをごにのでが]/.test(v.replace(/[（(].*$/, ""));
 const QTY_HEAD = /^(枚数|数量|個数|qty|quantity|pcs)/i;
 const EXAMPLE_SHEET = /記入例|見本|サンプル|sample|example/i;
+/**
+ * The shop's own sample, still in a worked-example sheet nobody touched: the order
+ * form most teams send ships with グランスポーツ株式会社 and 山田 太郎 filled in.
+ * Some teams type their order over it and leave the real sheet empty (4 of 77
+ * lists read in 150 real zips, 2026-11-17): that sheet is used then, never the sample.
+ */
+const SAMPLE_MARK = /グランスポーツ|山田[\s　]*太郎/;
+const holdsSample = (g: Grid) => [...g.values()].some(row => [...row.values()].some(v => SAMPLE_MARK.test(v)));
 
-/** "L", "Ｌ", "L（大人サイズ）", "l (adult)" → "L"; anything else → its short text, or null when it isn't a size at all */
+/** "L", "Ｌ", "L（大人サイズ）", "l (adult)", "（M）ジュニアサイズ" → the size; anything else → its short text, or null when it isn't a size at all */
 export function sizeToken(raw: string): { size: Size | null; token: string } | null {
-  const t = norm(raw).toUpperCase().replace(/[（(].*$/, "").trim();
+  const up = norm(raw).toUpperCase();
+  // the size in brackets first, its description after: "（M）ジュニアサイズ" (seen in the lists one shop sends)
+  const lead = /^[（(]\s*([^）)]{1,8}?)\s*[）)]/.exec(up);
+  const t = (lead ? lead[1] : up.replace(/[（(].*$/, "")).trim();
   if (!t) return null;
   if ((SIZES as readonly string[]).includes(t)) return { size: t as Size, token: t };
   if (XXL_NAMES.includes(t)) return { size: "XXL", token: t };
@@ -151,15 +164,25 @@ export async function workbookSheets(xlsx: Blob): Promise<{ name: string; grid: 
   return out;
 }
 
-/** the counts from one workbook: its first sheet (not a worked example) that has any */
+/** the counts from one workbook: its first sheet (not a worked example) that has any; else a worked example the team filled in */
 export async function countWorkbook(xlsx: Blob, fileName: string): Promise<SizeCount | null> {
-  for (const s of await workbookSheets(xlsx)) {
-    if (EXAMPLE_SHEET.test(s.name)) continue;
+  const sheets = await workbookSheets(xlsx);
+  const count = (s: (typeof sheets)[number]) => {
     const got = countSheet(s.grid);
-    if (!got) continue;
+    if (!got) return null;
     const total = SIZES.reduce((n, z) => n + got.counts[z], 0);
-    if (total + Object.values(got.unknown).reduce((a, b) => a + b, 0) === 0) continue;
+    if (total + Object.values(got.unknown).reduce((a, b) => a + b, 0) === 0) return null;
     return { file: fileName, sheet: s.name, ...got, total };
+  };
+  for (const s of sheets) {
+    if (EXAMPLE_SHEET.test(s.name)) continue;
+    const got = count(s);
+    if (got) return got;
+  }
+  for (const s of sheets) {
+    if (!EXAMPLE_SHEET.test(s.name) || holdsSample(s.grid)) continue;
+    const got = count(s);
+    if (got) return { ...got, fromExample: true };
   }
   return null;
 }
