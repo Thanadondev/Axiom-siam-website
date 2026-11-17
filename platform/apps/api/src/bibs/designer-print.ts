@@ -238,7 +238,7 @@ const RED = "#e60012", INK = "#231f20";
 /** the sheet for one size: every piece of its first bib, the trim, how many of what */
 export function designerSheetSvg(d: DesignerPrint, pics: DesignerPictures, size: BibSize, row: DesignerRow, counts: Partial<Record<BibSize, number>>, meta: SheetMeta) {
   const sides: Side[] = d.reversible ? ["A", "B"] : ["A"];
-  const W = 2400, colW = 860, gapX = 260, left = 170;
+  const W = 2400, colW = 860, gapX = 190, left = 150; // as order-sheet.ts: clear of the rib colour box
   const pA = piecesFor(size, "A");
   const s = Math.min(colW / Math.max(pA.front.w, pA.back.w), 1.6);
   const pieceH = Math.max(pA.front.h, pA.back.h) * s;
@@ -265,7 +265,7 @@ export function designerSheetSvg(d: DesignerPrint, pics: DesignerPictures, size:
   });
 
   // the trim colour, right of the pieces
-  const rx = W - 262, ry = top + 20, bw = 244;
+  const rx = W - 305, ry = top + 20, bw = 290;
   out.push({ kind: "path", segs: box(rx, ry, bw, 150), stroke: RED, width: 3, fill: "#ffffff" });
   out.push({ kind: "path", segs: box(rx, ry, bw, 36), fill: RED });
   label("RIB COLOUR", 16, { cx: rx + bw / 2, cy: ry + 18 }, "#ffffff", out);

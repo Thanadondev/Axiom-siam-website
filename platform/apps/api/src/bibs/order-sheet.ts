@@ -75,7 +75,9 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   const reversible = d.product === "bib_r";
   const sides = reversible ? (["A", "B"] as const) : (["A"] as const);
   const W = 2400;
-  const colW = 860, gapX = 260, left = 170;
+  // the back piece ends at 2060 at most, clear of the rib colour box at W - 305 (it used to run 50 px under it);
+  // 150 on the left leaves room for the front's print-size notes
+  const colW = 860, gapX = 190, left = 150;
   const pA = piecesFor(size, "A");
   const s = Math.min(colW / Math.max(pA.front.w, pA.back.w), 1.6); // px per mm
   const pieceH = Math.max(pA.front.h, pA.back.h) * s;
@@ -131,24 +133,24 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   // ---- rib colours per side, right of its row (under side A's print-size notes), in the CMYK that prints
   sides.forEach((side, row) => {
     const look = d.sides[row];
-    const rx = W - 300, ry = top + row * rowH + (row ? pieceH * 0.1 : pieceH * 0.62);
+    const rx = W - 305, ry = top + row * rowH + (row ? pieceH * 0.1 : pieceH * 0.62);
     const title = reversible ? `RIB COLOUR (${row ? "REVERSE" : "FRONT SIDE"})` : "RIB COLOUR";
     if (!look.rib) {
-      out.push({ kind: "path", segs: box(rx, ry, 270, 84), stroke: RED, width: 3, fill: "#ffffff" });
-      out.push({ kind: "path", segs: box(rx, ry, 270, 36), fill: RED });
-      label(title, 16, { cx: rx + 135, cy: ry + 18 }, "#ffffff", out);
+      out.push({ kind: "path", segs: box(rx, ry, 290, 84), stroke: RED, width: 3, fill: "#ffffff" });
+      out.push({ kind: "path", segs: box(rx, ry, 290, 36), fill: RED });
+      label(title, 16, { cx: rx + 145, cy: ry + 18 }, "#ffffff", out);
       label("No rib bands", 18, { x: rx + 18, cy: ry + 60 }, INK, out);
       return;
     }
     const rib = look.rib;
-    out.push({ kind: "path", segs: box(rx, ry, 270, 230), stroke: RED, width: 3, fill: "#ffffff" });
-    out.push({ kind: "path", segs: box(rx, ry, 270, 36), fill: RED });
-    label(title, 16, { cx: rx + 135, cy: ry + 18 }, "#ffffff", out);
+    out.push({ kind: "path", segs: box(rx, ry, 290, 230), stroke: RED, width: 3, fill: "#ffffff" });
+    out.push({ kind: "path", segs: box(rx, ry, 290, 36), fill: RED });
+    label(title, 16, { cx: rx + 145, cy: ry + 18 }, "#ffffff", out);
     (["neck", "arm", "hem"] as const).forEach((z, i) => {
       const y = ry + 56 + i * 58;
       out.push({ kind: "path", segs: box(rx + 18, y, 44, 44), fill: rib[z], stroke: "#bcbec0", width: 2 });
       label(z === "neck" ? "Neck" : z === "arm" ? "Sleeves" : "Hem", 18, { x: rx + 76, top: y + 2 }, INK, out);
-      label(rib[z] === look.body ? "Same as body" : inkText(rib[z]), 14, { x: rx + 76, top: y + 26 }, MUTE, out);
+      label(rib[z] === look.body ? "Same as body" : inkText(rib[z]), 13, { x: rx + 72, top: y + 26 }, MUTE, out);
     });
   });
 
