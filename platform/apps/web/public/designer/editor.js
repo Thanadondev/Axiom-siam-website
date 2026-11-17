@@ -204,6 +204,18 @@ $("#right").innerHTML = `
         <button class="mini" data-dist="h" title="เว้นระยะห่างเท่ากัน แนวนอน (เลือก 3 ชิ้นขึ้นไป)">↔⋯</button>
         <button class="mini" data-dist="v" title="เว้นระยะห่างเท่ากัน แนวตั้ง (เลือก 3 ชิ้นขึ้นไป)">↕⋮</button>
       </div>
+      <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line)" title="Step and Repeat: ทำซ้ำชิ้นที่เลือกเป็นแถว/ตาราง ระยะเป็น มม. (นับชิ้นเดิมเป็นช่องแรก)">
+        <div class="grid2" style="margin-bottom:6px">
+          <div class="num"><span title="คอลัมน์">↔</span><input type="number" id="repCols" value="3" min="1" max="50"></div>
+          <div class="num"><span title="แถว">↕</span><input type="number" id="repRows" value="1" min="1" max="50"></div>
+          <div class="num"><span title="ระยะ X (มม.) — จากจุดกึ่งกลางถึงจุดกึ่งกลาง">X</span><input type="number" id="repDx" value="60" step="1"></div>
+          <div class="num"><span title="ระยะ Y (มม.)">Y</span><input type="number" id="repDy" value="60" step="1"></div>
+        </div>
+        <div class="row" style="margin-bottom:0;gap:6px">
+          <div class="num" style="flex:1"><span title="หมุนเพิ่มทีละ (องศา)">∠</span><input type="number" id="repRot" value="0" step="5"></div>
+          <button class="mini" id="btnRepeat" style="flex:none">⧉ ทำซ้ำ</button>
+        </div>
+      </div>
       <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">จัดชิด: ชิ้นเดียว = เทียบกับตัวเสื้อ · หลายชิ้น = เทียบกันเอง</div>
     </div>
   </div>
@@ -1717,6 +1729,8 @@ function bindRulers() {
   drawRulers();
 }
 
+$("#btnRepeat").onclick = () => stepRepeat();
+
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
 function moveBy(o, dx, dy) {
@@ -1794,9 +1808,58 @@ $("#btnUngroup").onclick = () => { const s = canvas.getActiveObject(); if (s && 
 $("#btnDup").onclick = duplicate;
 $("#btnDel").onclick = delSelected;
 { const bc = document.getElementById("btnCopy"); if (bc) bc.onclick = doCopy; const bp = document.getElementById("btnPaste"); if (bp) bp.onclick = doPaste; }
-function duplicate() {
-  const o = canvas.getActiveObject(); if (!o) return;
-  o.clone(cl => { cl.set({ left: o.left + 22, top: o.top + 22 }); canvas.add(cl); canvas.setActiveObject(cl); pushHistory(); refreshLayers(); });
+/** the selection's objects on their own (canvas units), and their middle */
+function takeSelection() {
+  const sel = canvas.getActiveObject(); if (!sel) return null;
+  const objs = sel.type === "activeSelection" ? sel._objects.slice() : [sel];
+  canvas.discardActiveObject();
+  const bs = objs.map(o => o.getBoundingRect(true, true));
+  const L = Math.min(...bs.map(b => b.left)), T = Math.min(...bs.map(b => b.top));
+  const R = Math.max(...bs.map(b => b.left + b.width)), B = Math.max(...bs.map(b => b.top + b.height));
+  return { objs, c: { x: (L + R) / 2, y: (T + B) / 2 } };
+}
+const cloneOf = o => new Promise(ok => o.clone(ok, CLONE_PROPS));
+/** copies of the objects moved by (dx, dy) and turned by `rot` about their own middles, just above the top one */
+async function addCopies(objs, dx, dy, rot) {
+  const all = canvas.getObjects(), at = Math.max(...objs.map(o => all.indexOf(o))) + 1;
+  const out = [];
+  for (const o of objs) {
+    const c = await cloneOf(o), m = c.getCenterPoint();
+    c.set({ angle: (c.angle || 0) + rot, evented: true, selectable: true });
+    c.setPositionByOrigin(new fabric.Point(m.x + dx, m.y + dy), "center", "center");
+    out.push(c);
+  }
+  out.forEach((c, i) => { canvas.insertAt(c, at + i); c.setCoords(); if (clipOn) applyClip(c); });
+  return out;
+}
+function selectAll(objs) { canvas.setActiveObject(objs.length > 1 ? new fabric.ActiveSelection(objs, { canvas }) : objs[0]); }
+/* Ctrl+D, as Illustrator's Transform Again: a copy, and when that copy has been
+   moved and Ctrl+D comes again, the next copy goes the same step further. */
+let lastDup = null;
+async function duplicate() {
+  const s = takeSelection(); if (!s) return;
+  let dx = 22, dy = 22;
+  if (lastDup && lastDup.copies.length === s.objs.length && lastDup.copies.every(o => s.objs.includes(o))) { dx = s.c.x - lastDup.from.x; dy = s.c.y - lastDup.from.y; }
+  if (Math.hypot(dx, dy) < 0.5) { dx = 22; dy = 22; }
+  const copies = await addCopies(s.objs, dx, dy, 0);
+  lastDup = { from: s.c, copies };
+  selectAll(copies); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+/* Step and Repeat: the selection as the first cell of a grid, the others so many mm apart */
+async function stepRepeat() {
+  const cols = Math.max(1, Math.min(50, Math.round(+$("#repCols").value || 1))), rows = Math.max(1, Math.min(50, Math.round(+$("#repRows").value || 1)));
+  const dx = (+$("#repDx").value || 0) / MM_PER_UNIT, dy = (+$("#repDy").value || 0) / MM_PER_UNIT, rot = +$("#repRot").value || 0;
+  if (cols * rows < 2) { toast("ตั้งคอลัมน์หรือแถวให้มากกว่า 1", "info"); return; }
+  const s = takeSelection(); if (!s) { toast("เลือกชิ้นที่จะทำซ้ำก่อน", "info"); return; }
+  if (cols * rows * s.objs.length > 400) { selectAll(s.objs); toast("ทำซ้ำได้ไม่เกิน 400 ชิ้นต่อครั้ง", "warn"); return; }
+  const made = [...s.objs];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    if (!r && !c) continue;
+    made.push(...await addCopies(s.objs, c * dx, r * dy, (r * cols + c) * rot));
+  }
+  lastDup = null;
+  selectAll(made); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast(`ทำซ้ำเป็น ${cols}×${rows} แล้ว`, "ok");
 }
 function delSelected() { canvas.getActiveObjects().forEach(o => canvas.remove(o)); canvas.discardActiveObject(); canvas.requestRenderAll(); pushHistory(); refreshLayers(); }
 
