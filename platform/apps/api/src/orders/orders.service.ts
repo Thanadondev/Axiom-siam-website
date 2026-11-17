@@ -426,9 +426,11 @@ export class OrdersService {
         })
       : [];
     const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
+    // whose print files: the website's (a design made on the site) or the customer's own zip
+    const web = new Set(snaps.filter(s => madeByWebsite(s.designSnapshot)).map(s => s.orderId));
     return {
       items: items.map(({ payments, refunds, files, ...o }) => ({
-        ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null,
+        ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null, webMade: web.has(o.id),
         // a bib order by file: the board shows the job's picture and the zip instead of a 3D shirt
         file: files?.[0] ? orderFileView(files[0], Date.now(), true) : null,
       })),

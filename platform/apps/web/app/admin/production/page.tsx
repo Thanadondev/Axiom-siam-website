@@ -33,6 +33,8 @@ interface Card {
   user: { id: string; email: string; fullName?: string | null };
   items: { size: string; qty: number }[];
   look: Look | null;
+  /** the print files are the website's own (a design made on the site), not a zip the customer sent */
+  webMade?: boolean;
   /** where it is on the line: 0 not started, 1–9 the factory steps, 10 shipped */
   productionStep?: number;
   /** money still owed (the balance after a deposit): it can't ship until this is 0 */
@@ -215,7 +217,7 @@ export default function ProductionBoard() {
                           <b className="ax-mono">{c.orderNo}</b>
                           <span>{c.user.fullName || c.user.email}</span>
                           <span className="sizes">{qtyOf(c)} ตัว · {sizeSplit(c.items).map(([s, n]) => `${s}${n}`).join(" ")}</span>
-                          {c.file && <span className="erp" title={c.file.name}>ไฟล์ลูกค้า · {c.fabricSummary?.split(" · ")[0]}</span>}
+                          {c.file && <span className="erp" title={c.file.name}>{c.webMade ? "ไฟล์งานจากเว็บ" : "ไฟล์ลูกค้า"} · {c.fabricSummary?.split(" · ")[0]}</span>}
                           {c.status === "in_production" && at > 0 && (
                             <span className="step"><i style={{ width: `${(at / SHIP_STEP) * 100}%` }} />ขั้น {at}/{SHIP_STEP} · {STEPS[at - 1]?.th}</span>
                           )}
@@ -289,6 +291,8 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
 
   const snap = o?.items?.[0]?.designSnapshot;
   const look: Look | null = snap && snap.kind === "kit-studio" ? snap : null;
+  // a bib from the advanced designer whose print files the website made from its own drawing
+  const designerPrint = !!designerOf(snap)?.printId;
   const kit = kitOf(look) ?? (look ? KITS[0] : null);
   const cfg = kit ? restoreConfig(kit, look ? { ...look } : null) : null;
   // the customer's own logo and font travel inside the order's design snapshot
@@ -378,8 +382,9 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
               </div>
             )}
-            {(snap?.kind === "bib-design" || (snap?.kind === "kit-studio" && KITS_ON_BIB.includes(String(snap.kit).toLowerCase()))) && (
-              <BibJobLine o={o} built={zips.length > 0} token={token} onChanged={fetchOne} what={snap.kind === "bib-design" ? "เอี๊ยมออกแบบบนเว็บ" : "เสื้อบาสออกแบบบนเว็บ (ตัดบนแพทเทิร์นเอี๊ยม CB-005)"} />
+            {(snap?.kind === "bib-design" || designerPrint || (snap?.kind === "kit-studio" && KITS_ON_BIB.includes(String(snap.kit).toLowerCase()))) && (
+              <BibJobLine o={o} built={zips.length > 0} token={token} onChanged={fetchOne}
+                what={snap.kind === "bib-design" ? "เอี๊ยมออกแบบบนเว็บ" : designerPrint ? "เอี๊ยมจากโปรแกรมออกแบบขั้นสูง (ไซซ์อื่นย่อ-ขยายจากไซซ์ที่ออกแบบ)" : "เสื้อบาสออกแบบบนเว็บ (ตัดบนแพทเทิร์นเอี๊ยม CB-005)"} />
             )}
             {zips.length > 0 && <NasLine o={o} zips={zips} token={token} onChanged={fetchOne} />}
             {!["cancelled", "refunded"].includes(o.status) && (
@@ -526,7 +531,7 @@ function JobSheet({ o, kit, look, lookB, split, roster }: { o: any; kit: Kit | n
           {kit && lookB ? <KitThumb kit={kit} colors={lookB.colors} pattern={lookB.pattern} number={lookB.number} /> : null}
         </div>
         <div>
-          <p><b>เสื้อ</b> {kit ? `${kit.name} (${kit.code})${lookB ? " · R-bib 2 ด้าน" : ""}` : "แบบอัปโหลด / ดีไซเนอร์"}</p>
+          <p><b>เสื้อ</b> {kit ? `${kit.name} (${kit.code})${lookB ? " · R-bib 2 ด้าน" : ""}` : designerLabel(o.items?.[0]?.designSnapshot) ?? "แบบอัปโหลด / ดีไซเนอร์"}</p>
           <p><b>สเปก</b> {o.fabricSummary}</p>
           {look && <p><b>สี{lookB ? " ด้าน A" : ""}</b> {Object.entries(look.colors).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>}
           {look && <p><b>ลาย{lookB ? " ด้าน A" : ""}</b> {look.pattern} · <b>ฟอนต์</b> {o.items?.[0]?.designSnapshot?.assets?.font?.name ?? look.font} · <b>โลโก้</b> {o.items?.[0]?.designSnapshot?.assets?.logo?.name ?? (o.items?.[0]?.designSnapshot?.logo === "none" ? "ไม่มี" : "AXIOM")}</p>}
@@ -583,6 +588,17 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
 /** a bib designed on the web: its print files are made by the website; the team can make them again */
 /** kits from the kit studio cut on the bib template: their print files are made by the website (apps/api/src/bibs/kit.ts) */
 const KITS_ON_BIB = ["bib"];
+
+/** a design from the advanced designer (a saved order "axiom-roster", or a design "axiom-designer") */
+function designerOf(snap: any): { printId?: string; style?: number; template?: { style?: number } } | null {
+  return snap && (snap.app === "axiom-roster" || snap.app === "axiom-designer") ? snap : null;
+}
+/** what an advanced design is, for the job sheet: drawn on the bib's pattern, "แบบ 2" both sides */
+function designerLabel(snap: any): string | null {
+  const d = designerOf(snap);
+  if (!d) return null;
+  return `เอี๊ยมจากโปรแกรมออกแบบขั้นสูง · ${Number(d.style ?? d.template?.style) === 2 ? "R-bib 2 ด้าน" : "N-bib"}`;
+}
 
 function BibJobLine({ o, built, token, onChanged, what }: { o: any; built: boolean; token: string; onChanged: () => void; what: string }) {
   const [busy, setBusy] = useState(false);
