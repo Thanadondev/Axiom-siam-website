@@ -290,3 +290,29 @@ describe("as Illustrator draws it", () => {
     expect(body).toMatch(/<g opacity="0.25"><image/);
   });
 });
+
+describe("CMYK typed in", () => {
+  it("a colour the customer gave as CMYK prints exactly that CMYK and isn't reported as off the chart", async () => {
+    const d = DesignerPrintSchema.parse(spec({
+      trimColor: "#0A2E73",
+      inks: { "#E3262B": [5, 98, 95, 0], "#0a2e73": [100, 80, 0, 35] },
+      panels: [
+        { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [{ d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#E3262B" }] }] },
+        { side: "A", part: "back", objs: [] },
+      ], players: [],
+    }));
+    expect(d.inks["#e3262b"]).toEqual([5, 98, 95, 0]);
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T14", date: new Date() });
+    expect(job.offChart.join(" ")).not.toMatch(/e3262b|0a2e73/i);
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\n0\.05 0\.98 0\.95 0 k\n/);
+    expect(content).toMatch(/\n1 0\.8 0 0\.35 k\n/); // the trim too
+  });
+
+  it("refuses inks that aren't CMYK 0–100 by a #rrggbb colour", () => {
+    expect(() => DesignerPrintSchema.parse(spec({ inks: { "#e3262b": [5, 98, 95, 120] } }))).toThrow();
+    expect(() => DesignerPrintSchema.parse(spec({ inks: { red: [5, 98, 95, 0] } }))).toThrow();
+  });
+});

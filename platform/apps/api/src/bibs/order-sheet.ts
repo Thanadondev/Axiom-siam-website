@@ -172,7 +172,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   const fy = H - 230;
   // colours off the factory chart, as converted, so the team can check them
   const off = [...new Set(d.sides.flatMap(sd => [sd.body, sd.patternColor, sd.ink, sd.inkOutline, sd.rib?.neck, sd.rib?.arm, sd.rib?.hem]))]
-    .filter((h): h is string => !!h).map(ink).filter(i => !i.onChart);
+    .filter((h): h is string => !!h).map(h => ink(h)).filter(i => !i.onChart);
   const notes = [...(meta.notes ?? [])];
   if (off.length) notes.push(`Off-chart colours, converted: ${off.map(i => `${i.hex.toUpperCase()} → ${cmykText(i.cmyk)}`).join("   ")}`);
   notes.reverse().forEach((n, i) => label(n, 18, { x: 28, bottom: fy - 16 - i * 28 }, RED, out));

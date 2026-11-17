@@ -3,7 +3,7 @@ import {
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle, setGraphicsState,
 } from "pdf-lib";
-import { ink, pngToRgb, tintCmyk } from "./color";
+import { ink, pngToRgb, tintCmyk, type OwnInks } from "./color";
 import type { Grad, Shape } from "./draw";
 import type { Seg } from "./path";
 
@@ -83,7 +83,7 @@ function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PD
   }));
 }
 
-export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: { title: string }): Promise<PrintPdf> {
+export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: { title: string; inks?: OwnInks }): Promise<PrintPdf> {
   if (wMm > MAX_SIDE_MM || hMm > MAX_SIDE_MM) throw new Error(`print sheet ${Math.round(wMm)}×${Math.round(hMm)} mm is larger than Illustrator allows`);
   const doc = await PDFDocument.create();
   doc.setTitle(meta.title);
@@ -93,7 +93,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
   const images = new Map<Uint8Array, Map<string, PDFName>>();
   const offChart = new Map<string, string>();
   const cmyk = (hex: string): [number, number, number, number] => {
-    const i = ink(hex);
+    const i = ink(hex, meta.inks);
     if (!i.onChart) offChart.set(i.hex, `C${i.cmyk[0]} M${i.cmyk[1]} Y${i.cmyk[2]} K${i.cmyk[3]}`);
     return [i.cmyk[0] / 100, i.cmyk[1] / 100, i.cmyk[2] / 100, i.cmyk[3] / 100];
   };

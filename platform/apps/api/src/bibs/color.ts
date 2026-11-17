@@ -17,8 +17,16 @@ const numbers = (CHART as { numbers?: Record<string, string> }).numbers ?? {};
 /** the swatch's number on the paper chart ("0031"), for the team to find it */
 export const chartNumber = (hex: string): string | undefined => numbers[hex.toLowerCase()];
 
-/** how the order sheet names an ink: "0031 C0 M75 Y100 K0" on the chart, else its plain CMYK */
-export const inkText = (hex: string) => { const n = chartNumber(hex); const t = cmykText(ink(hex).cmyk); return n ? `${n}  ${t}` : t; };
+/** a design's own inks: the CMYK the customer typed in, by the screen colour the designer shows for it */
+export type OwnInks = Record<string, Cmyk>;
+
+/** how the order sheet names an ink: "0031 C0 M75 Y100 K0" on the chart, else its CMYK */
+export const inkText = (hex: string, own?: OwnInks) => {
+  const i = ink(hex, own);
+  const n = i.own ? undefined : chartNumber(hex);
+  const t = cmykText(i.cmyk);
+  return n ? `${n}  ${t}` : t;
+};
 
 /** "C0 M22.5 Y90 K0" → [0, 22.5, 90, 0] */
 export function parseCmyk(s: string): Cmyk | null {
@@ -73,10 +81,12 @@ export function factoryCmyk(hex: string): Cmyk {
   return out.map(v => Math.min(100, Math.max(0, Math.round(v)))) as Cmyk;
 }
 
-export interface Ink { hex: string; cmyk: Cmyk; onChart: boolean }
+export interface Ink { hex: string; cmyk: Cmyk; onChart: boolean; /** typed in by the customer: printed exactly, not reported */ own?: boolean }
 
-export function ink(hex: string): Ink {
+export function ink(hex: string, own?: OwnInks): Ink {
   const h = hex.toLowerCase();
+  const typed = own?.[h];
+  if (typed) return { hex: h, cmyk: typed, onChart: true, own: true };
   // the fabric itself: no ink
   if (h === "#ffffff") return { hex: h, cmyk: [0, 0, 0, 0], onChart: true };
   const c = chart[h] ? parseCmyk(chart[h]) : null;

@@ -95,6 +95,13 @@ export const DesignerPrintSchema = z.object({
   pattern: z.number().int().min(0).optional(),
   /** base64 PNGs, shared by every bib */
   images: z.array(z.string().max(16_000_000)).max(60).default([]),
+  /**
+   * CMYK the customer typed in (0–100 each), by the screen colour the designer
+   * shows for it: those colours print exactly that CMYK.
+   */
+  inks: z.record(z.string(), z.tuple([z.number().min(0).max(100), z.number().min(0).max(100), z.number().min(0).max(100), z.number().min(0).max(100)]))
+    .refine(r => Object.keys(r).length <= 500 && Object.keys(r).every(k => /^#[0-9a-fA-F]{6}$/.test(k)), "inks: up to 500, by #rrggbb")
+    .transform(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase(), v]))).default({}),
   /** what every bib carries, per piece */
   panels: z.array(z.object({ side: z.enum(["A", "B"]), part: z.enum(["front", "back"]), objs: z.array(Obj).max(1000) })).min(1).max(4),
   /** the players, each with their own name / number fields (index into panels) */
@@ -390,7 +397,7 @@ export function designerSheetSvg(d: DesignerPrint, pics: DesignerPictures, size:
   else {
     out.push({ kind: "path", segs: box(rx + 16, ry + 50, 40, 40), fill: d.trimColor, stroke: "#bcbec0", width: 2 });
     label({ neck: "Neck", neckarm: "Neck, sleeves", full: "Neck, sleeves, hem" }[d.trim], 15, { x: rx + 66, cy: ry + 70 }, INK, out);
-    label(inkText(d.trimColor), 13, { x: rx + 16, top: ry + 106 }, "#6d6e71", out);
+    label(inkText(d.trimColor, d.inks), 13, { x: rx + 16, top: ry + 106 }, "#6d6e71", out);
   }
 
   const fy = H - 230;
@@ -472,7 +479,7 @@ export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta
         shapes.push(...designerPiece(d, pics, size, side, part, piece, r.player, { cutLine: true, sizeMark: SIZE_NAME[size] })
           .map(sh => moveScaled(sh, piece.x, piece.y, 1)));
       }
-      const out = await printPdf(shapes, page.w, page.h, { title: `${name} ${SIZE_NAME[size]} ${file}` });
+      const out = await printPdf(shapes, page.w, page.h, { title: `${name} ${SIZE_NAME[size]} ${file}`, inks: d.inks });
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
       await yieldToOthers();

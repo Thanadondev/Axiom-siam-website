@@ -11,6 +11,9 @@ const PALETTE = (window.AXIOM_PALETTE || []).map(p => p.c);
 const PALINFO = window.AXIOM_PALETTE || [];
 
 let canvas, curTool = "select", fillTarget = "fill";
+let customInks = {}; // screen colour → [c, m, y, k] the customer typed
+const cmykText = c => `C${c[0]} M${c[1]} Y${c[2]} K${c[3]}`;
+function parseCmykText(s) { const m = /C\s*([\d.]+)\s+M\s*([\d.]+)\s+Y\s*([\d.]+)\s+K\s*([\d.]+)/i.exec(s || ""); return m ? m.slice(1).map(Number) : null; }
 let history = [], hIndex = -1, restoring = false;
 
 const $ = s => document.querySelector(s);
@@ -249,6 +252,14 @@ $("#right").innerHTML = `
       </div>
       <div class="swatches" id="swGrid"></div>
       <div class="swcode" id="swCode"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ บนจอแสดงตามค่าสีของโรงงาน">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" id="ckC" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" id="ckM" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" id="ckY" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" id="ckK" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" id="ckApply" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
@@ -983,7 +994,13 @@ document.getElementById("filePat").addEventListener("change", ev => {
 });
 
 /* ---------- apply color ---------- */
-function showCode(color) { const info = PALINFO.find(p => p.c.toLowerCase() === String(color).toLowerCase()); $("#swCode").textContent = info ? info.k : (color === "none" ? "ไม่มีสี" : color); }
+function showCode(color) {
+  const h = String(color).toLowerCase(), info = PALINFO.find(p => p.c.toLowerCase() === h), own = customInks[h];
+  $("#swCode").textContent = own ? `CMYK ที่ใส่เอง: ${cmykText(own)}` : info ? `${info.n || ""} ${info.k}`.trim()
+    : color === "none" || color === "rgba(0,0,0,0)" ? "ไม่มีสี" : /^#[0-9a-f]{6}$/.test(h) ? `${h} · นอกชาร์ต (โรงงานแปลงเป็น CMYK ให้)` : "";
+  const c = own || (info && parseCmykText(info.k));
+  ["ckC", "ckM", "ckY", "ckK"].forEach((id, i) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = c ? c[i] : ""; });
+}
 function applyColor(color) {
   if (fillTarget === "fill" && color !== "none" && gradColor(color)) return;
   const val = color === "none" ? "rgba(0,0,0,0)" : color;
@@ -1079,6 +1096,8 @@ function syncProps() {
   if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
   $("#fillChip").style.background = isGrad(first.fill) ? gradCss(first.fill) : (first.fill || "transparent");
+  { const g = isGrad(first.fill) && fillTarget === "fill" ? sortedStops(first.fill)[Math.min(gradStop, first.fill.colorStops.length - 1)].color : null;
+    const cur = g || (fillTarget === "fill" ? first.fill : first.stroke); if (typeof cur === "string") showCode(cur); }
   $("#strokeChip").style.background = first.stroke || "transparent";
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
@@ -1318,6 +1337,55 @@ $("#btnEyedrop").onclick = () => {
 };
 document.addEventListener("keydown", e => { if (e.key === "Escape" && eyedropFor) { eyedropFor = null; canvas.defaultCursor = "default"; canvas.hoverCursor = "move"; } });
 
+/* ---------- CMYK typed in: printed exactly, shown as the factory's Illustrator shows it ---------- */
+/** CMYK (0–100) → screen RGB by the factory's table (factory-rgb.js), between its grid points */
+function cmykToRgb(c) {
+  const T = window.AXIOM_CMYK_RGB;
+  if (!T) { const k = 1 - c[3] / 100; return [0, 1, 2].map(i => Math.round(255 * (1 - c[i] / 100) * k)); }
+  const n = T.grid.length, step = 100 / (n - 1);
+  const at = c.map(v => { const t = Math.min(100, Math.max(0, v)) / step, i = Math.min(n - 2, Math.floor(t)); return [i, t - i]; });
+  const out = [0, 0, 0];
+  for (let corner = 0; corner < 16; corner++) {
+    let w = 1, idx = 0;
+    for (let a = 0; a < 4; a++) { const hi = (corner >> (3 - a)) & 1; w *= hi ? at[a][1] : 1 - at[a][1]; idx = idx * n + at[a][0] + hi; }
+    if (!w) continue;
+    for (let q = 0; q < 3; q++) out[q] += w * T.rgb[idx * 3 + q];
+  }
+  return out.map(v => Math.min(255, Math.max(0, Math.round(v))));
+}
+/** every colour the design paints with (fills, strokes, gradient stops, the garment) */
+function usedColours() {
+  const out = new Set([bodyColor, trimColor].filter(c => typeof c === "string").map(c => c.toLowerCase()));
+  const add = v => { if (typeof v === "string") { const h = colorHex(v); if (h) out.add(h); } else if (isGrad(v)) v.colorStops.forEach(s => add(s.color)); };
+  const walk = o => { add(o.fill); add(o.stroke); (o._objects || []).forEach(walk); };
+  userObjects().forEach(walk);
+  return out;
+}
+/** the screen colour that stands for a typed CMYK: a chart swatch with that CMYK, else its own (unique) colour */
+function inkHex(c) {
+  const key = cmykText(c);
+  const same = Object.entries(customInks).find(([, v]) => cmykText(v) === key); if (same) return same[0];
+  const chart = PALINFO.find(p => p.k === key); if (chart) return chart.c.toLowerCase();
+  const rgb = cmykToRgb(c);
+  // a colour the chart, another typed ink or the design itself already uses would print as this CMYK too:
+  // step it by one so each colour prints its own CMYK (a plain black stays a plain black)
+  const used = usedColours();
+  const taken = h => PALINFO.some(p => p.c.toLowerCase() === h) || customInks[h] || used.has(h) || h === "#000000" || h === "#ffffff";
+  let h, i = 0;
+  do {
+    const b = Math.min(255, Math.max(0, rgb[2] + (i % 2 ? -1 : 1) * Math.ceil(i / 2)));
+    h = "#" + [rgb[0], rgb[1], b].map(v => v.toString(16).padStart(2, "0")).join(""); i++;
+  } while (taken(h) && i < 40);
+  customInks[h] = c;
+  return h;
+}
+function applyTypedCmyk() {
+  const c = ["ckC", "ckM", "ckY", "ckK"].map(id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : Math.round(Math.min(100, Math.max(0, v)) * 10) / 10; });
+  applyColor(inkHex(c));
+}
+$("#ckApply").onclick = applyTypedCmyk;
+["ckC", "ckM", "ckY", "ckK"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); applyTypedCmyk(); } }));
+
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
 function moveBy(o, dx, dy) {
@@ -1475,6 +1543,7 @@ function getDoc() {
     fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc,
     // names only — never the font bytes (licence), so the reader can warn if missing
     importedFonts: [...importedFonts.keys()],
+    customInks,
     objects: userObjects().map(o => o.toObject(ARC_PROPS)),
   };
 }
@@ -1500,6 +1569,7 @@ function openDoc(doc) {
     return;
   }
   try {
+    customInks = { ...(doc.customInks || {}) };
     userObjects().forEach(o => canvas.remove(o));
     if (doc.style) { curStyle = doc.style; const ss = document.getElementById("styleSel"); if (ss) ss.value = String(curStyle); }
     if (doc.size) { TPL_SIZE = doc.size; const zz = document.getElementById("sizeSel"); if (zz) zz.value = TPL_SIZE; }
@@ -2917,6 +2987,7 @@ async function buildPrintSpec(rows, onProgress) {
       trim: curTrim, images: ctx.images, panels: specPanels, players,
     };
     if (bodyPatternSrc) spec.pattern = await printImage(bodyPatternSrc, ctx.images, ctx.seen);
+    if (Object.keys(customInks).length) spec.inks = customInks;
     return { spec, warnings: [...ctx.warn] };
   } catch (e) {
     return { error: "เตรียมไฟล์ผลิตไม่สำเร็จ: " + ((e && e.message) || e) };
