@@ -683,9 +683,13 @@ $("#btnUndo").onclick = undo;
 $("#btnRedo").onclick = redo;
 
 /* ---------- tool switching ---------- */
-const cursors = { select: "default", node: "default", pen: "crosshair", rect: "crosshair", ellipse: "crosshair", poly: "crosshair", line: "crosshair", text: "text", image: "copy", hand: "grab" };
+const cursors = { gradient: "crosshair", select: "default", node: "default", pen: "crosshair", rect: "crosshair", ellipse: "crosshair", poly: "crosshair", line: "crosshair", text: "text", image: "copy", hand: "grab" };
 function setTool(name) {
   if (name === "image") { importMode = null; $("#fileImg").click(); return; }
+  if (name === "gradient") {
+    gradToolFor = gradTarget();
+    if (!gradToolFor) { toast("เลือกรูปทรงหรือข้อความ 1 ชิ้นก่อน แล้วกด G", "info"); return; }
+  } else gradToolFor = null;
   curTool = name;
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("on", b.dataset.tool === name));
   const drawing = ["rect", "ellipse", "poly", "line", "pen", "text", "hand"].includes(name);
@@ -704,6 +708,7 @@ const HINTS = {
   node: "เลือกเส้น/รูปที่วาดด้วยปากกา แล้วลากจุด (◯) และแกน (▫) เพื่อดัด",
   pen: "คลิกวางจุด · คลิกค้างแล้วลาก = จุดโค้ง · คลิกจุดแรกเพื่อปิด · Enter จบ · Esc ยกเลิก",
   rect: "ลากเพื่อวาดสี่เหลี่ยม", ellipse: "ลากเพื่อวาดวงกลม/วงรี", poly: "ลากเพื่อวาดรูปหลายเหลี่ยม",
+  gradient: "ลากบนชิ้นที่เลือก: จุดเริ่ม → จุดจบของไล่สี (วงกลม: จากจุดกลางออกไป) · Shift = ล็อกมุม 45°",
   line: "ลากเพื่อวาดเส้น", text: "คลิกเพื่อพิมพ์ข้อความ", hand: "ลากเพื่อเลื่อนมุมมอง (หรือกด Space ค้าง)",
 };
 document.querySelectorAll(".tool").forEach(b => b.onclick = () => setTool(b.dataset.tool));
@@ -739,6 +744,7 @@ function bindCanvasEvents() {
       isPanning = true; lastPan = { x: e.clientX, y: e.clientY }; canvas.setCursor("grabbing"); return;
     }
     const p = canvas.getPointer(e);
+    if (curTool === "gradient") { gradDragStart(p); return; }
     if (curTool === "pen") { penDown(p, opt); return; }
     if (curTool === "text") {
       const t = new fabric.IText("ข้อความ", { left: p.x, top: p.y, fill: curFill(), fontFamily: fontStack(curFont), fontSize: 40 });
@@ -760,6 +766,7 @@ function bindCanvasEvents() {
       canvas.setViewportTransform(vpt); lastPan = { x: e.clientX, y: e.clientY }; return;
     }
     const p = canvas.getPointer(e);
+    if (curTool === "gradient") { gradDragMove(p, e.shiftKey); return; }
     if (curTool === "pen") { penMove(p); return; }
     if (drawing && tempObj) {
       canvas.remove(tempObj);
@@ -769,6 +776,7 @@ function bindCanvasEvents() {
   });
 
   canvas.on("mouse:up", opt => {
+    if (curTool === "gradient" && gradDrag) { gradDragEnd(canvas.getPointer(opt.e), opt.e.shiftKey); return; }
     if (isPanning) { isPanning = false; lastPan = null; canvas.setCursor(curTool === "hand" ? "grab" : "default"); return; }
     if (drawing && tempObj) {
       drawing = false;
@@ -1124,13 +1132,16 @@ function gradAngle(g) { const c = g.coords; return Math.round(Math.atan2(c.y2 - 
  */
 function makeGrad(o, type, stops, angle) {
   const w = o.width || 1, h = o.height || 1;
+  // the same kind at the same angle keeps where it was put (dragged with the Gradient tool)
+  const was = o.fill;
+  const keep = isGrad(was) && was.type === type && (type === "radial" || gradAngle(was) === Math.round(angle || 0)) ? { ...was.coords } : null;
   const a = (angle || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
   const half = (Math.abs(w * ca) + Math.abs(h * sa)) / 2; // reaches the box's corners along the angle
   return new fabric.Gradient({
     type, gradientUnits: "pixels",
-    coords: type === "linear"
+    coords: keep || (type === "linear"
       ? { x1: w / 2 - ca * half, y1: h / 2 - sa * half, x2: w / 2 + ca * half, y2: h / 2 + sa * half }
-      : { x1: w / 2, y1: h / 2, r1: 0, x2: w / 2, y2: h / 2, r2: Math.max(w, h) / 2 },
+      : { x1: w / 2, y1: h / 2, r1: 0, x2: w / 2, y2: h / 2, r2: Math.max(w, h) / 2 }),
     colorStops: stops.slice().sort((p, q) => p.offset - q.offset).map(t => ({ offset: Math.min(1, Math.max(0, t.offset)), color: t.color })),
   });
 }
@@ -1217,6 +1228,47 @@ $("#gDel").onclick = () => {
   st.splice(gradStop, 1); gradStop = Math.max(0, gradStop - 1);
   setGrad(o, makeGrad(o, o.fill.type, st, gradAngle(o.fill)));
 };
+
+/* ---------- the Gradient tool (G): dragged across the object, as in Illustrator ---------- */
+let gradToolFor = null, gradDrag = null;
+/** a point on the canvas → the object's own gradient units (from its top-left, unscaled) */
+function toGradUnits(o, p) {
+  const inv = fabric.util.invertTransform(o.calcTransformMatrix());
+  const q = fabric.util.transformPoint(new fabric.Point(p.x, p.y), inv);
+  return { x: q.x + o.width / 2, y: q.y + o.height / 2 };
+}
+function snap45(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+  return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len };
+}
+function gradDragStart(p) {
+  const o = gradToolFor; if (!o || !canvas.getObjects().includes(o)) { setTool("select"); return; }
+  const line = new fabric.Line([p.x, p.y, p.x, p.y], { stroke: "#f26522", strokeWidth: 2 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()], selectable: false, evented: false, _temp: true, excludeFromExport: true });
+  canvas.add(line);
+  gradDrag = { a: p, line };
+}
+function gradDragMove(p, shift) {
+  if (!gradDrag) return;
+  const b = shift ? snap45(gradDrag.a, p) : p;
+  gradDrag.line.set({ x2: b.x, y2: b.y }); canvas.requestRenderAll();
+}
+function gradDragEnd(p, shift) {
+  const { a, line } = gradDrag; gradDrag = null; canvas.remove(line);
+  const o = gradToolFor, b = shift ? snap45(a, p) : p;
+  if (!o || Math.hypot(b.x - a.x, b.y - a.y) < 3 / canvas.getZoom()) { canvas.requestRenderAll(); return; }
+  const f = o.fill;
+  const type = isGrad(f) ? f.type : "linear";
+  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: colorHex(f) || "#ffffff" }, { offset: 1, color: "#231f20" }];
+  const A = toGradUnits(o, a), B = toGradUnits(o, b);
+  const g = new fabric.Gradient({
+    type, gradientUnits: "pixels",
+    // radial: the drag's start is the centre, its length the radius
+    coords: type === "linear" ? { x1: A.x, y1: A.y, x2: B.x, y2: B.y } : { x1: A.x, y1: A.y, r1: 0, x2: A.x, y2: A.y, r2: Math.hypot(B.x - A.x, B.y - A.y) },
+    colorStops: stops.map(s => ({ offset: s.offset, color: s.color })),
+  });
+  o.set("fill", g); o.dirty = true;
+  canvas.setActiveObject(o); canvas.requestRenderAll(); renderGradPanel(); syncProps(); pushHistory();
+}
 
 /* ---------- Pathfinder (as Illustrator's): shapes combined into one outline, by paper.js ---------- */
 let paperReady = null;
@@ -2084,7 +2136,7 @@ document.addEventListener("keydown", e => {
     return;
   }
   if (k === "c" && !e.shiftKey) { placeOnGarment(0, 0, true); return; } // C = center on shirt
-  const map = { v: "select", a: "node", p: "pen", m: "rect", l: "ellipse", y: "poly", "\\": "line", t: "text", h: "hand" };
+  const map = { g: "gradient", v: "select", a: "node", p: "pen", m: "rect", l: "ellipse", y: "poly", "\\": "line", t: "text", h: "hand" };
   if (map[k]) setTool(map[k]);
 }, true);
 window.addEventListener("keyup", e => { if (e.code === "Space") { spaceDown = false; canvas.setCursor(cursors[curTool] || "default"); } });
