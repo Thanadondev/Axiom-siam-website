@@ -27,6 +27,8 @@ const ALLOWED = new Set([
   "Oswald", "Fjalla One", "Saira Condensed", "Barlow Condensed",
   // general
   "Sora", "Montserrat",
+  // script / hand-lettered team names
+  "Kaushan Script", "Yellowtail", "Lobster", "Pacifico", "Permanent Marker", "Damion",
   // what the outliner falls back to for a character the chosen face lacks (a Japanese name in Sora)
   "Noto Sans JP",
   // the open twins of Arial / Helvetica, Times and Courier (same letter widths), for text in imported logos

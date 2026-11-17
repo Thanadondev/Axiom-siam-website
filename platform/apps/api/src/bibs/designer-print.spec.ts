@@ -342,3 +342,31 @@ describe("stroke corners", () => {
     expect(svgShapes(front, { n: 0 }).body).toMatch(/stroke-linejoin="miter" stroke-miterlimit="10"/);
   });
 });
+
+describe("an R-bib's two sides", () => {
+  const base = { reversible: true, panels: [
+    { side: "A", part: "front", objs: [] }, { side: "A", part: "back", objs: [] },
+    { side: "B", part: "front", objs: [] }, { side: "B", part: "back", objs: [] },
+  ], players: [] };
+  it("side B can have a colour and a pattern of its own, or none; else it is side A's", () => {
+    const M = piecesFor("M", "A");
+    const d = DesignerPrintSchema.parse(spec({ ...base, body: "#FFF200", bodyB: "#ED1C24", images: [PNG, PNG], pattern: 0, patternB: 1 } as never));
+    const pics = pictures(d);
+    const a = designerPiece(d, pics, "M", "A", "front", M.front, null), b = designerPiece(d, pics, "M", "B", "front", M.front, null);
+    expect(a[0]).toMatchObject({ fill: "#fff200" });
+    expect(b[0]).toMatchObject({ fill: "#ed1c24" });
+    const imgA = a.find(s => s.kind === "image"), imgB = b.find(s => s.kind === "image");
+    expect(imgA && imgA.kind === "image" && imgA.png).toBe(pics.png[0]);
+    expect(imgB && imgB.kind === "image" && imgB.png).toBe(pics.png[1]);
+    // none on B
+    const none = DesignerPrintSchema.parse(spec({ ...base, images: [PNG], pattern: 0, patternB: -1 } as never));
+    expect(designerPiece(none, pictures(none), "M", "B", "front", M.front, null).some(s => s.kind === "image")).toBe(false);
+    // not given: B is A's
+    const same = DesignerPrintSchema.parse(spec({ ...base, body: "#FFF200", images: [PNG], pattern: 0 } as never));
+    const sb = designerPiece(same, pictures(same), "M", "B", "front", M.front, null);
+    expect(sb[0]).toMatchObject({ fill: "#fff200" });
+    expect(sb.some(s => s.kind === "image")).toBe(true);
+    // the print manager is told each side's body
+    expect(designerFacts(d).sides.map(s => s.body)).toEqual(["#fff200", "#ed1c24"]);
+  });
+});

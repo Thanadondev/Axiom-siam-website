@@ -96,6 +96,10 @@ export const DesignerPrintSchema = z.object({
   trim: z.enum(["none", "neck", "neckarm", "full"]),
   /** a pattern picture covering the bib (index into images) */
   pattern: z.number().int().min(0).optional(),
+  /** an R-bib's inside (side B) in a colour of its own; else the same as side A */
+  bodyB: hex.optional(),
+  /** side B's own pattern (index into images), -1 for none; else side A's, mirrored */
+  patternB: z.number().int().min(-1).optional(),
   /** base64 PNGs, shared by every bib */
   images: z.array(z.string().max(16_000_000)).max(60).default([]),
   /**
@@ -248,19 +252,21 @@ export function designerPiece(
 ): Shape[] {
   const cut = parsePath(piece.cut);
   const drawn = piecesFor(d.size, "A")[part];
-  const out: Shape[] = [{ kind: "path", segs: cut, fill: d.body }];
+  const body = side === "B" && d.bodyB ? d.bodyB : d.body;
+  const pattern = side === "B" && d.patternB !== undefined ? (d.patternB >= 0 ? d.patternB : undefined) : d.pattern;
+  const out: Shape[] = [{ kind: "path", segs: cut, fill: body }];
 
   // the pattern picture as the designer lays it: covering its frame, centred on the piece (no stretch),
   // so the pattern keeps its size in cm on every size and a bigger piece shows more of it
-  if (d.pattern !== undefined && pics.png[d.pattern]) {
-    const { w, h } = pics.size[d.pattern];
+  if (pattern !== undefined && pics.png[pattern]) {
+    const { w, h } = pics.size[pattern];
     const box = patternBox(piece);
     const k = Math.max(box.w / w, box.h / h);
     const x = (piece.w - w * k) / 2, y = (piece.h - h * k) / 2;
     // the designer shows the inside (side B) mirrored — the picture with it, the artwork not
     out.push(side === "B"
-      ? { kind: "image", png: pics.png[d.pattern], x: 0, y: 0, w: 1, h: 1, m: [-w * k, 0, 0, h * k, x + w * k, y], clip: cut }
-      : { kind: "image", png: pics.png[d.pattern], x, y, w: w * k, h: h * k, clip: cut });
+      ? { kind: "image", png: pics.png[pattern], x: 0, y: 0, w: 1, h: 1, m: [-w * k, 0, 0, h * k, x + w * k, y], clip: cut }
+      : { kind: "image", png: pics.png[pattern], x, y, w: w * k, h: h * k, clip: cut });
   }
 
   const idx = d.panels.findIndex(p => p.side === side && p.part === part);
@@ -442,10 +448,10 @@ function moveScaled(sh: Shape, dx: number, dy: number, k: number): Shape {
  */
 export function designerFacts(d: DesignerPrint, fabric?: string) {
   const zones = TRIM_ZONES[d.trim];
-  const side = { body: d.body, ...(zones.length ? { rib: Object.fromEntries((["neck", "arm", "hem"] as const).map(z => [z, zones.includes(z) ? d.trimColor : d.body])) } : {}) };
+  const sideOf = (body: string) => ({ body, ...(zones.length ? { rib: Object.fromEntries((["neck", "arm", "hem"] as const).map(z => [z, zones.includes(z) ? d.trimColor : body])) } : {}) });
   return {
     product: d.reversible ? "bib_r" as const : "bib_n" as const,
-    sides: d.reversible ? [side, side] : [side],
+    sides: d.reversible ? [sideOf(d.body), sideOf(d.bodyB ?? d.body)] : [sideOf(d.body)],
     kit: { id: "advanced", code: "ADV", name: "Advanced designer", ...(fabric ? { fabric } : {}) },
   };
 }

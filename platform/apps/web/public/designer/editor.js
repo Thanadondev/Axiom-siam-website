@@ -237,6 +237,11 @@ $("#right").innerHTML = `
   <div class="panel">
     <div class="phead">🎽 สีตัวเสื้อ</div>
     <div class="pbody">
+      <div class="btnrow" id="sideRow" style="display:none;margin-bottom:8px" title="เสื้อสองด้าน: สีและลายเต็มตัวใส่ทั้งสองด้าน หรือแยกด้านนอก/ด้านใน">
+        <button class="mini on" data-bside="both">ทั้ง 2 ด้าน</button>
+        <button class="mini" data-bside="A">ด้านนอก</button>
+        <button class="mini" data-bside="B">ด้านใน</button>
+      </div>
       <div class="btnrow" style="margin-bottom:7px">
         <input type="color" id="bodyPick" style="width:40px;height:30px;border:0;background:none;padding:0" title="เลือกสีเอง">
         <button class="mini" id="bodyWhite" title="ขาว">ขาว</button>
@@ -280,6 +285,11 @@ $("#right").innerHTML = `
       </div>
       <div class="row" style="margin-top:8px;display:flex;align-items:center;gap:8px"><label style="min-width:52px;font-size:11.5px;color:var(--muted)">ขนาดลาย</label><input type="range" id="patSize" min="0.4" max="2.4" step="0.1" value="1" style="flex:1"><span id="patSizeV" style="min-width:28px;font-size:11px;color:var(--muted)">1.0×</span></div>
       <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);margin:2px 0 6px"><input type="checkbox" id="patBrand"> ใช้สีแบรนด์ (ตามสีตัวเสื้อ/ขลิบ)</label>
+      <div class="row" style="margin:0 0 6px;gap:6px" title="เปลี่ยนสีลายสำเร็จรูป: สีเข้ม → สีอ่อน (ลายที่มีหลายสีจะไล่ระหว่างสองสีนี้)">
+        <label style="display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;color:var(--muted)"><input type="checkbox" id="patOwn"> สีลายเอง</label>
+        <input type="color" id="patC1" value="#e0a800" style="width:34px;height:26px;border:0;background:none;padding:0" title="สีเข้ม">
+        <input type="color" id="patC2" value="#fff35c" style="width:34px;height:26px;border:0;background:none;padding:0" title="สีอ่อน">
+      </div>
       <div class="patgrid" id="patGrid"></div>
     </div>
   </div>
@@ -443,6 +453,8 @@ let bodyColor = "#ffffff";
 let trimColor = "#e6ecf5";
 let bodyPattern = null;
 let bodyPatternSrc = null;
+let sideB = null;          // an R-bib's inside, when it differs: { color, pat }
+let bodySide = "both";     // where the colour / pattern pickers go: "both" | "A" | "B"
 
 function fitScale(w, h) { const s = Math.min((ART.w * 0.9) / w, (ART.h * 0.92) / h); return isFinite(s) && s > 0 ? s : 1; }
 function garmentAspect() {
@@ -492,13 +504,15 @@ function svgFrame(bodyD) {
 }
 const svgHead = f => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" width="${f.w}" height="${f.h}">`;
 // BODY layer — the shirt fill/pattern (sits BELOW user objects; also used as the clip shape)
-function garmentSVG(tpl) {
+function garmentSVG(tpl, inside) {
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
   const bodyD = sz ? (tpl === "front" ? sz.front : sz.back) : TPL[tpl];
   const cid = "clip" + Math.random().toString(36).slice(2);
-  const base = `<path d="${bodyD}" fill="${bodyColor}"/>`;
+  const own = inside && sideB && curStyle === 2 ? sideB : null;
+  const color = own ? own.color : bodyColor, src = own ? own.pat : bodyPatternSrc;
+  const base = `<path d="${bodyD}" fill="${color}"/>`;
   const f = svgFrame(bodyD);
-  const pat = bodyPatternSrc ? `<g clip-path="url(#${cid})"><image href="${bodyPatternSrc}" xlink:href="${bodyPatternSrc}" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" preserveAspectRatio="xMidYMid slice"/></g>` : "";
+  const pat = src ? `<g clip-path="url(#${cid})"><image href="${src}" xlink:href="${src}" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" preserveAspectRatio="xMidYMid slice"/></g>` : "";
   return `${svgHead(f)}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs>${base}${pat}</svg>`;
 }
 // OVERLAY layer — ขลิบ (trim/hem) + cut outline + size mark; rendered ABOVE user objects so ขลิบ ไม่โดนลายบัง
@@ -547,7 +561,7 @@ function placeGarment(p) {
     if (p.angle) g.angle = p.angle;
     g.set({ selectable: false, evented: false, excludeFromExport: false, hoverCursor: "default" });
   };
-  fabric.loadSVGFromString(garmentSVG(p.tpl), (objs, opts) => {
+  fabric.loadSVGFromString(garmentSVG(p.tpl, String(p.id).startsWith("inner")), (objs, opts) => {
     if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; bgObjects.push(g); panelGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
@@ -1067,7 +1081,26 @@ document.querySelectorAll("[data-ckapply]").forEach(btn => {
   btn.onclick = go;
   boxes.forEach(b => b.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } }));
 });
-function setBodyColor(c) { bodyColor = c; bodyPattern = null; bodyPatternSrc = null; applyGarment(); garmentCode("bodyCode", c); }
+/** before side A changes alone, side B keeps what it showed */
+function splitSides() { if (!sideB) sideB = { color: bodyColor, pat: bodyPatternSrc }; }
+function setBodyColor(c) {
+  if (bodySide === "B" && curStyle === 2) { splitSides(); sideB.color = c; sideB.pat = null; }
+  else { if (bodySide === "A" && curStyle === 2) splitSides(); else sideB = null; bodyColor = c; bodyPattern = null; bodyPatternSrc = null; }
+  applyGarment(); garmentCode("bodyCode", c);
+}
+/** a pattern picture on the side chosen (null: none) */
+function setPattern(src) {
+  if (bodySide === "B" && curStyle === 2) { splitSides(); sideB.pat = src; }
+  else { if (bodySide === "A" && curStyle === 2) splitSides(); else sideB = null; bodyPatternSrc = src; bodyPattern = null; }
+  applyGarment();
+}
+function showBodySide() {
+  const row = document.getElementById("sideRow"); if (!row) return;
+  row.style.display = curStyle === 2 ? "flex" : "none";
+  document.querySelectorAll("[data-bside]").forEach(b => b.classList.toggle("on", b.dataset.bside === bodySide));
+  garmentCode("bodyCode", bodySide === "B" && sideB ? sideB.color : bodyColor);
+}
+document.querySelectorAll("[data-bside]").forEach(b => b.onclick = () => { bodySide = b.dataset.bside; showBodySide(); });
 function setTrimColor(c) { trimColor = c; applyGarment(); garmentCode("trimCode", c); }
 function buildGarmentGrid(gridId, fn) {
   const g = document.getElementById(gridId); if (!g) return; g.innerHTML = "";
@@ -1077,11 +1110,11 @@ const bodyPickEl = document.getElementById("bodyPick"); if (bodyPickEl) bodyPick
 const trimPickEl = document.getElementById("trimPick"); if (trimPickEl) trimPickEl.oninput = e => setTrimColor(e.target.value);
 const bodyWhiteEl = document.getElementById("bodyWhite"); if (bodyWhiteEl) bodyWhiteEl.onclick = () => setBodyColor("#ffffff");
 $("#patUp").onclick = () => document.getElementById("filePat").click();
-$("#patClr").onclick = () => { bodyPattern = null; bodyPatternSrc = null; lastPat = null; applyGarment(); toast("ล้างลายแล้ว"); };
+$("#patClr").onclick = () => { lastPat = null; setPattern(null); toast("ล้างลายแล้ว"); };
 document.getElementById("filePat").addEventListener("change", ev => {
   const f = ev.target.files[0]; if (!f) return;
   const r = new FileReader();
-  r.onload = () => { bodyPatternSrc = r.result; applyGarment(); toast("ใส่ลายเต็มตัวแล้ว"); };
+  r.onload = () => { setPattern(r.result); toast("ใส่ลายเต็มตัวแล้ว"); };
   r.readAsDataURL(f); ev.target.value = "";
 });
 
@@ -1559,7 +1592,7 @@ function cmykToRgb(c) {
 }
 /** every colour the design paints with (fills, strokes, gradient stops, the garment) */
 function usedColours() {
-  const out = new Set([bodyColor, trimColor].filter(c => typeof c === "string").map(c => c.toLowerCase()));
+  const out = new Set([bodyColor, trimColor, sideB && sideB.color].filter(c => typeof c === "string").map(c => c.toLowerCase()));
   const add = v => { if (typeof v === "string") { const h = colorHex(v); if (h) out.add(h); } else if (isGrad(v)) v.colorStops.forEach(s => add(s.color)); };
   const walk = o => { add(o.fill); add(o.stroke); (o._objects || []).forEach(walk); };
   userObjects().forEach(walk);
@@ -1945,7 +1978,7 @@ const styleSel = document.getElementById("styleSel");
 const sizeSel = document.getElementById("sizeSel");
 const fabricSel = document.getElementById("fabricSel");
 const trimSel = document.getElementById("trimSel");
-if (styleSel) styleSel.onchange = () => { curStyle = +styleSel.value; rebuildLayout(); if (clipOn) setTimeout(reclipAll, 200); };
+if (styleSel) styleSel.onchange = () => { curStyle = +styleSel.value; showBodySide(); rebuildLayout(); if (clipOn) setTimeout(reclipAll, 200); };
 if (sizeSel) sizeSel.onchange = () => { TPL_SIZE = sizeSel.value; rebuildLayout(); updateDim(); if (clipOn) setTimeout(reclipAll, 200); };
 if (fabricSel) fabricSel.onchange = () => { curFabric = fabricSel.value; updateInfo(); };
 if (trimSel) trimSel.onchange = () => { curTrim = trimSel.value; curLayout = "vertical"; rebuildLayout(); updateInfo(); if (clipOn) setTimeout(reclipAll, 200); };
@@ -1961,7 +1994,7 @@ let isLoggedIn = false;
 function getDoc() {
   return {
     app: "axiom-designer", version: 5, art: ART, style: curStyle, size: TPL_SIZE,
-    fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc,
+    fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc, sideB,
     // names only — never the font bytes (licence), so the reader can warn if missing
     importedFonts: [...importedFonts.keys()],
     customInks,
@@ -2005,6 +2038,8 @@ function openDoc(doc) {
     if (doc.trimColor) trimColor = doc.trimColor;
     garmentCode("bodyCode", bodyColor); garmentCode("trimCode", trimColor);
     bodyPattern = null; bodyPatternSrc = doc.bodyPatternSrc || null;
+    sideB = doc.sideB && typeof doc.sideB.color === "string" ? { color: doc.sideB.color, pat: doc.sideB.pat || null } : null;
+    bodySide = "both"; showBodySide();
     buildTemplate();
     fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
     zoomFit(); updateDim(); toast("เปิดดีไซน์แล้ว");
@@ -2376,7 +2411,9 @@ function textToPath(t, fonts) {
     p.setAttribute("d", data.trim());
     // carry over every paint attribute the text had — and its style, where Fabric writes
     // its stroke (an outlined name lost its keyline without it), paint order and dashes
-    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform", "style"]) {
+    // paint-order is an attribute of its own (Fabric's paintFirst "stroke": the keyline under the letters);
+    // without it the outline printed over the letters and ate into them
+    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "stroke-miterlimit", "stroke-linecap", "stroke-dasharray", "stroke-opacity", "paint-order", "opacity", "transform", "style"]) {
       const v = t.getAttribute(a);
       if (v) p.setAttribute(a, v);
     }
@@ -2585,11 +2622,16 @@ const PATTERNS = [
   { n: "ไล่สีพระอาทิตย์", cols: ["#f97316","#db2777","#7c3aed"], g: (c,W,H,cl)=>grad(c,W,H,cl,"diag") },
   { n: "เรเดียล", cols: ["#22d3ee","#0e7490"], g: (c,W,H,cl)=>grad(c,W,H,cl,"radial") },
 ];
-function renderCurrentPattern(){ if (!lastPat) return; const cols = patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"), K = 3; c.width = 560 * K; c.height = 660 * K; const x = c.getContext("2d"); x.scale(K, K); lastPat.g(x, 560, 660, cols, patScale); bodyPatternSrc = c.toDataURL("image/png"); bodyPattern = null; applyGarment(); }
+let patOwn = null; // [dark, light] picked for the ready-made patterns
+function spreadCols(two, n) { if (n <= 2) return two.slice(0, Math.max(1, n)); const a = new fabric.Color(two[0]).getSource(), b = new fabric.Color(two[1]).getSource(); return Array.from({ length: n }, (_, i) => "#" + [0, 1, 2].map(j => Math.round(a[j] + (b[j] - a[j]) * i / (n - 1)).toString(16).padStart(2, "0")).join("")); }
+function renderCurrentPattern(){ if (!lastPat) return; const cols = patOwn ? spreadCols(patOwn, lastPat.cols.length) : patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"), K = 3; c.width = 560 * K; c.height = 660 * K; const x = c.getContext("2d"); x.scale(K, K); lastPat.g(x, 560, 660, cols, patScale); setPattern(c.toDataURL("image/png")); }
 function applyPattern(pat){ lastPat = pat; renderCurrentPattern(); toast("ใส่ลาย " + pat.n); }
 function buildPatternGallery(){ const gr = document.getElementById("patGrid"); if (!gr) return; gr.innerHTML = ""; PATTERNS.forEach(pat => { const c = document.createElement("canvas"); c.className = "patthumb"; c.title = pat.n; c.width = 48; c.height = 58; pat.g(c.getContext("2d"), 48, 58, pat.cols, 0.4); c.onclick = () => applyPattern(pat); gr.appendChild(c); }); }
 const patSizeEl = document.getElementById("patSize"); if (patSizeEl) patSizeEl.oninput = e => { patScale = +e.target.value; const v = document.getElementById("patSizeV"); if (v) v.textContent = (+e.target.value).toFixed(1) + "×"; renderCurrentPattern(); };
 const patBrandEl = document.getElementById("patBrand"); if (patBrandEl) patBrandEl.onchange = e => { patUseBrand = e.target.checked; renderCurrentPattern(); };
+{ const own = document.getElementById("patOwn"), c1 = document.getElementById("patC1"), c2 = document.getElementById("patC2");
+  const go = () => { patOwn = own.checked ? [c1.value, c2.value] : null; renderCurrentPattern(); };
+  if (own) { own.onchange = go; c1.onchange = () => { own.checked = true; go(); }; c2.onchange = () => { own.checked = true; go(); }; } }
 
 /* ---------- fonts + clip-to-garment ---------- */
 let curFont = "Sora", clipOn = false;
@@ -2599,6 +2641,7 @@ const FONT_GROUPS = [
   { label: "ไทย", fonts: ["Kanit", "Prompt", "Mitr", "Bai Jamjuree", "K2D", "Athiti", "Krub", "Chakra Petch", "Sarabun", "Pridi", "Noto Sans Thai"] },
   { label: "กีฬา / ตัวหนา", fonts: ["Anton", "Bebas Neue", "Graduate", "Black Ops One", "Russo One", "Staatliches", "Squada One", "Archivo Black", "Bungee", "Teko", "Big Shoulders Display"] },
   { label: "แคบ / คอนเดนส์", fonts: ["Oswald", "Fjalla One", "Saira Condensed", "Barlow Condensed"] },
+  { label: "ตัวเขียน / สคริปต์", fonts: ["Kaushan Script", "Yellowtail", "Lobster", "Pacifico", "Permanent Marker", "Damion"] },
   { label: "ทั่วไป", fonts: ["Sora", "Montserrat"] },
 ];
 /* fonts the user brought themselves. Held in memory ONLY — never uploaded,
@@ -3544,6 +3587,11 @@ async function buildPrintSpec(rows, onProgress) {
       trim: curTrim, images: ctx.images, panels: specPanels, players,
     };
     if (bodyPatternSrc) spec.pattern = await printImage(bodyPatternSrc, ctx.images, ctx.seen);
+    // an R-bib's inside in a colour / pattern of its own
+    if (curStyle === 2 && sideB) {
+      spec.bodyB = colorHex(sideB.color) || "#ffffff";
+      spec.patternB = sideB.pat ? await printImage(sideB.pat, ctx.images, ctx.seen) : -1;
+    }
     if (Object.keys(customInks).length) spec.inks = customInks;
     return { spec, warnings: [...ctx.warn] };
   } catch (e) {
