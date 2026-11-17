@@ -3,7 +3,7 @@ import {
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle,
 } from "pdf-lib";
-import { ink, pngToCmyk, tintCmyk } from "./color";
+import { ink, pngToRgb, tintCmyk } from "./color";
 import type { Shape } from "./draw";
 import type { Seg } from "./path";
 
@@ -30,23 +30,29 @@ export interface PrintPdf {
   offChart: string[];
 }
 
-/** a DeviceCMYK image (with a soft mask for the PNG's transparency); a tint prints its shape in one ink */
-/** a picture's CMYK conversion, kept for the job's other print files (a team's logo and pattern are on every bib) */
-const converted = new WeakMap<Uint8Array, Map<string, ReturnType<typeof pngToCmyk>>>();
-function toCmyk(png: Uint8Array, tint?: string) {
-  let byTint = converted.get(png);
-  if (!byTint) converted.set(png, (byTint = new Map()));
+/** a picture's pixels, kept for the job's other print files (a team's logo and pattern are on every bib) */
+type Pixels = { w: number; h: number; alpha: Uint8Array | null } & ({ rgb: Uint8Array } | { cmyk: Uint8Array });
+const decoded = new WeakMap<Uint8Array, Map<string, Pixels>>();
+function pixels(png: Uint8Array, tint?: string): Pixels {
+  let byTint = decoded.get(png);
+  if (!byTint) decoded.set(png, (byTint = new Map()));
   let c = byTint.get(tint ?? "");
-  if (!c) byTint.set(tint ?? "", (c = tint ? tintCmyk(png, tint) : pngToCmyk(png)));
+  if (!c) byTint.set(tint ?? "", (c = tint ? tintCmyk(png, tint) : pngToRgb(png)));
   return c;
 }
 
-function cmykImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef {
-  const { w, h, cmyk, alpha } = toCmyk(png, tint);
+/**
+ * A picture in the print file, with a soft mask for the PNG's transparency: in
+ * RGB, for Illustrator to turn into CMYK with the factory's colour settings
+ * (pngToRgb says why); a tint (a logo printed in one ink) in that ink's CMYK.
+ */
+function pictureImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef {
+  const px = pixels(png, tint);
+  const { w, h, alpha } = px;
   const ctx = doc.context;
   const smask = alpha ? ctx.register(ctx.flateStream(alpha, { Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "DeviceGray", BitsPerComponent: 8 })) : undefined;
-  return ctx.register(ctx.flateStream(cmyk, {
-    Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "DeviceCMYK", BitsPerComponent: 8,
+  return ctx.register(ctx.flateStream("rgb" in px ? px.rgb : px.cmyk, {
+    Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "rgb" in px ? "DeviceRGB" : "DeviceCMYK", BitsPerComponent: 8,
     ...(smask ? { SMask: smask } : {}),
   }));
 }
@@ -78,7 +84,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
       let name = byTint.get(s.tint ?? "");
       if (!name) {
         if (s.tint) cmyk(s.tint); // an off-chart tint is reported like any colour
-        name = page.node.newXObject("Image", cmykImage(doc, s.png, s.tint));
+        name = page.node.newXObject("Image", pictureImage(doc, s.png, s.tint));
         byTint.set(s.tint ?? "", name);
       }
       ops.push(pushGraphicsState());

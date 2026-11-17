@@ -48,29 +48,29 @@ export function ink(hex: string): Ink {
 }
 
 /**
- * A PNG logo as CMYK pixels and its transparency, for a DeviceCMYK image in
- * the print file. Pixels are converted plainly (a vector logo from the team
- * keeps its own colours better: a later step).
+ * A picture (a team's PNG logo, a photo, a pattern) as its RGB pixels and its
+ * transparency, for an RGB image in the print file. Illustrator turns it into
+ * CMYK with the factory's own colour settings when the print manager lays the
+ * sheet out, as it does a customer's photo the graphics team places by hand.
+ * Converted here with the plain formula (black in every colour), a bright red
+ * came out C0 M84 Y81 K11 where Illustrator gives C5 M98 Y95 K0: the print was
+ * dull next to the same design made in Illustrator.
  */
-export function pngToCmyk(png: Uint8Array): { w: number; h: number; cmyk: Uint8Array; alpha: Uint8Array | null } {
+export function pngToRgb(png: Uint8Array): { w: number; h: number; rgb: Uint8Array; alpha: Uint8Array | null } {
   const img = UPNG.decode(png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer);
   const rgba = new Uint8Array(UPNG.toRGBA8(img)[0]);
   const n = img.width * img.height;
-  const cmyk = new Uint8Array(n * 4);
+  const rgb = new Uint8Array(n * 3);
   const alpha = new Uint8Array(n);
   let seeThrough = false;
   for (let i = 0; i < n; i++) {
-    const r = rgba[i * 4] / 255, g = rgba[i * 4 + 1] / 255, b = rgba[i * 4 + 2] / 255;
-    const k = 1 - Math.max(r, g, b);
-    const d = k >= 1 ? 1 : 1 - k;
-    cmyk[i * 4] = Math.round(((1 - r - k) / d) * 255);
-    cmyk[i * 4 + 1] = Math.round(((1 - g - k) / d) * 255);
-    cmyk[i * 4 + 2] = Math.round(((1 - b - k) / d) * 255);
-    cmyk[i * 4 + 3] = Math.round(k * 255);
+    rgb[i * 3] = rgba[i * 4];
+    rgb[i * 3 + 1] = rgba[i * 4 + 1];
+    rgb[i * 3 + 2] = rgba[i * 4 + 2];
     alpha[i] = rgba[i * 4 + 3];
     if (alpha[i] < 255) seeThrough = true;
   }
-  return { w: img.width, h: img.height, cmyk, alpha: seeThrough ? alpha : null };
+  return { w: img.width, h: img.height, rgb, alpha: seeThrough ? alpha : null };
 }
 
 /**

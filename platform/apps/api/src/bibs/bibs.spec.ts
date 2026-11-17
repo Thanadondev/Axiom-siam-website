@@ -194,13 +194,12 @@ describe("the job package", () => {
     expect(sheet.indexOf(">SORA<")).toBeLessThan(sheet.indexOf(">TAICHI<")); // by number within a size
   }, 30_000);
 
-  it("the logo goes in as a CMYK picture", async () => {
+  it("the logo goes in as an RGB picture, for Illustrator to make CMYK with the factory's settings", async () => {
     // a 2×2 red PNG with one see-through pixel
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBkZGBgYAEUUA/0nH5SQAAAAAElFTkSuQmCC", "base64");
     const job = await buildBibJob(design({ roster: [{ name: "A", number: "1", size: "S" }] }), { ref: "AX-T4", date: new Date(), logoPng: new Uint8Array(png) });
     const bytes = Buffer.from(Object.values(unzipSync(job.zip)).find((_, i, a) => Object.keys(unzipSync(job.zip))[i].endsWith("_ol.pdf"))!);
-    expect(bytes.includes("DeviceCMYK")).toBe(true);
-    expect(bytes.includes("DeviceRGB")).toBe(false);
+    expect(bytes.includes("/ColorSpace /DeviceRGB")).toBe(true);
   }, 30_000);
 
   it("a normal bib: front and back only; off-chart colours reported", async () => {
