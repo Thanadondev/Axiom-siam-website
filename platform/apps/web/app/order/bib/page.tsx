@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
 import SwatchPicker from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
+import { inkClashes } from "../../../lib/ink-contrast";
 import { apiFetch } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
 import { importPrintLogo, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
@@ -438,6 +439,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
 function SideCard({ L, title, side, onChange }: { L: ReturnType<typeof tri>; title: string; side: Side; onChange: (s: Side) => void }) {
   const set = (p: Partial<Side>) => onChange({ ...side, ...p });
   const setRib = (z: keyof Side["rib"], c: string) => onChange({ ...side, rib: { ...side.rib, [z]: c } });
+  // a name / number colour that melts into the body or the pattern (blue on blue stripes)
+  const clash = inkClashes({ body: side.body, pattern: side.pattern, patternColor: side.patternColor, ink: side.ink, inkOutline: side.outline ? side.inkOutline : null });
   return (
     <div className="acard">
       <h2 className="ah2">{title}</h2>
@@ -456,6 +459,13 @@ function SideCard({ L, title, side, onChange }: { L: ReturnType<typeof tri>; tit
       {side.pattern !== "plain" && <SwatchPicker label={L("สีลาย", "Pattern colour", "柄の色")} value={side.patternColor} onChange={c => set({ patternColor: c })} />}
       <label className="bd-toggle"><input type="checkbox" checked={side.outline} onChange={e => set({ outline: e.target.checked })} /> {L("ขอบรอบชื่อ-เบอร์", "Keyline round names and numbers", "名前・番号のフチ取り")}</label>
       {side.outline && <SwatchPicker label={L("สีขอบ", "Keyline colour", "フチの色")} value={side.inkOutline} onChange={c => set({ inkOutline: c })} />}
+      {clash.length > 0 && (
+        <p className="ou-warn" role="status" style={{ fontSize: 13, margin: "8px 0 0" }}>
+          ⚠ {clash.includes("body")
+            ? L("สีชื่อ-เบอร์ใกล้กับสีพื้นมาก จะอ่านแทบไม่ออก — เปลี่ยนสี หรือเปิดขอบรอบชื่อ-เบอร์สีที่ตัดกัน", "The name and number colour is too close to the body colour to read — change it, or add a keyline that stands out", "名前・番号の色が地色に近く、ほとんど読めません。色を変えるか、目立つ色のフチ取りを付けてください")
+            : L("สีชื่อ-เบอร์ใกล้กับสีลาย ตรงที่ทับลายจะมองไม่เห็น — เปลี่ยนสี หรือเปิดขอบรอบชื่อ-เบอร์สีที่ตัดกับลาย", "The name and number colour is too close to the pattern colour: where they cross it they disappear — change it, or add a keyline that stands out", "名前・番号の色が柄の色に近く、柄に重なる部分が見えなくなります。色を変えるか、柄と区別できるフチ取りを付けてください")}
+        </p>
+      )}
       <label className="bd-toggle"><input type="checkbox" checked={side.ribs} onChange={e => set({ ribs: e.target.checked })} /> {L("แถบกุ้น คอ · วงแขน · ชายล่าง", "Rib bands: neck · armholes · hem", "リブ：衿・袖ぐり・裾")}</label>
       {side.ribs && (
         <div className="bd-pickers three">

@@ -11,6 +11,7 @@ import { apiFetch } from "../../../lib/api";
 import { variantQuery } from "../../../lib/garment-options";
 import { isOpen } from "../../../lib/launch";
 import { DRAFT_KEY, emptyQty } from "../../../lib/order-draft";
+import { inkClashes } from "../../../lib/ink-contrast";
 import {
   kitById, isBottom, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber,
   kitParts, kitFabrics, kitTrims, kitPriceGarment, PATTERNS, FONTS, FABRIC_OPTIONS, QUICK_SWATCHES, SIZES,
@@ -416,6 +417,15 @@ function Studio({ kit }: { kit: Kit }) {
                   {snapped && <p className="ax-psub" style={{ marginTop: 8, fontSize: 13 }}>{snapped.typed.toUpperCase()} ไม่อยู่ในชาร์ตโรงงาน · ใช้สีที่ใกล้ที่สุด {swatchLabel(snapped.to)}</p>}
                   {hexOffChart && !snapped && <p className="ax-err" style={{ marginTop: 8 }}>สีนี้ไม่อยู่ในชาร์ตโรงงาน · เลือกสีจากชาร์ต หรือพิมพ์ HEX ใหม่เพื่อใช้สีที่ใกล้ที่สุด</p>}
                 </div>
+                {/* a number the colour of the body or the stripes it crosses can't be read */}
+                {["body", "stripe", "number"].includes(part.id) && (() => {
+                  const clash = inkClashes({ body: act.colors.body, pattern: act.pattern, patternColor: act.colors.stripe, ink: act.colors.number });
+                  return clash.length > 0 && (
+                    <p className="ax-err" role="status" style={{ margin: 0 }}>
+                      {clash.includes("body") ? "สีชื่อ-เบอร์ใกล้กับสีตัวเสื้อมาก จะอ่านแทบไม่ออก — เปลี่ยนสีชื่อ-เบอร์หรือสีตัวเสื้อ" : "สีชื่อ-เบอร์ใกล้กับสีลาย ตรงที่ทับลายจะมองไม่เห็น — เปลี่ยนสีชื่อ-เบอร์หรือสีลาย"}
+                    </p>
+                  );
+                })()}
                 {part.id === "trim" && (
                   <div>
                     <span className="ax-label">ตำแหน่งขลิบ</span>
