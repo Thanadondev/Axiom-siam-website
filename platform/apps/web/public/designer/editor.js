@@ -730,7 +730,7 @@ function setTool(name) {
   hint(HINTS[name] || "");
 }
 const HINTS = {
-  select: "ลากเลือก/ย้าย (จับเส้นกึ่งกลางตัวเสื้อ/ขอบชิ้นอื่นให้เอง) · ลูกศร 1 มม. Shift 10 มม. · Ctrl+F/B วางซ้อนหน้า/หลังที่เดิม · Ctrl+2 ล็อก · Ctrl+3 ซ่อน · Ctrl+7 Clip",
+  select: "ลากเลือก/ย้าย (จับเส้นกึ่งกลางตัวเสื้อ/ขอบชิ้นอื่นให้เอง) · ลูกศร 1 มม. Shift 10 มม. · Ctrl+F/B วางซ้อนหน้า/หลังที่เดิม · Ctrl+2 ล็อก · Ctrl+3 ซ่อน · Ctrl+7 Clip · ลากจากไม้บรรทัด = เส้นไกด์ (Ctrl+R ไม้บรรทัด, Ctrl+; ไกด์)",
   node: "เลือกเส้น/รูปที่วาดด้วยปากกา แล้วลากจุด (◯) และแกน (▫) เพื่อดัด",
   pen: "คลิกวางจุด · คลิกค้างแล้วลาก = จุดโค้ง · คลิกจุดแรกเพื่อปิด · Enter จบ · Esc ยกเลิก",
   rect: "ลากเพื่อวาดสี่เหลี่ยม", ellipse: "ลากเพื่อวาดวงกลม/วงรี", poly: "ลากเพื่อวาดรูปหลายเหลี่ยม",
@@ -980,6 +980,7 @@ function snapMove(opt) {
   const inSel = o._objects || [];
   const xs = [], ys = [];
   panels.forEach(p => { if (p.angle) ys.push(p.cy); else xs.push(p.cx); });
+  if (guidesShown) userGuides.forEach(q => (q.axis === "x" ? xs : ys).push(q.v));
   userObjects().forEach(u => {
     if (u === o || inSel.includes(u) || u.visible === false) return;
     const b = u.getBoundingRect(true, true);
@@ -999,6 +1000,7 @@ function snapMove(opt) {
 }
 canvas ? null : 0;
 function bindExtra() {
+  setTimeout(bindRulers, 0);
   canvas.on("mouse:up", () => { if (curTool === "pen") penDragging = false; });
   canvas.on("object:moving", opt => snapMove(opt));
   canvas.on("mouse:up", () => { if (guides.length) { guides = []; canvas.requestRenderAll(); } });
@@ -1565,6 +1567,145 @@ function applyTypedCmyk() {
 $("#ckApply").onclick = applyTypedCmyk;
 ["ckC", "ckM", "ckY", "ckK"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); applyTypedCmyk(); } }));
 
+/* ---------- rulers (mm) and guides, as Illustrator's ----------
+   Each garment piece has its own 0 at its top-left, as the print measures (the
+   Transform panel's X/Y). Guides are dragged out of a ruler, moved by dragging
+   them on the canvas, dropped back on a ruler to delete; objects snap to them. */
+let userGuides = [];            // { axis: "x" | "y", v: canvas units }
+let guidesShown = true, rulerMouse = null;
+const RULER = 18;
+/** a piece's mm along a canvas axis: [canvas units → mm] as a + b·v, and the canvas range it covers */
+function pieceAxis(p, axis) {
+  const m = panelToMm(p);
+  const at = v => axis === "x" ? applyM(m, v, p.cy) : applyM(m, p.cx, v);
+  const p0 = at(0), p1 = at(1);
+  // the mm axis that changes along this canvas axis (a piece laid on its side swaps them)
+  const k = Math.abs(p1[0] - p0[0]) > Math.abs(p1[1] - p0[1]) ? 0 : 1;
+  return { a: p0[k], b: p1[k] - p0[k], from: axis === "x" ? p.x : p.y, to: axis === "x" ? p.x + p.w : p.y + p.h };
+}
+function drawRuler(el, axis) {
+  const stageR = stage.getBoundingClientRect();
+  const len = axis === "x" ? stageR.width - RULER : stageR.height - RULER;
+  const dpr = window.devicePixelRatio || 1;
+  if (el.width !== Math.round(len * dpr) || el.height !== Math.round(RULER * dpr)) {
+    el.width = Math.round((axis === "x" ? len : RULER) * dpr); el.height = Math.round((axis === "x" ? RULER : len) * dpr);
+    el.style.width = (axis === "x" ? len : RULER) + "px"; el.style.height = (axis === "x" ? RULER : len) + "px";
+  }
+  const g = el.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (axis === "y") { g.translate(RULER, 0); g.rotate(Math.PI / 2); } // draw the left one as a top one, turned
+  g.fillStyle = "#141619"; g.fillRect(0, 0, len, RULER);
+  const vpt = canvas.viewportTransform, k = axis === "x" ? vpt[0] : vpt[3], off = (axis === "x" ? vpt[4] : vpt[5]) - RULER;
+  const toScreen = v => v * k + off;
+  // which pieces: across, every piece side by side; down, the one under the mouse (else the first)
+  let ps = panels.filter(p => p.w && p.h);
+  if (axis === "y") { const near = rulerMouse ? ps.find(p => rulerMouse.x >= p.x && rulerMouse.x <= p.x + p.w) : null; ps = [near || ps[0]].filter(Boolean); }
+  const pxPerMm = k / MM_PER_UNIT;
+  const step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => s * pxPerMm >= 42) || 1000;
+  const minor = step / (step % 5 === 0 ? 5 : 2);
+  g.font = "9px Sora, sans-serif"; g.textBaseline = "top";
+  for (const p of ps) {
+    const ax = pieceAxis(p, axis);
+    const s0 = toScreen(ax.from), s1 = toScreen(ax.to);
+    g.fillStyle = "#1d2024"; g.fillRect(Math.min(s0, s1), 0, Math.abs(s1 - s0), RULER);
+    const mm0 = ax.a + ax.b * ax.from, mm1 = ax.a + ax.b * ax.to;
+    const lo = Math.min(mm0, mm1), hi = Math.max(mm0, mm1);
+    for (let mm = Math.ceil(lo / minor) * minor; mm <= hi + 1e-9; mm += minor) {
+      const x = toScreen((mm - ax.a) / ax.b);
+      if (x < -20 || x > len + 20) continue;
+      const major = Math.abs(mm / step - Math.round(mm / step)) < 1e-6;
+      g.strokeStyle = major ? "#7d8187" : "#4a4e54"; g.beginPath(); g.moveTo(x + 0.5, major ? 6 : 12); g.lineTo(x + 0.5, RULER); g.stroke();
+      if (major) { g.fillStyle = "#a3a6ab"; g.fillText(String(Math.round(mm)), x + 2, 1); }
+    }
+  }
+  // guides and the mouse, marked on the ruler
+  g.fillStyle = "#22d3ee";
+  userGuides.filter(q => q.axis === axis).forEach(q => { const x = toScreen(q.v); g.fillRect(x - 1, 0, 2, RULER); });
+  if (rulerMouse) { g.fillStyle = "#f26522"; const x = toScreen(axis === "x" ? rulerMouse.x : rulerMouse.y); g.fillRect(x - 0.5, 0, 1, RULER); }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+function drawRulers() {
+  if (document.documentElement.classList.contains("norulers") || isPreview()) return;
+  const rx = document.getElementById("rulerX"), ry = document.getElementById("rulerY");
+  if (rx && ry) { drawRuler(rx, "x"); drawRuler(ry, "y"); }
+}
+/** a guide's position in mm on the piece under it, for its label */
+function guideMm(q) {
+  const p = panels.find(pp => q.axis === "x" ? q.v >= pp.x && q.v <= pp.x + pp.w : q.v >= pp.y && q.v <= pp.y + pp.h) || panels[0];
+  if (!p) return "";
+  const ax = pieceAxis(p, q.axis);
+  return (Math.round((ax.a + ax.b * q.v) * 10) / 10) + " มม.";
+}
+/** canvas units under a screen point */
+function canvasAt(clientX, clientY) {
+  const r = canvas.upperCanvasEl.getBoundingClientRect(), vpt = canvas.viewportTransform;
+  return { x: (clientX - r.left - vpt[4]) / vpt[0], y: (clientY - r.top - vpt[5]) / vpt[3] };
+}
+/** a guide on whole mm of its piece (as Illustrator's rulers snap) */
+function snapGuide(q) {
+  const p = panels.find(pp => q.axis === "x" ? q.v >= pp.x && q.v <= pp.x + pp.w : q.v >= pp.y && q.v <= pp.y + pp.h);
+  if (!p) return;
+  // the piece's centre line first (where a number or a name goes), else whole mm
+  const mid = q.axis === "x" ? p.cx : p.cy;
+  if (Math.abs(q.v - mid) < 6 / canvas.getZoom()) { q.v = mid; return; }
+  const ax = pieceAxis(p, q.axis), mm = Math.round(ax.a + ax.b * q.v);
+  q.v = (mm - ax.a) / ax.b;
+}
+let guideDrag = null;
+function startGuideDrag(q, isNew) {
+  guideDrag = { q, isNew };
+  canvas.selection = false;
+  const move = e => {
+    const at = canvasAt(e.clientX, e.clientY);
+    q.v = q.axis === "x" ? at.x : at.y; snapGuide(q);
+    rulerMouse = at; canvas.requestRenderAll();
+  };
+  const up = e => {
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+    canvas.selection = curTool === "select";
+    // let go over a ruler: no guide
+    const r = stage.getBoundingClientRect(), onRuler = e.clientX - r.left < RULER || e.clientY - r.top < RULER;
+    if (onRuler) userGuides = userGuides.filter(g => g !== q);
+    else if (isNew) userGuides.push(q);
+    guideDrag = null; canvas.requestRenderAll();
+    if (!onRuler) toast(`ไกด์ ${q.axis === "x" ? "แนวตั้ง" : "แนวนอน"} ที่ ${guideMm(q)}`, "info");
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+}
+function bindRulers() {
+  const rx = document.getElementById("rulerX"), ry = document.getElementById("rulerY"), corner = document.getElementById("rulerCorner");
+  if (!rx || !ry) return;
+  // out of the top ruler: a horizontal guide; out of the left one: a vertical guide
+  rx.addEventListener("pointerdown", e => { e.preventDefault(); const at = canvasAt(e.clientX, e.clientY); startGuideDrag({ axis: "y", v: at.y }, true); });
+  ry.addEventListener("pointerdown", e => { e.preventDefault(); const at = canvasAt(e.clientX, e.clientY); startGuideDrag({ axis: "x", v: at.x }, true); });
+  corner.addEventListener("dblclick", () => { userGuides = []; canvas.requestRenderAll(); toast("ลบไกด์ทั้งหมดแล้ว"); });
+  // a guide on the canvas, picked up where nothing else is
+  canvas.on("mouse:down:before", opt => {
+    if (curTool !== "select" || !guidesShown || !userGuides.length || spaceDown) return;
+    const p = canvas.getPointer(opt.e), tol = 4 / canvas.getZoom();
+    if (canvas.findTarget(opt.e)) return;
+    const q = userGuides.find(g => Math.abs((g.axis === "x" ? p.x : p.y) - g.v) < tol);
+    if (q) { startGuideDrag(q, false); }
+  });
+  canvas.on("mouse:move", opt => { rulerMouse = canvas.getPointer(opt.e); drawRulers(); });
+  canvas.on("after:render", () => {
+    drawRulers();
+    if (!guidesShown || !userGuides.length) return;
+    const ctx = canvas.contextTop, vpt = canvas.viewportTransform, z = canvas.getZoom();
+    ctx.save(); ctx.setTransform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
+    ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 1 / z;
+    const far = 1e5;
+    userGuides.forEach(q => { ctx.beginPath(); if (q.axis === "x") { ctx.moveTo(q.v, -far); ctx.lineTo(q.v, far); } else { ctx.moveTo(-far, q.v); ctx.lineTo(far, q.v); } ctx.stroke(); });
+    if (guideDrag) {
+      const q = guideDrag.q; ctx.fillStyle = "#22d3ee"; ctx.font = `${11 / z}px Sora, sans-serif`;
+      const lbl = guideMm(q);
+      if (q.axis === "x") ctx.fillText(lbl, q.v + 4 / z, (rulerMouse ? rulerMouse.y : 0) - 6 / z); else ctx.fillText(lbl, (rulerMouse ? rulerMouse.x : 0) + 6 / z, q.v - 4 / z);
+    }
+    ctx.restore();
+  });
+  // the guides' canvas layer is cleared with the top context, which Fabric does on each render
+  drawRulers();
+}
+
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
 function moveBy(o, dx, dy) {
@@ -1750,6 +1891,7 @@ function getDoc() {
     // names only — never the font bytes (licence), so the reader can warn if missing
     importedFonts: [...importedFonts.keys()],
     customInks,
+    guides: userGuides,
     objects: userObjects().map(o => o.toObject(ARC_PROPS)),
   };
 }
@@ -1776,6 +1918,7 @@ function openDoc(doc) {
   }
   try {
     customInks = { ...(doc.customInks || {}) };
+    userGuides = Array.isArray(doc.guides) ? doc.guides.filter(q => q && (q.axis === "x" || q.axis === "y") && isFinite(q.v)) : [];
     userObjects().forEach(o => canvas.remove(o));
     if (doc.style) { curStyle = doc.style; const ss = document.getElementById("styleSel"); if (ss) ss.value = String(curStyle); }
     if (doc.size) { TPL_SIZE = doc.size; const zz = document.getElementById("sizeSel"); if (zz) zz.value = TPL_SIZE; }
@@ -2281,6 +2424,8 @@ document.addEventListener("keydown", e => {
     const a = e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : (e.shiftKey ? "back" : "backward");
     const b = document.querySelector(`[data-arrange="${a}"]`); if (b) b.click(); return;
   }
+  if (ctrl && k === "r") { e.preventDefault(); document.documentElement.classList.toggle("norulers"); canvas.requestRenderAll(); return; }
+  if (ctrl && (e.code === "Semicolon")) { e.preventDefault(); guidesShown = !guidesShown; canvas.requestRenderAll(); toast(guidesShown ? "แสดงไกด์" : "ซ่อนไกด์"); return; }
   if (ctrl && k === "f") { e.preventDefault(); pasteInPlace("front"); return; }
   if (ctrl && k === "b") { e.preventDefault(); pasteInPlace("back"); return; }
   if (ctrl && e.shiftKey && k === "v") { e.preventDefault(); pasteInPlace("top"); return; }

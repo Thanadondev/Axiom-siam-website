@@ -71,6 +71,12 @@
   .railsep{width:26px;height:1px;background:var(--line2);margin:4px 0}
 
   /* canvas center */
+  .ruler{position:absolute;z-index:5;background:#141619;cursor:default}
+  #rulerX{left:18px;top:0;height:18px;cursor:s-resize}
+  #rulerY{left:0;top:18px;width:18px;cursor:e-resize}
+  #rulerCorner{left:0;top:0;width:18px;height:18px;border-right:1px solid #2a2d31;border-bottom:1px solid #2a2d31;cursor:pointer}
+  html.norulers .ruler{display:none}
+  html.previewmode .ruler{display:none}
   .stage{flex:1;position:relative;overflow:hidden;background:
     repeating-conic-gradient(#131417 0% 25%, #17191c 0% 50%) 50%/22px 22px}
   #c{position:absolute;top:0;left:0}
@@ -240,6 +246,9 @@
     </div>
 
     <div class="stage" id="stage">
+      <canvas id="rulerX" class="ruler" title="ไม้บรรทัด (มม. จากขอบตัวเสื้อ) — ลากลงมาเพื่อวางเส้นไกด์แนวนอน"></canvas>
+      <canvas id="rulerY" class="ruler" title="ไม้บรรทัด (มม. จากขอบตัวเสื้อ) — ลากออกมาเพื่อวางเส้นไกด์แนวตั้ง"></canvas>
+      <div id="rulerCorner" class="ruler" title="Ctrl+R ซ่อน/แสดงไม้บรรทัด · Ctrl+; ซ่อน/แสดงไกด์ · ดับเบิลคลิก = ลบไกด์ทั้งหมด"></div>
       <canvas id="c"></canvas>
       <div class="hint" id="hint"></div>
     </div>
