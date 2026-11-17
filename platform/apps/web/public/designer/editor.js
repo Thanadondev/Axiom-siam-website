@@ -118,6 +118,12 @@ $("#right").innerHTML = `
           <input type="range" id="txBend" min="-100" max="100" step="1" value="50" style="flex:1">
           <span id="txBendV" style="min-width:34px;font-size:11px;color:var(--muted)">50</span>
         </div>
+        <div class="row" id="txPathRow" style="display:none;align-items:center;gap:6px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ตามเส้น</label>
+          <input type="range" id="txPathOff" min="-100" max="100" step="1" value="0" style="flex:1" title="เลื่อนข้อความไปตามเส้น (0 = กึ่งกลาง)">
+          <button class="mini" id="txPathFlip" title="ข้อความไปอีกด้านของเส้น (Flip)" style="flex:none;min-width:0;padding:5px 7px">⇅</button>
+          <button class="mini" id="txPathOut" title="ถอดข้อความออกจากเส้น (ได้ข้อความกับเส้นคืน)" style="flex:none;min-width:0;padding:5px 7px">✂</button>
+        </div>
         <div class="row" id="txEditRow" style="display:none;align-items:center;gap:8px;margin-bottom:4px">
           <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ข้อความ</label>
           <input type="text" id="txText" placeholder="แก้ข้อความโค้ง" style="flex:1">
@@ -209,6 +215,9 @@ $("#right").innerHTML = `
         <button class="mini" data-pf="minus" title="ลบด้านหน้า (Minus Front) — ชิ้นล่างสุดถูกเจาะด้วยชิ้นที่อยู่บน">⊖ เจาะ</button>
         <button class="mini" data-pf="intersect" title="เหลือส่วนที่ซ้อนกัน (Intersect)">⊗ ซ้อน</button>
         <button class="mini" data-pf="exclude" title="ตัดส่วนที่ซ้อนกันออก (Exclude)">⊘ ตัดซ้อน</button>
+      </div>
+      <div class="btnrow" style="margin-top:6px">
+        <button class="mini" id="btnTextPath" title="Type on a Path: เลือกข้อความ 1 ชิ้น + เส้นที่วาด (ปากกา/เส้น/วงกลม) 1 ชิ้น — ข้อความจะวิ่งตามเส้น">〰 ข้อความตามเส้น</button>
       </div>
       <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">เลือก 2 ชิ้นขึ้นไป (Shift+คลิก) · ข้อความจะถูกแปลงเป็นเส้นก่อน</div>
     </div>
@@ -1159,6 +1168,8 @@ function syncProps() {
       set("txWarp", w ? w.style : "none");
       set("txBend", w ? w.bend : 50); lbl("txBendV", w ? w.bend : 50);
       const br = document.getElementById("txBendRow"); if (br) br.style.display = w ? "flex" : "none";
+      const pr = document.getElementById("txPathRow"); if (pr) pr.style.display = m.onPath ? "flex" : "none";
+      if (m.onPath) set("txPathOff", m.onPath.shift || 0);
       set("txText", m.text);
       const er = document.getElementById("txEditRow");
       if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
@@ -2794,6 +2805,8 @@ function arcMetaOf(o) {
 function rebuildArc(o, patch) {
   // a warp still being built: the next edit goes on top of it, not on the old text
   const meta = { ...arcMetaOf(o), ...patch };
+  if (patch.curve || (patch.warp && patch.warp.style !== "none")) meta.onPath = null;
+  if (meta.onPath) { rebuildOnPath(o, meta); return o; }
   if (meta.warp && meta.warp.style !== "none" && meta.warp.bend) { rebuildWarp(o, { ...meta, curve: 0 }); return o; }
   // the rebuilt object always has a centre origin; anchor it on the old centre
   // so straight ⇄ curved never makes the text jump half its width
@@ -2875,6 +2888,117 @@ async function rebuildWarp(o, meta) {
   fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
 }
 
+/* ---------- Type on a Path, as Illustrator's ----------
+   The letters sit on the path (drawn with the pen, a line, a circle…), each
+   turned with it, centred on it unless shifted; as the curved text, a group of
+   letters with the text, font and path in arcMeta, so it is edited, saved and
+   printed the same way. The path itself goes into arcMeta (unpainted, as
+   Illustrator makes it) and comes back when the text is taken off it. */
+function pathOfObject(o) {
+  // its outline in canvas units, as one paper.js path
+  const keep = o.clipPath; o.clipPath = null;
+  let svg; try { svg = o.toSVG(); } finally { o.clipPath = keep; }
+  const root = paper.project.importSVG(`<svg xmlns="http://www.w3.org/2000/svg">${svg}</svg>`, { insert: false, expandShapes: true });
+  const c = root.getItems({ match: x => x instanceof paper.Path })[0];
+  if (!c) return null;
+  const p = c.clone({ insert: false }); p.applyMatrix = true;
+  if (c.parent) p.transform(c.parent.globalMatrix);
+  return p;
+}
+function buildOnPathGroup(meta, at) {
+  const { text, fontSize, fontFamily, fontWeight, fontStyle, charSpacing, fill, stroke, strokeWidth, paintFirst } = meta;
+  const path = new paper.Path({ pathData: meta.onPath.d, insert: false });
+  if (meta.onPath.flip) path.reverse();
+  const L = path.length;
+  const chars = [...String(text || " ")];
+  const common = { fontSize, fontFamily, fontWeight, fontStyle, fill, stroke, strokeWidth, paintFirst, strokeUniform: true, originX: "center", originY: "center", objectCaching: false };
+  const widths = chars.map(ch => new fabric.Text(ch === " " ? " " : ch, common).width + (charSpacing || 0) / 1000 * fontSize);
+  const total = widths.reduce((a, b) => a + b, 0);
+  let s = (L - total) / 2 + ((meta.onPath.shift || 0) / 100) * L / 2;
+  const lift = fontSize * 0.32; // the letters' baseline on the path, not their middle
+  const objs = chars.map((ch, i) => {
+    const mid = s + widths[i] / 2; s += widths[i];
+    // past an end: straight on along the end's direction
+    const at0 = Math.min(Math.max(mid, 0), L);
+    const pt = path.getPointAt(at0), tan = path.getTangentAt(at0) || new paper.Point(1, 0);
+    const over = mid - at0;
+    const x = pt.x + tan.x * over, y = pt.y + tan.y * over;
+    const ang = Math.atan2(tan.y, tan.x);
+    return new fabric.Text(ch === " " ? " " : ch, { ...common, charSpacing: 0, left: x + Math.sin(ang) * lift, top: y - Math.cos(ang) * lift, angle: ang * 180 / Math.PI });
+  });
+  const g = new fabric.Group(objs, { objectCaching: false });
+  // where it was put: the path's place, moved with the text since
+  if (at) g.setPositionByOrigin(new fabric.Point(at.left, at.top), "center", "center");
+  g.arcMeta = { ...meta };
+  return g;
+}
+let pathSeq = 0;
+async function rebuildOnPath(o, meta) {
+  const my = ++pathSeq, wasActive = canvas.getActiveObject() === o;
+  const built = o.arcMeta && o.arcMeta.onPath ? o.arcMeta : null; // what is on the canvas now
+  o._warpPending = meta;
+  try { await loadPaper(); } catch (e) { o._warpPending = null; toast("โหลดเครื่องมือไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  if (my !== pathSeq || !canvas.getObjects().includes(o)) return;
+  o._warpPending = null;
+  // the path goes wherever the text has been moved since it was laid on it
+  let d = meta.onPath.d;
+  if (built) {
+    const c = o.getCenterPoint(), oc = buildOnPathGroup(built, null).getCenterPoint();
+    const pp = new paper.Path({ pathData: built.onPath.d, insert: false }); pp.translate(new paper.Point(c.x - oc.x, c.y - oc.y));
+    d = pp.pathData;
+  }
+  const m2 = { ...meta, onPath: { ...meta.onPath, d, moved: [0, 0] } };
+  const next = buildOnPathGroup(m2, null);
+  next.set({ opacity: o.opacity ?? 1, name: o.name });
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(next);
+  if (idx >= 0) next.moveTo(idx);
+  next.setCoords(); if (clipOn) applyClip(next);
+  if (wasActive) canvas.setActiveObject(next);
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+async function textOnPath() {
+  const sel = canvas.getActiveObject();
+  const objs = sel && sel.type === "activeSelection" ? sel._objects.slice() : [];
+  const t = objs.find(o => isText(o) || (isArc(o) && !arcMetaOf(o).warp?.bend));
+  const p = objs.find(o => o !== t && !isTextish(o) && o.type !== "image" && o.type !== "group");
+  if (objs.length !== 2 || !t || !p) { toast("เลือกข้อความ 1 ชิ้น กับเส้น/รูปทรง 1 ชิ้น (Shift+คลิก)", "info"); return; }
+  if (t.rosterTag) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ วางตามเส้นไม่ได้", "warn"); return; }
+  try { await loadPaper(); } catch (e) { toast("โหลดเครื่องมือไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  canvas.discardActiveObject();
+  const path = pathOfObject(p);
+  if (!path || path.length < 1) { toast("อ่านเส้นนี้ไม่ได้", "warn"); return; }
+  const meta = { ...arcMetaOf(t), curve: 0, warp: { style: "none", bend: 50 }, onPath: { d: path.pathData, shift: 0, flip: false, from: p.toObject(["name"]) } };
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  const g = buildOnPathGroup(meta, null);
+  const idx = canvas.getObjects().indexOf(t);
+  canvas.remove(t); canvas.remove(p); canvas.add(g); if (idx >= 0) g.moveTo(Math.min(idx, canvas.getObjects().length - 1));
+  g.setCoords(); if (clipOn) applyClip(g);
+  canvas.setActiveObject(g); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast("ข้อความวิ่งตามเส้นแล้ว — เลื่อน/กลับด้าน/ถอดออก ได้ในแผงข้อความ", "ok");
+}
+/** the text off its path: a plain text, and the path back where the text has gone */
+async function textOffPath(o) {
+  const m = o.arcMeta; if (!m || !m.onPath) return;
+  await loadPaper();
+  const now = buildOnPathGroup(m, null);
+  const dx = o.getCenterPoint().x - now.getCenterPoint().x, dy = o.getCenterPoint().y - now.getCenterPoint().y;
+  const d = new paper.Path({ pathData: m.onPath.d, insert: false }); d.translate(new paper.Point(dx, dy));
+  const back = await new Promise(ok => fabric.util.enlivenObjects([m.onPath.from], objs => ok(objs[0])));
+  const path = back && back.type === "path" ? back : new fabric.Path(d.pathData, { fill: "", stroke: "#94a3b8", strokeWidth: 1 });
+  if (back) { const c = back.getCenterPoint(); back.setPositionByOrigin(new fabric.Point(c.x + dx, c.y + dy), "center", "center"); }
+  const c = o.getCenterPoint();
+  const meta = { ...m, onPath: null, curve: 0 };
+  const t = buildArcGroup(meta, { left: c.x, top: c.y });
+  t.set({ opacity: o.opacity ?? 1, name: o.name });
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(path); canvas.add(t); if (idx >= 0) { path.moveTo(idx); t.moveTo(idx + 1); }
+  [path, t].forEach(x => { x.setCoords(); if (clipOn) applyClip(x); });
+  canvas.setActiveObject(t); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+$("#btnTextPath").onclick = () => textOnPath();
+
 function bindTextPanel() {
   const g = id => document.getElementById(id);
   const active = () => canvas.getActiveObject();
@@ -2910,6 +3034,10 @@ function bindTextPanel() {
   if (g("txArc")) g("txArc").oninput = e => { const v = +e.target.value; const l = g("txArcV"); if (l) l.textContent = v; };
   if (g("txArc")) g("txArc").onchange = e => apply({ curve: +e.target.value });
   if (g("txText")) g("txText").onchange = e => apply({ text: e.target.value });
+  // on a path: shift along it, the other side, or off it
+  if (g("txPathOff")) g("txPathOff").onchange = e => { const o = active(); const m = o && arcMetaOf(o); if (m && m.onPath) apply({ onPath: { ...m.onPath, shift: +e.target.value } }); };
+  if (g("txPathFlip")) g("txPathFlip").onclick = () => { const o = active(); const m = o && arcMetaOf(o); if (m && m.onPath) apply({ onPath: { ...m.onPath, flip: !m.onPath.flip } }); };
+  if (g("txPathOut")) g("txPathOut").onclick = () => { const o = active(); if (o && arcMetaOf(o).onPath) textOffPath(o); };
   // a warp and the circle curve are one or the other
   if (g("txWarp")) g("txWarp").onchange = e => apply({ warp: { style: e.target.value, bend: +g("txBend").value || 50 }, curve: 0 });
   if (g("txBend")) g("txBend").oninput = e => { const l = g("txBendV"); if (l) l.textContent = e.target.value; };
