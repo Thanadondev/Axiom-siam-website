@@ -10,7 +10,8 @@
  * build if these lists stop matching, so the drift can't reach a customer.
  */
 
-export const SIZES = ["S", "M", "L", "XL"] as const;
+// the designer draws on the bib pattern (CB-005), so XXL (3L) too
+export const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
 export type SizeId = (typeof SIZES)[number];
 
 export const TRIMS = [

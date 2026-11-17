@@ -140,8 +140,8 @@ function Checkout() {
   const phase: CheckoutPhase = paid ? "sent" : order ? "pack" : "build";
   // a design from the advanced designer has no 3D kit: show its own preview instead
   const isKit = isKitDesign;
-  // the sizes on offer: the bib kit also in XXL (3L); an advanced design S–XL
-  const sizes = design?.stateJson?.kind === "kit-studio" ? kitSizes(kit) : JERSEY_SIZES;
+  // the sizes on offer: the bib kit and the advanced designer's bibs also in XXL (3L)
+  const sizes = design?.stateJson?.kind === "kit-studio" ? kitSizes(kit) : designerBib ? SIZES : JERSEY_SIZES;
   const backHref = isKit ? `/shop/${kit.id}` : `/design?design=${designId}`;
   const addr = addresses?.find(a => a.id === addrId);
 

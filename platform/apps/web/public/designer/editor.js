@@ -339,15 +339,24 @@ function computeLayout() {
     panels.push({ id: it[0], side: it[1], tpl: it[2], group: g.label, w: gW, h: gH, x, y, cx: x + gW / 2, cy: y + gH / 2, angle });
   }));
 }
-const SVG_HEAD = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 470" width="400" height="470">`;
+// the pieces sit centred on (200, 235) in a 400×470 frame; one wider than that (XXL, with its cut line)
+// widens the frame evenly, so the centre stays put and fabric's group cache doesn't cut the edges off
+function svgFrame(bodyD) {
+  const bb = pathBBox(bodyD), m = cutMm / MM_PER_UNIT + 2;
+  const hw = bb ? Math.max(200, 200 - bb.x + m, bb.x + bb.w - 200 + m) : 200;
+  const hh = bb ? Math.max(235, 235 - bb.y + m, bb.y + bb.h - 235 + m) : 235;
+  return { x: 200 - hw, y: 235 - hh, w: 2 * hw, h: 2 * hh };
+}
+const svgHead = f => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" width="${f.w}" height="${f.h}">`;
 // BODY layer — the shirt fill/pattern (sits BELOW user objects; also used as the clip shape)
 function garmentSVG(tpl) {
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
   const bodyD = sz ? (tpl === "front" ? sz.front : sz.back) : TPL[tpl];
   const cid = "clip" + Math.random().toString(36).slice(2);
   const base = `<path d="${bodyD}" fill="${bodyColor}"/>`;
-  const pat = bodyPatternSrc ? `<g clip-path="url(#${cid})"><image href="${bodyPatternSrc}" xlink:href="${bodyPatternSrc}" x="0" y="0" width="400" height="470" preserveAspectRatio="xMidYMid slice"/></g>` : "";
-  return `${SVG_HEAD}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs>${base}${pat}</svg>`;
+  const f = svgFrame(bodyD);
+  const pat = bodyPatternSrc ? `<g clip-path="url(#${cid})"><image href="${bodyPatternSrc}" xlink:href="${bodyPatternSrc}" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" preserveAspectRatio="xMidYMid slice"/></g>` : "";
+  return `${svgHead(f)}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs>${base}${pat}</svg>`;
 }
 // OVERLAY layer — ขลิบ (trim/hem) + cut outline + size mark; rendered ABOVE user objects so ขลิบ ไม่โดนลายบัง
 function garmentOverlaySVG(tpl) {
@@ -359,9 +368,12 @@ function garmentOverlaySVG(tpl) {
   const hasNeck = curTrim !== "none";
   const hasArm = curTrim === "neckarm" || curTrim === "full";
   const hasHem = curTrim === "full";
-  const parts = (hasNeck || hasArm) ? splitTrim(trimD) : { neck: "", arms: "" };
-  const trimNeck = hasNeck && parts.neck ? `<path d="${parts.neck}" fill="${trimColor}"/>` : "";
-  const trimArm = hasArm && parts.arms ? `<path d="${parts.arms}" fill="${trimColor}"/>` : "";
+  // S–XL: the trim drawn as filled shapes; XXL: strokes along the cut line {zone, d, w}, clipped to it like the print file
+  const strokes = Array.isArray(trimD) ? trimD : null;
+  const band = z => strokes.filter(t => t.zone === z).map(t => `<path d="${t.d}" fill="none" stroke="${trimColor}" stroke-width="${t.w}" stroke-linejoin="round"/>`).join("");
+  const parts = strokes || !(hasNeck || hasArm) ? { neck: "", arms: "" } : splitTrim(trimD);
+  const trimNeck = !hasNeck ? "" : strokes ? band("neck") : parts.neck ? `<path d="${parts.neck}" fill="${trimColor}"/>` : "";
+  const trimArm = !hasArm ? "" : strokes ? band("arm") : parts.arms ? `<path d="${parts.arms}" fill="${trimColor}"/>` : "";
   const trimSVG = trimNeck + trimArm;
   const hemSVG = !hasHem ? "" : Array.isArray(hemD)
     ? `<rect x="${hemD[0]}" y="${hemD[1]}" width="${hemD[2]}" height="${hemD[3]}" fill="${trimColor}"/>`
@@ -376,7 +388,7 @@ function garmentOverlaySVG(tpl) {
     const b2 = `x="${tx}" y="${ty}" font-family="Arial, sans-serif" font-size="6" font-weight="700" text-anchor="end"`;
     sizeLbl = `<text ${b2} fill="none" stroke="#000000" stroke-width="1.2" stroke-linejoin="round">${TPL_SIZE}</text><text ${b2} fill="#ffffff">${TPL_SIZE}</text>`;
   }
-  return `${SVG_HEAD}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs><g clip-path="url(#${cid})">${trimSVG}${hemSVG}</g>${outline}${cut}${sizeLbl}</svg>`;
+  return `${svgHead(svgFrame(bodyD))}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs><g clip-path="url(#${cid})">${trimSVG}${hemSVG}</g>${outline}${cut}${sizeLbl}</svg>`;
 }
 function placeGarment(p) {
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
@@ -2032,7 +2044,7 @@ function renderWizTable(body) {
   const rows = wizRows.map((r, i) => `<tr>
     <td style="padding:2px"><input data-wr="${i}" data-wf="name" value="${wizEsc(r.name)}" placeholder="ชื่อ" style="width:100%"></td>
     <td style="padding:2px;width:60px"><input data-wr="${i}" data-wf="number" value="${wizEsc(r.number)}" placeholder="เบอร์" style="width:100%"></td>
-    <td style="padding:2px;width:60px"><select data-wr="${i}" data-wf="size" style="width:100%">${["S", "M", "L", "XL"].map(s => `<option ${(r.size || TPL_SIZE) === s ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+    <td style="padding:2px;width:60px"><select data-wr="${i}" data-wf="size" style="width:100%">${Object.keys(window.AXIOM_SIZES || { S: 1, M: 1, L: 1, XL: 1 }).map(s => `<option ${(r.size || TPL_SIZE) === s ? "selected" : ""}>${s}</option>`).join("")}</select></td>
     <td style="padding:2px;width:26px"><button class="mini" data-wdel="${i}" style="min-width:24px;padding:4px">✕</button></td></tr>`).join("");
   body.innerHTML = `<p style="font-size:12.5px;color:var(--muted);margin-bottom:8px">ใส่รายชื่อผู้เล่น — พิมพ์เอง หรือวางจาก Excel</p>
     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--muted);font-size:11px"><th style="text-align:left;padding:2px">ชื่อ</th><th style="padding:2px">เบอร์</th><th style="padding:2px">ไซซ์</th><th></th></tr></thead><tbody>${rows}</tbody></table>

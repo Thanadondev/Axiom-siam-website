@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
+import { SIZES } from "../../lib/order-draft";
 import UserMenu from "../../components/UserMenu";
 import "../app.css"; // user-menu styles
 
@@ -106,6 +107,8 @@ function DesignerBridge() {
                 trim: p.trim,
                 reversible: !!p.reversible,
                 roster: Array.isArray(p.roster) ? p.roster : [],
+                // a bib on the CB-005 pattern: S–XL and XXL (3L)
+                sizes: SIZES,
               }));
             } catch { /* private mode / quota — the page still works, just unprefilled */ }
             router.push(`/checkout?design=${res.id}`);
