@@ -2156,6 +2156,53 @@ async function printObj(o, ctx) {
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   return { panel: pi, c: [r4((x0 + x1) / 2), r4((y0 + y1) / 2)], w: r4(x1 - x0), h: r4(y1 - y0), items };
 }
+/* A player's name or number set in the template's size can be wider than the piece
+   (a long name across the back): it shrinks, about its centre, to sit inside the
+   piece's own outline at its height, clear of the trim — as the bib designer fits names.
+   Only for that player's print data; the template keeps its size. */
+// the trim band along the armholes is up to 20 mm wide: names keep 15 mm clear of it (as bibs/designer-print.ts)
+const FIT_MARGIN_MM = 35;
+const outlineCache = new Map();
+/** the piece's outline as points, in sizes.js units (centred on 200, 235) */
+function pieceOutline(tpl) {
+  const key = TPL_SIZE + "|" + tpl;
+  if (outlineCache.has(key)) return outlineCache.get(key);
+  const sz = window.AXIOM_SIZES[TPL_SIZE], d = tpl === "front" ? sz.front : sz.back;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg"), path = document.createElementNS(NS, "path");
+  svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.position = "absolute";
+  path.setAttribute("d", d); svg.appendChild(path); document.body.appendChild(svg);
+  const L = path.getTotalLength(), pts = [];
+  for (let i = 0; i < 900; i++) { const q = path.getPointAtLength(i / 900 * L); pts.push({ x: q.x, y: q.y }); }
+  svg.remove();
+  outlineCache.set(key, pts);
+  return pts;
+}
+/** shrinks a text to fit inside its piece; returns how to put it back */
+function fitInPiece(o) {
+  const p = panels[panelOf(o)];
+  if (!p || p.angle) return () => {};
+  const pts = pieceOutline(p.tpl), m = FIT_MARGIN_MM / MM_PER_UNIT;
+  const br = o.getBoundingRect(true, true);
+  const toX = X => X - p.cx + 200, toY = Y => Y - p.cy + 235;
+  const y0 = toY(br.top), y1 = toY(br.top + br.height), cx = toX(br.left + br.width / 2);
+  // the outer edges across the text's height: the narrowest place it has to pass
+  let left = -Infinity, right = Infinity;
+  for (let y = y0; y <= y1 + 0.01; y += Math.max(1, (y1 - y0) / 8)) {
+    const near = pts.filter(q => Math.abs(q.y - y) < 2.5);
+    const l = near.filter(q => q.x < 200), r = near.filter(q => q.x > 200);
+    if (!l.length || !r.length) continue;
+    left = Math.max(left, Math.min(...l.map(q => q.x)));
+    right = Math.min(right, Math.max(...r.map(q => q.x)));
+  }
+  if (!isFinite(left) || !isFinite(right)) return () => {};
+  const half = Math.min(cx - (left + m), (right - m) - cx);
+  const k = half > 0 ? (2 * half) / br.width : 1;
+  if (k >= 1) return () => {};
+  const c = o.getCenterPoint(), sx = o.scaleX, sy = o.scaleY;
+  o.set({ scaleX: sx * k, scaleY: sy * k }); o.setPositionByOrigin(c, "center", "center"); o.setCoords();
+  return () => { o.set({ scaleX: sx, scaleY: sy }); o.setPositionByOrigin(c, "center", "center"); o.setCoords(); };
+}
 /** the whole order's print data: { spec, warnings } or { error } */
 async function buildPrintSpec(rows, onProgress) {
   if (!window.AXIOM_SIZES || !window.AXIOM_SIZES[TPL_SIZE]) return { error: "ไม่พบแพทเทิร์นของไซซ์นี้" };
@@ -2183,7 +2230,9 @@ async function buildPrintSpec(rows, onProgress) {
         if (o.visible === false || !o.text) continue;
         if (o.initDimensions) o.initDimensions();
         o.setCoords();
-        const po = await printObj(o, ctx);
+        const putBack = fitInPiece(o);
+        let po;
+        try { po = await printObj(o, ctx); } finally { putBack(); }
         if (po.items.length) objs.push(po);
       }
       players.push({ name: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase(), objs });

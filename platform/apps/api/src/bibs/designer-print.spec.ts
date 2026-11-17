@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
-import { buildDesignerJob, compose, designerPiece, designerRows, DesignerPrintSchema, fitToSize, pictures, transformPath, type DesignerPrint } from "./designer-print";
+import { buildDesignerJob, compose, designerPiece, designerRows, DesignerPrintSchema, FIT_MARGIN_MM, fitInPiece, fitToSize, patternBox, pictures, transformPath, type DesignerPrint } from "./designer-print";
 import { piecesFor } from "./template";
 import { parsePath } from "./path";
 
@@ -84,6 +84,35 @@ describe("advanced designer print data", () => {
     // no trim, no bands
     const bare = DesignerPrintSchema.parse(spec({ trim: "none" }));
     expect(designerPiece(bare, pics, "M", "A", "front", piecesFor("M", "A").front, null).filter(s => s.kind === "path" && (s.fill === "#ffffff" || s.stroke === "#ffffff"))).toHaveLength(0);
+  });
+
+  it("lays the pattern picture as the designer does: over its 400 × 470 frame, the same size in cm on every size", () => {
+    const d = DesignerPrintSchema.parse(spec({ pattern: 0 }));
+    const pics = pictures(d);
+    const imgOn = (size: "S" | "XL" | "XXL") => {
+      const p = piecesFor(size, "A").front;
+      const im = designerPiece(d, pics, size, "A", "front", p, null).find(s => s.kind === "image")!;
+      return { im: im as Extract<typeof im, { kind: "image" }>, p };
+    };
+    const s = imgOn("S"), xl = imgOn("XL");
+    // the 8×8 test picture is square: it covers the frame's height (470 units), centred on the piece
+    expect(s.im.h).toBeCloseTo(470 * 1.86347, 1);
+    expect(xl.im.w).toBeCloseTo(s.im.w, 6); // not stretched to the bigger piece
+    expect(s.im.x + s.im.w / 2).toBeCloseTo(s.p.w / 2, 6);
+    // XXL with its cut line is wider than the frame: the picture covers that
+    const xxl = imgOn("XXL");
+    expect(xxl.im.w).toBeGreaterThanOrEqual(patternBox(xxl.p).w - 1e-6);
+    expect(patternBox(xxl.p).w).toBeGreaterThan(400 * 1.86347);
+  });
+
+  it("keeps a long name inside each size's piece, clear of the trim; a short one keeps its size", () => {
+    const back = piecesFor("XXL", "A").back;
+    // a 470 mm name across the shoulders of an XXL back: the armholes are closer there than the piece is wide
+    expect(fitInPiece(back, [back.w / 2, 160], 470, 70)).toBeLessThan(0.95);
+    expect(fitInPiece(back, [back.w / 2, 160], 200, 70)).toBe(1);
+    // the fitted name leaves the margin on both sides
+    const k = fitInPiece(back, [back.w / 2, 160], 470, 70);
+    expect(470 * k).toBeLessThan(back.w - 2 * FIT_MARGIN_MM);
   });
 
   it("matches the order's names to the players drawn; spares get the shared art; an unknown name is refused", () => {

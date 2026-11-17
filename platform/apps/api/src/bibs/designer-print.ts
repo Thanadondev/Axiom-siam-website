@@ -120,7 +120,69 @@ export function fitToSize(o: { c: [number, number]; w: number; h: number }, from
   return [sx, 0, 0, sy, cx - sx * o.c[0], cy - sy * o.c[1]];
 }
 
+/** a name or number keeps this far inside the cut line: the trim band along the armholes is up to 20 mm, and 15 mm clear of it */
+export const FIT_MARGIN_MM = 35;
+
+const outlines = new WeakMap<object, { x: number; y: number }[]>();
+/** the cut line as points, curves sampled */
+function outline(piece: Piece) {
+  let pts = outlines.get(piece);
+  if (pts) return pts;
+  pts = [];
+  let x = 0, y = 0;
+  for (const s of parsePath(piece.cut)) {
+    if (s.op === "Z") continue;
+    if (s.op === "C") {
+      // every 3 mm or so: an armhole is one long curve, and a name is looked up by height
+      const len = Math.hypot(s.x1 - x, s.y1 - y) + Math.hypot(s.x2 - s.x1, s.y2 - s.y1) + Math.hypot(s.x - s.x2, s.y - s.y2);
+      const n = Math.max(16, Math.ceil(len / 3));
+      for (let i = 1; i <= n; i++) {
+        const t = i / n, u = 1 - t;
+        pts.push({ x: u * u * u * x + 3 * u * u * t * s.x1 + 3 * u * t * t * s.x2 + t * t * t * s.x, y: u * u * u * y + 3 * u * u * t * s.y1 + 3 * u * t * t * s.y2 + t * t * t * s.y });
+      }
+    } else if (s.op === "L") {
+      const n = Math.max(1, Math.ceil(Math.hypot(s.x - x, s.y - y) / 5));
+      for (let i = 1; i <= n; i++) pts.push({ x: x + (s.x - x) * i / n, y: y + (s.y - y) * i / n });
+    } else pts.push({ x: s.x, y: s.y });
+    x = s.x; y = s.y;
+  }
+  outlines.set(piece, pts);
+  return pts;
+}
+
+/**
+ * How much a name or number, centred at c and w × h mm on this piece, must shrink
+ * (≤ 1) to sit inside the cut line at its height, clear of the trim — the
+ * designer fits it on the size drawn; another size's armholes sit elsewhere.
+ */
+export function fitInPiece(piece: Piece, c: [number, number], w: number, h: number): number {
+  const pts = outline(piece), mid = piece.w / 2;
+  let left = -Infinity, right = Infinity;
+  const y0 = c[1] - h / 2, y1 = c[1] + h / 2;
+  for (let yy = y0; yy <= y1 + 1e-6; yy += Math.max(1, (y1 - y0) / 8)) {
+    const near = pts.filter(q => Math.abs(q.y - yy) < 4);
+    const l = near.filter(q => q.x < mid), r = near.filter(q => q.x > mid);
+    if (!l.length || !r.length) continue;
+    left = Math.max(left, Math.min(...l.map(q => q.x)));
+    right = Math.min(right, Math.max(...r.map(q => q.x)));
+  }
+  if (!isFinite(left) || !isFinite(right) || w <= 0) return 1;
+  const half = Math.min(c[0] - (left + FIT_MARGIN_MM), right - FIT_MARGIN_MM - c[0]);
+  return half > 0 ? Math.min(1, (2 * half) / w) : 1;
+}
+
 // ------------------------------------------------------------ drawing
+
+/** the designer's units (public/designer/sizes.js): 1 unit = 1.86347 mm */
+export const DESIGNER_UNIT_MM = 1.86347;
+/**
+ * What the designer's pattern picture covers (editor.js svgFrame): its 400 × 470 frame,
+ * or the piece and its 7 mm cut line (+2 units) where that is bigger (XXL), centred on the piece.
+ */
+export function patternBox(piece: { w: number; h: number }) {
+  const margin = 2 * (7 + 2 * DESIGNER_UNIT_MM);
+  return { w: Math.max(400 * DESIGNER_UNIT_MM, piece.w + margin), h: Math.max(470 * DESIGNER_UNIT_MM, piece.h + margin) };
+}
 
 export interface DesignerPictures { png: Uint8Array[]; size: { w: number; h: number }[] }
 
@@ -142,17 +204,26 @@ export function designerPiece(
   const drawn = piecesFor(d.size, "A")[part];
   const out: Shape[] = [{ kind: "path", segs: cut, fill: d.body }];
 
-  // the pattern picture covers the piece, cropped like the designer's (centred, no stretch)
+  // the pattern picture as the designer lays it: covering its frame, centred on the piece (no stretch),
+  // so the pattern keeps its size in cm on every size and a bigger piece shows more of it
   if (d.pattern !== undefined && pics.png[d.pattern]) {
     const { w, h } = pics.size[d.pattern];
-    const k = Math.max(piece.w / w, piece.h / h);
+    const box = patternBox(piece);
+    const k = Math.max(box.w / w, box.h / h);
     out.push({ kind: "image", png: pics.png[d.pattern], x: (piece.w - w * k) / 2, y: (piece.h - h * k) / 2, w: w * k, h: h * k, clip: cut });
   }
 
   const idx = d.panels.findIndex(p => p.side === side && p.part === part);
-  const objs: PrintObj[] = idx < 0 ? [] : [...d.panels[idx].objs, ...(player?.objs.filter(o => o.panel === idx) ?? [])];
+  const mine = player?.objs.filter(o => o.panel === idx) ?? [];
+  const objs: PrintObj[] = idx < 0 ? [] : [...d.panels[idx].objs, ...mine];
   for (const o of objs) {
-    const fit = fitToSize(o, drawn, piece);
+    let fit = fitToSize(o, drawn, piece);
+    // a player's name / number on another size: kept inside that piece at its height
+    if (mine.includes(o as (typeof mine)[number])) {
+      const c: [number, number] = [fit[0] * o.c[0] + fit[4], fit[3] * o.c[1] + fit[5]];
+      const k = fitInPiece(piece, c, o.w * fit[0], o.h * fit[3]);
+      if (k < 1) fit = compose([k, 0, 0, k, c[0] * (1 - k), c[1] * (1 - k)], fit);
+    }
     for (const it of o.items) {
       const m = compose(fit, it.m as Affine);
       if ("img" in it) {
