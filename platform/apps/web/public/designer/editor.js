@@ -281,6 +281,8 @@ $("#right").innerHTML = `
       <div class="btnrow" style="margin-bottom:8px">
         <button class="mini" id="btnGroup" title="จัดกลุ่ม (Ctrl+G)">▣ Group</button>
         <button class="mini" id="btnUngroup" title="ยกเลิกกลุ่ม">▢ Ungroup</button>
+        <button class="mini" id="btnClipMake" title="Clipping Mask (Ctrl+7): ชิ้นบนสุดเป็นกรอบ ชิ้นที่อยู่ใต้มันแสดงเฉพาะในกรอบ — เช่น ลาย/รูปในตัวเบอร์">◩ Clip</button>
+        <button class="mini" id="btnClipRelease" title="ยกเลิก Clipping Mask (Ctrl+Alt+7)">◪ Release</button>
         <button class="mini danger" id="btnDel" title="ลบ (Del)">🗑 ลบ</button>
       </div>
       <div class="layers" id="layersList"></div>
@@ -1356,6 +1358,60 @@ document.querySelectorAll("[data-join]").forEach(b => b.onclick = () => {
   canvas.requestRenderAll(); pushHistory();
 });
 
+/* ---------- Clipping Mask (Ctrl+7), as Illustrator's: the top object's shape shows only what lies under it ----------
+   The masked objects are a group clipped by the mask's shape, inside an outer group that
+   takes the garment clip (which every top-level object gets): the two clips never fight.
+   The print reads the mask as the artwork's own clip (clip-path in the SVG). */
+async function makeClipMask() {
+  const sel = canvas.getActiveObject();
+  if (!sel || sel.type !== "activeSelection" || sel._objects.length < 2) { toast("เลือก 2 ชิ้นขึ้นไป (Shift+คลิก) — ชิ้นบนสุดจะเป็นกรอบ", "info"); return; }
+  const objs = sel._objects.slice();
+  if (objs.some(o => o.rosterTag)) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ ใส่ใน Clipping Mask ไม่ได้", "warn"); return; }
+  canvas.discardActiveObject();
+  const all = canvas.getObjects();
+  objs.sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  const top = objs.pop(), at = all.indexOf(objs[0]);
+  if (top.type === "image") { toast("ชิ้นบนสุดต้องเป็นรูปทรงหรือข้อความ (ใช้เป็นกรอบ)", "warn"); canvas.setActiveObject(new fabric.ActiveSelection(objs.concat(top), { canvas })); return; }
+  const mask = await new Promise(ok => top.clone(ok, ARC_PROPS));
+  mask.clipPath = null;
+  [top, ...objs].forEach(o => canvas.remove(o));
+  objs.forEach(o => { o.clipPath = null; });
+  const inner = new fabric.Group(objs, { objectCaching: false });
+  // the mask in the group's own space (centred on the group)
+  const c = inner.getCenterPoint(), mc = mask.getCenterPoint();
+  mask.setPositionByOrigin(new fabric.Point(mc.x - c.x, mc.y - c.y), "center", "center");
+  mask._maskOf = top.name || objLabel(top);
+  inner.clipPath = mask;
+  const outer = new fabric.Group([inner], { objectCaching: false });
+  outer._clipMask = true; outer.name = "Clip Group";
+  canvas.insertAt(outer, Math.max(0, at));
+  applyClip(outer);
+  canvas.setActiveObject(outer); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast("ทำ Clipping Mask แล้ว — ยกเลิกได้ด้วย ◪ Release (Ctrl+Alt+7)", "ok");
+}
+function releaseClipMask() {
+  const outer = canvas.getActiveObject();
+  if (!outer || !outer._clipMask) { toast("เลือก Clip Group ก่อน", "info"); return; }
+  const at = canvas.getObjects().indexOf(outer);
+  const inner = outer._objects[0];
+  const mask = inner.clipPath;
+  // the mask back on the canvas where it showed: its place in the inner group, then the groups' own
+  const M = fabric.util.multiplyTransformMatrices(inner.calcTransformMatrix(), mask.calcTransformMatrix());
+  outer.toActiveSelection(); canvas.discardActiveObject();
+  inner.clipPath = null;
+  canvas.setActiveObject(inner); inner.toActiveSelection();
+  const contents = canvas.getActiveObject()._objects.slice();
+  canvas.discardActiveObject();
+  fabric.util.applyTransformToObject(mask, M);
+  delete mask._maskOf;
+  canvas.insertAt(mask, Math.min(canvas.getObjects().length, at + contents.length));
+  contents.concat(mask).forEach(o => { o.setCoords(); applyClip(o); });
+  canvas.setActiveObject(new fabric.ActiveSelection(contents.concat(mask), { canvas }));
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+$("#btnClipMake").onclick = () => makeClipMask();
+$("#btnClipRelease").onclick = () => releaseClipMask();
+
 /* ---------- Offset Path: an outline round the object, a new layer behind it ---------- */
 async function offsetPath() {
   const o = canvas.getActiveObject();
@@ -2138,6 +2194,7 @@ document.addEventListener("keydown", e => {
   if (ctrl && k === "y") { e.preventDefault(); redo(); return; }
   if (ctrl && k === "g") { e.preventDefault(); e.shiftKey ? $("#btnUngroup").onclick() : $("#btnGroup").onclick(); return; }
   if (ctrl && k === "d") { e.preventDefault(); duplicate(); return; }
+  if (ctrl && (k === "7" || e.code === "Digit7")) { e.preventDefault(); e.altKey ? releaseClipMask() : makeClipMask(); return; }
   if (ctrl && (k === "c" || k === "v" || k === "x")) return; // handled by clipboard events below
   if (ctrl && k === "0") { e.preventDefault(); zoomFit(); return; }
   if (ctrl) return;
@@ -2391,7 +2448,7 @@ let rosterOrig = null;
    is a Group of single characters rotated along a circle. `arcMeta` keeps
    everything needed to re-render it, so it round-trips through save/open and
    can be flattened back to a plain IText when the curve returns to 0.        */
-const ARC_PROPS = ["name", "rosterTag", "arcMeta"];
+const ARC_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask"];
 
 function isArc(o) { return !!(o && (o.arcMeta || o._warpPending)); }
 
