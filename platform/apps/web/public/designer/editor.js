@@ -704,7 +704,7 @@ function setTool(name) {
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("on", b.dataset.tool === name));
   const drawing = ["rect", "ellipse", "poly", "line", "pen", "text", "hand"].includes(name);
   canvas.selection = name === "select";
-  userObjects().forEach(o => { o.selectable = name === "select" || name === "node"; o.evented = name === "select" || name === "node"; });
+  userObjects().forEach(o => { const on = (name === "select" || name === "node") && !o.lockMovementX; o.selectable = on; o.evented = on; });
   canvas.defaultCursor = cursors[name] || "default";
   canvas.setCursor(cursors[name] || "default");
   if (name !== "node") clearNodeHandles();
@@ -714,7 +714,7 @@ function setTool(name) {
   hint(HINTS[name] || "");
 }
 const HINTS = {
-  select: "ลากเลือก/ย้าย · ดับเบิลคลิกข้อความเพื่อแก้ไข",
+  select: "ลากเลือก/ย้าย (จับเส้นกึ่งกลางตัวเสื้อ/ขอบชิ้นอื่นให้เอง) · ลูกศร 1 มม. Shift 10 มม. · Ctrl+F/B วางซ้อนหน้า/หลังที่เดิม · Ctrl+2 ล็อก · Ctrl+3 ซ่อน · Ctrl+7 Clip",
   node: "เลือกเส้น/รูปที่วาดด้วยปากกา แล้วลากจุด (◯) และแกน (▫) เพื่อดัด",
   pen: "คลิกวางจุด · คลิกค้างแล้วลาก = จุดโค้ง · คลิกจุดแรกเพื่อปิด · Enter จบ · Esc ยกเลิก",
   rect: "ลากเพื่อวาดสี่เหลี่ยม", ellipse: "ลากเพื่อวาดวงกลม/วงรี", poly: "ลากเพื่อวาดรูปหลายเหลี่ยม",
@@ -954,21 +954,38 @@ function startNodeEdit() {
 /* ---------- snapping + guides ---------- */
 let guides = [];
 function clearGuides() { if (guides.length) { guides = []; canvas.requestRenderAll(); } }
+/* Smart Guides, as Illustrator's: the object's edges and middle snap to each garment
+   piece's centre line (a number or a name centred on the back) and to the other
+   objects' edges and middles, with the line shown while it holds. */
 function snapMove(opt) {
   const o = opt.target; if (!o || o._temp || o._bg) return;
   guides = [];
   const th = 6 / canvas.getZoom();
-  const c = o.getCenterPoint();
-  const targetsX = [ART.w / 2], targetsY = [ART.h / 2];
-  userObjects().forEach(u => { if (u === o) return; const uc = u.getCenterPoint(); targetsX.push(uc.x); targetsY.push(uc.y); });
-  for (const tx of targetsX) if (Math.abs(c.x - tx) < th) { o.setPositionByOrigin(new fabric.Point(tx, c.y), "center", "center"); guides.push({ x: tx, vert: true }); break; }
-  const c2 = o.getCenterPoint();
-  for (const ty of targetsY) if (Math.abs(c2.y - ty) < th) { o.setPositionByOrigin(new fabric.Point(c2.x, ty), "center", "center"); guides.push({ y: ty, vert: false }); break; }
+  const inSel = o._objects || [];
+  const xs = [], ys = [];
+  panels.forEach(p => { if (p.angle) ys.push(p.cy); else xs.push(p.cx); });
+  userObjects().forEach(u => {
+    if (u === o || inSel.includes(u) || u.visible === false) return;
+    const b = u.getBoundingRect(true, true);
+    xs.push(b.left, b.left + b.width / 2, b.left + b.width); ys.push(b.top, b.top + b.height / 2, b.top + b.height);
+  });
+  const b = o.getBoundingRect(true, true);
+  const best = (mine, lines) => {
+    let d = null, at = null;
+    for (const m of mine) for (const t of lines) if (Math.abs(t - m) < th && (d === null || Math.abs(t - m) < Math.abs(d))) { d = t - m; at = t; }
+    return { d, at };
+  };
+  const bx = best([b.left, b.left + b.width / 2, b.left + b.width], xs);
+  const by = best([b.top, b.top + b.height / 2, b.top + b.height], ys);
+  if (bx.d !== null) { o.set("left", o.left + bx.d); guides.push({ x: bx.at, vert: true }); }
+  if (by.d !== null) { o.set("top", o.top + by.d); guides.push({ y: by.at, vert: false }); }
+  if (bx.d !== null || by.d !== null) o.setCoords();
 }
 canvas ? null : 0;
 function bindExtra() {
   canvas.on("mouse:up", () => { if (curTool === "pen") penDragging = false; });
   canvas.on("object:moving", opt => snapMove(opt));
+  canvas.on("mouse:up", () => { if (guides.length) { guides = []; canvas.requestRenderAll(); } });
   canvas.on("mouse:dblclick", () => { if (curTool === "pen" && penActive) finishPen(false); });
   canvas.on("after:render", () => {
     if (!guides.length) return;
@@ -1599,7 +1616,7 @@ function delSelected() { canvas.getActiveObjects().forEach(o => canvas.remove(o)
 
 /* ---------- copy / paste ---------- */
 let clipboard = null;
-const CLONE_PROPS = ["name", "rosterTag"];
+const CLONE_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask"];
 function doCopy() { const o = canvas.getActiveObject(); if (!o) return; o.clone(cl => { clipboard = cl; toast("คัดลอกแล้ว"); }, CLONE_PROPS); }
 function doPaste() {
   if (!clipboard) return;
@@ -1610,6 +1627,22 @@ function doPaste() {
     else canvas.add(cl);
     canvas.setActiveObject(cl); if (clipOn) applyClip(cl);
     canvas.requestRenderAll(); pushHistory(); refreshLayers();
+  }, CLONE_PROPS);
+}
+/** the copy pasted where it was: in front of the selection, behind it, or on top */
+function pasteInPlace(where) {
+  if (!clipboard) { toast("ยังไม่ได้คัดลอก (Ctrl+C)", "info"); return; }
+  const sel = canvas.getActiveObjects(), all = canvas.getObjects();
+  const idxs = sel.map(o => all.indexOf(o)).filter(i => i >= 0);
+  let at = where === "front" && idxs.length ? Math.max(...idxs) + 1 : where === "back" && idxs.length ? Math.min(...idxs) : all.length;
+  clipboard.clone(cl => {
+    canvas.discardActiveObject();
+    cl.set({ evented: true });
+    if (cl.type === "activeSelection") { cl.canvas = canvas; cl.forEachObject(o => { o.set({ evented: true, selectable: true }); canvas.insertAt(o, at++); }); cl.setCoords(); }
+    else { cl.set({ selectable: true }); canvas.insertAt(cl, at); }
+    canvas.setActiveObject(cl);
+    if (clipOn) (cl._objects || [cl]).forEach(applyClip);
+    fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory();
   }, CLONE_PROPS);
 }
 // Ctrl+C / Ctrl+V / Ctrl+X arrive as native clipboard events (more reliable than keydown for these)
@@ -1630,6 +1663,17 @@ function objLabel(o) {
   if (t.includes("text")) return "T " + (o.text || "ข้อความ").slice(0, 14);
   return t;
 }
+/** locked: not moved, not picked on the canvas (Layers and Ctrl+Alt+2 unlock it) */
+function setLocked(objs, l) {
+  if (l && objs.some(o => canvas.getActiveObjects().includes(o))) canvas.discardActiveObject();
+  objs.forEach(o => o.set({ lockMovementX: l, lockMovementY: l, lockScalingX: l, lockScalingY: l, lockRotation: l, selectable: !l && curTool === "select", evented: !l && curTool === "select" }));
+  canvas.requestRenderAll(); refreshLayers(); pushHistory();
+}
+function setHidden(objs, h) {
+  if (h) canvas.discardActiveObject();
+  objs.forEach(o => { o.visible = !h; });
+  canvas.requestRenderAll(); refreshLayers(); pushHistory();
+}
 function refreshLayers() {
   const list = $("#layersList"); const objs = userObjects().slice().reverse();
   $("#layersEmpty").style.display = objs.length ? "none" : "block";
@@ -1640,7 +1684,7 @@ function refreshLayers() {
     row.innerHTML = `<button class="lbtn" data-a="vis">${o.visible === false ? "🚫" : "👁"}</button><button class="lbtn" data-a="lock">${o.lockMovementX ? "🔒" : "🔓"}</button><span class="lname">${objLabel(o)}</span><button class="lbtn" data-a="up">↑</button><button class="lbtn" data-a="down">↓</button>`;
     row.querySelector(".lname").onclick = () => { canvas.setActiveObject(o); canvas.requestRenderAll(); refreshLayers(); syncProps(); };
     row.querySelector('[data-a="vis"]').onclick = () => { o.visible = o.visible === false ? true : false; canvas.requestRenderAll(); refreshLayers(); };
-    row.querySelector('[data-a="lock"]').onclick = () => { const l = !o.lockMovementX; o.set({ lockMovementX: l, lockMovementY: l, lockScalingX: l, lockScalingY: l, lockRotation: l }); refreshLayers(); };
+    row.querySelector('[data-a="lock"]').onclick = () => { setLocked([o], !o.lockMovementX); };
     row.querySelector('[data-a="up"]').onclick = () => { o.bringForward(); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); };
     row.querySelector('[data-a="down"]').onclick = () => { o.sendBackwards(); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); };
     list.appendChild(row);
@@ -2194,6 +2238,17 @@ document.addEventListener("keydown", e => {
   if (ctrl && k === "y") { e.preventDefault(); redo(); return; }
   if (ctrl && k === "g") { e.preventDefault(); e.shiftKey ? $("#btnUngroup").onclick() : $("#btnGroup").onclick(); return; }
   if (ctrl && k === "d") { e.preventDefault(); duplicate(); return; }
+  if (ctrl && k === "a") { e.preventDefault(); const objs = userObjects().filter(o => o.visible !== false && !o.lockMovementX); canvas.discardActiveObject(); if (objs.length) canvas.setActiveObject(objs.length > 1 ? new fabric.ActiveSelection(objs, { canvas }) : objs[0]); canvas.requestRenderAll(); syncProps(); return; }
+  if (ctrl && e.code === "Digit2") { e.preventDefault(); if (e.altKey) setLocked(userObjects().filter(o => o.lockMovementX), false); else if (canvas.getActiveObjects().length) setLocked(canvas.getActiveObjects(), true); return; }
+  if (ctrl && e.code === "Digit3") { e.preventDefault(); if (e.altKey) setHidden(userObjects().filter(o => o.visible === false), false); else if (canvas.getActiveObjects().length) setHidden(canvas.getActiveObjects(), true); return; }
+  if (ctrl && (e.code === "BracketRight" || e.code === "BracketLeft")) {
+    e.preventDefault();
+    const a = e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : (e.shiftKey ? "back" : "backward");
+    const b = document.querySelector(`[data-arrange="${a}"]`); if (b) b.click(); return;
+  }
+  if (ctrl && k === "f") { e.preventDefault(); pasteInPlace("front"); return; }
+  if (ctrl && k === "b") { e.preventDefault(); pasteInPlace("back"); return; }
+  if (ctrl && e.shiftKey && k === "v") { e.preventDefault(); pasteInPlace("top"); return; }
   if (ctrl && (k === "7" || e.code === "Digit7")) { e.preventDefault(); e.altKey ? releaseClipMask() : makeClipMask(); return; }
   if (ctrl && (k === "c" || k === "v" || k === "x")) return; // handled by clipboard events below
   if (ctrl && k === "0") { e.preventDefault(); zoomFit(); return; }
@@ -2204,7 +2259,7 @@ document.addEventListener("keydown", e => {
     const objs = canvas.getActiveObjects();
     if (objs.length) {
       e.preventDefault();
-      const s = e.shiftKey ? 10 : 1;
+      const s = (e.shiftKey ? 10 : 1) / MM_PER_UNIT; // 1 mm, Shift 10 mm
       const dx = e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0;
       const dy = e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0;
       objs.forEach(o => { o.set({ left: o.left + dx, top: o.top + dy }); o.setCoords(); if (clipOn) applyClip(o); });
