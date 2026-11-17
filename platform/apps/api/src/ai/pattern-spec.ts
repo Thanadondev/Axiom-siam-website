@@ -9,7 +9,7 @@ import CHART from "../bibs/dtp-chart.json";
  */
 export const MOTIFS = [
   "stripes", "pinstripes", "chevrons", "diamonds", "waves", "halftone", "shards", "camo", "digicamo",
-  "speedlines", "lightning", "hexagons", "dots", "rings", "sash", "grid", "triangles", "scales",
+  "speedlines", "lightning", "hexagons", "dots", "rings", "sash", "grid", "triangles", "scales", "prajamyam",
 ] as const;
 export const FADES = ["none", "up", "down", "left", "right", "center"] as const;
 export const BACKGROUNDS = ["solid", "linear", "radial"] as const;
@@ -105,7 +105,7 @@ A recipe is a background plus 0-4 layers drawn in order, each layer one motif:
 - camo: rounded organic blobs (80 mm at scale 1), colors cycle.
 - digicamo: pixel camouflage squares.
 - speedlines: long thin slanted streaks (motion), tilted by angle.
-- lightning: a few zigzag lightning bolts.
+- lightning: bold lightning bolts (broad top, sharp point), 1-6 by density, about 100 mm wide at scale 1.
 - hexagons: honeycomb outlines.
 - dots: regular polka dots.
 - rings: concentric circles from the centre.
@@ -113,6 +113,7 @@ A recipe is a background plus 0-4 layers drawn in order, each layer one motif:
 - grid: square grid lines.
 - triangles: a triangle tessellation, colors alternating.
 - scales: overlapping fish-scale arcs.
+- prajamyam: the Thai "ลายประจำยาม" - four pointed petals round a round heart, in a staggered grid (70 mm at scale 1); colors[0] petals, colors[1] heart. Use it for Thai or traditional requests (often gold on red, or gold on dark).
 Every layer: colors (1-4 "#rrggbb"), scale 0.3-3 (motif size), angle -180..180 degrees, density 0.1-1 (how much of the area it covers), opacity 0.1-1, fade (none/up/down/left/right/center: the layer fades out toward that side; for halftone the dots grow toward it), seed (any integer; changes the random placement).
 Background: type solid (colors[0]), linear (a gradient through its colors at angle; 90 = top to bottom) or radial (from the centre out).
 

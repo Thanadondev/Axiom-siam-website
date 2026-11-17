@@ -90,13 +90,29 @@
       }
     },
     lightning(L, add, b) {
-      const n = Math.max(1, Math.round(1 + 4 * L.density)), w = 16 * L.scale;
+      // the classic bolt: a broad top, a step across, a long sharp point
+      const n = Math.max(1, Math.round(1 + 5 * L.density));
       for (let i = 0; i < n; i++) {
-        let x = b.cx - b.D * 0.3 + L.r() * b.D * 0.6, y = b.cy - b.D * 0.32; const left = [], right = [];
-        const seg = 70 * L.scale;
-        for (let k = 0; k < 7; k++) { left.push([x, y]); right.unshift([x + w * (1 - k / 8), y]); x += (k % 2 ? -1 : 1) * seg * (0.4 + 0.5 * L.r()); y += seg * (0.6 + 0.5 * L.r()); }
-        left.push([x, y]);
-        if (!add({ d: poly(left.concat(right)), fill: L.c(i), at: [left[3][0], left[3][1]] })) return;
+        const w = (90 + 60 * L.r()) * L.scale, h = w * (1.5 + 0.4 * L.r());
+        // spread across the piece: one column each, a little up or down
+        const x = b.cx - b.W / 2 + ((i + 0.5) / n) * b.W + (L.r() - 0.5) * b.W / n * 0.4, y = b.cy - b.H * 0.38 + L.r() * b.H * 0.4, flip = L.r() < 0.5 ? -1 : 1;
+        // the ⚡ outline: down-left from the top, a step back right, then the long point
+        const pts = [[0.56, 0], [0, 0.6], [0.5, 0.6], [0.44, 1], [1, 0.4], [0.5, 0.4]].map(p => [x + flip * (p[0] - 0.5) * w, y + p[1] * h]);
+        if (!add({ d: poly(pts), fill: L.c(i), at: [x, y + h / 2] })) return;
+      }
+    },
+    prajamyam(L, add, b) {
+      // ลายประจำยาม: four pointed petals round a round heart, in a grid, every other row shifted
+      const c = 70 * L.scale, pl = c * (0.28 + 0.16 * L.density), pw = pl * 0.55;
+      const petal = (cx, cy, a) => {
+        const ca = Math.cos(a), sa = Math.sin(a), P = (u, v) => [cx + u * ca - v * sa, cy + u * sa + v * ca];
+        const t = P(pl, 0), l = P(pl * 0.45, -pw), r = P(pl * 0.45, pw), o = P(0, 0);
+        return `M${r2(o[0])} ${r2(o[1])}Q${r2(l[0])} ${r2(l[1])} ${r2(t[0])} ${r2(t[1])}Q${r2(r[0])} ${r2(r[1])} ${r2(o[0])} ${r2(o[1])}Z`;
+      };
+      for (let y = b.y0, j = 0; y < b.y0 + b.D + c; y += c * 0.75, j++) for (let x = b.x0 + (j % 2 ? c / 2 : 0); x < b.x0 + b.D + c; x += c) {
+        const d = [0, 1, 2, 3].map(k => petal(x, y, Math.PI / 4 + (k * Math.PI) / 2)).join("");
+        if (!add({ d, fill: L.c(0), at: [x, y] })) return;
+        if (!add({ circle: [x, y, pl * 0.22], fill: L.c(1), at: [x, y] })) return;
       }
     },
     hexagons(L, add, b) {
@@ -191,7 +207,7 @@
         out.push(s.circle ? `<circle cx="${r2(s.circle[0])}" cy="${r2(s.circle[1])}" r="${r2(s.circle[2])}" ${paint}${see}/>` : `<path d="${s.d}" ${paint}${see}/>`);
         return true;
       };
-      draw(L, add, { x0: cx - D / 2, y0: cy - D / 2, D, cx, cy }, defs);
+      draw(L, add, { x0: cx - D / 2, y0: cy - D / 2, D, cx, cy, W, H }, defs);
       shapes += out.length;
       body.push(`<g transform="rotate(${r2(layer.angle || 0)} ${r2(cx)} ${r2(cy)})">${out.join("")}</g>`);
     });
@@ -214,6 +230,8 @@
       { motif: "sash", colors: ["#be1e2d", "#231f20"], scale: 1, angle: -35, density: 0.7, opacity: 1, fade: "none", seed: 1 }] },
     { name: "พรางดิจิทัลเทา", background: { type: "solid", colors: ["#58595b"], angle: 90 }, layers: [
       { motif: "digicamo", colors: ["#808285", "#414042", "#a7a9ac"], scale: 1, angle: 0, density: 0.9, opacity: 1, fade: "none", seed: 9 }] },
+    { name: "ประจำยามทองบนแดง", background: { type: "linear", colors: ["#be1e2d", "#7a1416"], angle: 90 }, layers: [
+      { motif: "prajamyam", colors: ["#fdb913", "#ffffff"], scale: 0.9, angle: 0, density: 0.7, opacity: 0.9, fade: "none", seed: 1 }] },
     { name: "เศษแก้วม่วงส้ม", background: { type: "linear", colors: ["#2e3192", "#92278f"], angle: 60 }, layers: [
       { motif: "shards", colors: ["#f7941d", "#ec008c", "#ffffff"], scale: 1, angle: 0, density: 0.6, opacity: 0.7, fade: "center", seed: 5 }] },
   ];
