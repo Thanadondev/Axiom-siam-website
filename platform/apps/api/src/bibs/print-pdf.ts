@@ -1,5 +1,5 @@
 import {
-  PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
+  PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, setDashPattern, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle,
 } from "pdf-lib";
@@ -83,6 +83,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
       }
       ops.push(pushGraphicsState());
       if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
+      if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
       // the image space is a unit square, y up: flip it back
       ops.push(...(s.m
         ? [concatTransformationMatrix(...s.m), concatTransformationMatrix(1, 0, 0, -1, 0, 1)]
@@ -91,8 +92,10 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     }
     ops.push(pushGraphicsState());
     if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
+    if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
     if (s.fill) ops.push(setFillingCmykColor(...cmyk(s.fill)));
     if (s.stroke) ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
+    if (s.stroke && s.dash?.length) ops.push(setDashPattern(s.dash, 0));
     // an even-odd fill (a ring drawn as two outlines in the same direction) keeps its hole
     ops.push(...pathOps(s.segs), s.fill && s.stroke ? (s.evenOdd ? PDFOperator.of(PDFOperatorNames.FillEvenOddAndStroke) : fillAndStroke())
       : s.fill ? (s.evenOdd ? PDFOperator.of(PDFOperatorNames.FillEvenOdd) : fill()) : stroke());

@@ -39,9 +39,17 @@ const PathItem = z.object({
   sw: z.number().min(0).max(10_000).optional(),
   /** even-odd fill */
   eo: z.boolean().optional(),
+  /** a dashed stroke: dash and gap lengths, in the path's own units */
+  dash: z.array(z.number().min(0).max(10_000)).max(16).optional(),
+  /** the artwork's own clip (a logo's clip path), already in mm on the piece drawn */
+  clip: z.string().min(1).max(200_000).optional(),
 });
 /** a picture: `img` indexes `images`, `m` takes its unit square (y down) to mm */
-const ImageItem = z.object({ img: z.number().int().min(0), m: matrix });
+const ImageItem = z.object({
+  img: z.number().int().min(0), m: matrix,
+  /** a crop: the part of the picture shown, in mm on the piece drawn */
+  clip: z.string().min(1).max(200_000).optional(),
+});
 const Item = z.union([PathItem, ImageItem]);
 
 /** one thing the customer placed, with its centre and size (mm) so it can be carried to another size */
@@ -244,8 +252,10 @@ export function designerPiece(
     }
     for (const it of o.items) {
       const m = compose(fit, it.m as Affine);
+      // its own clip is in mm on the piece drawn: carried to this size with the object
+      const artClip = it.clip ? transformPath(parsedOnce(it.clip), fit) : undefined;
       if ("img" in it) {
-        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut });
+        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut, ...(artClip ? { artClip } : {}) });
         continue;
       }
       if (!it.fill && !it.stroke) continue;
@@ -256,6 +266,8 @@ export function designerPiece(
         ...(it.fill ? { fill: it.fill } : {}),
         ...(it.stroke && (it.sw ?? 1) > 0 ? { stroke: it.stroke, width: (it.sw ?? 1) * scale } : {}),
         ...(it.eo ? { evenOdd: true } : {}),
+        ...(artClip ? { artClip } : {}),
+        ...(it.stroke && it.dash?.length ? { dash: it.dash.map(v => v * scale) } : {}),
       });
     }
   }
@@ -383,9 +395,9 @@ function moveScaled(sh: Shape, dx: number, dy: number, k: number): Shape {
   const m: Affine = [k, 0, 0, k, dx, dy];
   if (sh.kind === "image") {
     const own: Affine = sh.m ?? [sh.w, 0, 0, sh.h, sh.x, sh.y];
-    return { ...sh, m: compose(m, own), clip: sh.clip && transformPath(sh.clip, m) };
+    return { ...sh, m: compose(m, own), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m) };
   }
-  return { ...sh, segs: transformPath(sh.segs, m), clip: sh.clip && transformPath(sh.clip, m), width: sh.width !== undefined ? sh.width * k : undefined };
+  return { ...sh, segs: transformPath(sh.segs, m), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m), width: sh.width !== undefined ? sh.width * k : undefined, dash: sh.dash?.map(v => v * k) };
 }
 
 // ------------------------------------------------------------ the job

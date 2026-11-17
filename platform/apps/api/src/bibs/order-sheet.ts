@@ -43,12 +43,15 @@ export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; 
       const img = s.m
         ? `<image x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${s.m.join(" ")})" href="${href}"/>`
         : `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="${href}"/>`;
-      body += s.clip ? `<g${clipOf(s.clip)}>${img}</g>` : img;
+      const inner = s.artClip ? `<g${clipOf(s.artClip)}>${img}</g>` : img;
+      body += s.clip ? `<g${clipOf(s.clip)}>${inner}</g>` : inner;
       continue;
     }
     const clip = clipOf(s.clip);
     const paint = `fill="${s.fill ?? "none"}"` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
-    body += `<path d="${pathData(s.segs)}" ${paint}${clip}/>`;
+    const dash = s.stroke && s.dash?.length ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
+    const path = `<path d="${pathData(s.segs)}" ${paint}${dash}${s.artClip ? clipOf(s.artClip) : ""}/>`;
+    body += clip ? `<g${clip}>${path}</g>` : path;
   }
   return { defs, body };
 }

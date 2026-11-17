@@ -390,7 +390,9 @@ function garmentOverlaySVG(tpl) {
   }
   return `${svgHead(svgFrame(bodyD))}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs><g clip-path="url(#${cid})">${trimSVG}${hemSVG}</g>${outline}${cut}${sizeLbl}</svg>`;
 }
+let garmentGen = 0;
 function placeGarment(p) {
+  const gen = garmentGen;
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
   const dims = sz && sz.dims ? (p.tpl === "front" ? sz.dims.front : sz.dims.back) : null;
   const idx = panels.indexOf(p);
@@ -403,12 +405,12 @@ function placeGarment(p) {
     g.set({ selectable: false, evented: false, excludeFromExport: false, hoverCursor: "default" });
   };
   fabric.loadSVGFromString(garmentSVG(p.tpl), (objs, opts) => {
-    if (!objs || !objs.length) return;
+    if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; bgObjects.push(g); panelGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
   });
   fabric.loadSVGFromString(garmentOverlaySVG(p.tpl), (objs, opts) => {
-    if (!objs || !objs.length) return;
+    if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; g._overlay = true; overlayGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
   });
@@ -437,6 +439,7 @@ function buildTemplate() {
   overlayGroups.forEach(o => o && canvas.remove(o));
   if (artboardRect) canvas.remove(artboardRect);
   bgObjects = []; panelGroups = []; overlayGroups = [];
+  garmentGen++; // garments still loading from an earlier rebuild are dropped
   computeLayout();
   artboardRect = new fabric.Rect({ left: 0, top: 0, width: ART.w, height: ART.h, fill: "#ffffff", selectable: false, evented: false, hoverCursor: "default", rx: 6, ry: 6 });
   artboardRect._bg = true; canvas.add(artboardRect);
@@ -1312,7 +1315,16 @@ function normWeight(w) {
   return /^\d{3}$/.test(s) ? s : "400";
 }
 
+/* A logo made elsewhere and imported as SVG often keeps live text in a computer's own font
+   (Arial, Helvetica, Times…), which isn't a Google font: outlined in its open twin with the
+   very same letter widths (Arimo, Tinos, Cousine), so it lands where the screen shows it. */
+const OUTLINE_TWINS = {
+  "arial": "Arimo", "helvetica": "Arimo", "helvetica neue": "Arimo", "liberation sans": "Arimo",
+  "times new roman": "Tinos", "times": "Tinos", "liberation serif": "Tinos",
+  "courier new": "Cousine", "courier": "Cousine", "liberation mono": "Cousine",
+};
 async function loadOutlineFont(family, weight, text) {
+  family = OUTLINE_TWINS[String(family).toLowerCase()] || family;
   const key = `${family}|${weight}${text ? "|" + text : ""}`;
   if (fontCache.has(key)) return fontCache.get(key);
   if (fontFails.has(key)) return null;
@@ -1422,18 +1434,20 @@ function textToPath(t, fonts) {
   const mk = (data, faux) => {
     const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
     p.setAttribute("d", data.trim());
-    // carry over every paint attribute the text had
-    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform"]) {
+    // carry over every paint attribute the text had — and its style, where Fabric writes
+    // its stroke (an outlined name lost its keyline without it), paint order and dashes
+    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform", "style"]) {
       const v = t.getAttribute(a);
       if (v) p.setAttribute(a, v);
     }
-    if (!p.getAttribute("fill")) p.setAttribute("fill", t.style.fill || "#000");
+    if (!p.getAttribute("fill") && !p.style.fill) p.setAttribute("fill", t.style.fill || "#000");
     // synthetic bold: the outline grown by about 1/28 of the size, in its own colour
-    const strokeNone = !p.getAttribute("stroke") || p.getAttribute("stroke") === "none" || !(parseFloat(p.getAttribute("stroke-width")) > 0);
+    const sk = p.style.stroke || p.getAttribute("stroke"), skw = parseFloat(p.style.strokeWidth || p.getAttribute("stroke-width") || "0");
+    const strokeNone = !sk || sk === "none" || !(skw > 0);
     if (faux && strokeNone) {
-      p.setAttribute("stroke", p.getAttribute("fill"));
-      p.setAttribute("stroke-width", String(+(size / 28).toFixed(3)));
-      p.setAttribute("stroke-linejoin", "round");
+      p.style.stroke = p.style.fill || p.getAttribute("fill");
+      p.style.strokeWidth = String(+(size / 28).toFixed(3));
+      p.style.strokeLinejoin = "round";
     }
     return p;
   };
@@ -2110,10 +2124,49 @@ async function printImage(href, images, seen) {
   images.push(b64); seen.set(href, images.length - 1);
   return images.length - 1;
 }
-/** one fabric object as print items, in mm on its panel's piece */
-async function printObj(o, ctx) {
-  const pi = panelOf(o), p = panels[pi], toMm = panelToMm(p);
-  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10" height="10">${o.toSVG()}</svg>`);
+/** path data moved by a matrix, as absolute M/L/C/Q/Z */
+function transformD(d, m) {
+  return fabric.util.makePathSimpler(fabric.util.parsePath(d)).map(c => {
+    if (c[0] === "Z" || c[0] === "z") return "Z";
+    const pts = [];
+    for (let i = 1; i + 1 < c.length; i += 2) { const [x, y] = applyM(m, c[i], c[i + 1]); pts.push(r4(x), r4(y)); }
+    return c[0] + pts.join(" ");
+  }).join("");
+}
+/** the artwork's own clip on an element (a logo's clip path, a cropped picture), in mm on the piece; null when none */
+function clipInMm(el, svg, toMm) {
+  for (let n = el; n && n !== svg; n = n.parentElement) {
+    const ref = n.getAttribute && n.getAttribute("clip-path");
+    const id = ref && (/url\(["']?#([^"')]+)/.exec(ref) || [])[1];
+    if (!id) continue;
+    const cp = svg.querySelector("#" + CSS.escape(id));
+    const base = n.getCTM();
+    if (!cp || !base) return null;
+    let d = "";
+    for (const c of cp.querySelectorAll("path,rect,circle,ellipse,polygon,polyline")) {
+      const g = geometryD(c); if (!g) continue;
+      const own = c.transform && c.transform.baseVal.consolidate();
+      const cm = own ? own.matrix : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+      d += transformD(g, mulM(toMm, mulM([base.a, base.b, base.c, base.d, base.e, base.f], [cm.a, cm.b, cm.c, cm.d, cm.e, cm.f])));
+    }
+    return d || null;
+  }
+  return null;
+}
+/** the panels an object reaches (a band across the front and back prints on both), else the one it is nearest */
+function panelsOf(o) {
+  const br = o.getBoundingRect(true, true);
+  const hit = panels.map((p, i) => [p, i]).filter(([p]) => br.left < p.x + p.w && br.left + br.width > p.x && br.top < p.y + p.h && br.top + br.height > p.y).map(([, i]) => i);
+  return hit.length ? hit : [panelOf(o)];
+}
+/** one fabric object as print items, in mm on a panel's piece (its own, or the one given) */
+async function printObj(o, ctx, onPanel) {
+  const pi = onPanel ?? panelOf(o), p = panels[pi], toMm = panelToMm(p);
+  // the editor's own clip to the garment isn't the artwork's: the job clips to the cut line itself
+  const garmentClip = o.clipPath; o.clipPath = null;
+  let svgText;
+  try { svgText = o.toSVG(); } finally { o.clipPath = garmentClip; }
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10" height="10">${svgText}</svg>`);
   r.skipped.forEach(f => ctx.fail.add(`ฟอนต์ ${f}`));
   ctx.host.innerHTML = r.svg;
   const svg = ctx.host.querySelector("svg");
@@ -2133,7 +2186,8 @@ async function printObj(o, ctx) {
       const w = nf(el.getAttribute("width")), h = nf(el.getAttribute("height")); if (!w || !h) continue;
       try {
         const idx = await printImage(href, ctx.images, ctx.seen);
-        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4) });
+        const crop = clipInMm(el, svg, toMm);
+        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4), ...(crop ? { clip: crop } : {}) });
       } catch (e) { ctx.fail.add("รูปที่โหลดไม่ได้"); }
       continue;
     }
@@ -2143,9 +2197,23 @@ async function printObj(o, ctx) {
     const sw = nf(cs.strokeWidth);
     const it = { d, m: m.map(r4) };
     if (fill && !/^(line|polyline)$/i.test(el.tagName)) it.fill = fill;
-    if (stroke && sw > 0) { it.stroke = stroke; it.sw = r4(sw); }
+    if (stroke && sw > 0) {
+      it.stroke = stroke; it.sw = r4(sw);
+      const dash = String(cs.strokeDasharray || "").split(/[\s,]+/).map(parseFloat).filter(v => v >= 0);
+      if (dash.length && dash.some(v => v > 0)) it.dash = (dash.length % 2 ? dash.concat(dash) : dash).map(r4);
+    }
     if (!it.fill && !it.stroke) continue;
     if (cs.fillRule === "evenodd") it.eo = true;
+    const clip = clipInMm(el, svg, toMm);
+    if (clip) it.clip = clip;
+    // a keyline drawn under the fill (Fabric's paintFirst "stroke"): two shapes, the stroke first
+    if (it.fill && it.stroke && /^stroke/.test(String(cs.paintOrder || ""))) {
+      const { fill: f, ...under } = it;
+      items.push(under);
+      const { stroke: s1, sw: s2, dash: s3, ...over } = it;
+      items.push(over);
+      continue;
+    }
     items.push(it);
   }
   ctx.host.innerHTML = "";
@@ -2218,8 +2286,10 @@ async function buildPrintSpec(rows, onProgress) {
     const specPanels = panels.map(p => ({ side: String(p.id).startsWith("inner") ? "B" : "A", part: p.tpl, objs: [] }));
     for (const o of userObjects()) {
       if (tagged.includes(o) || o.visible === false) continue;
-      const { panel, ...obj } = await printObj(o, ctx);
-      if (obj.items.length) specPanels[panel].objs.push(obj);
+      for (const pi of panelsOf(o)) {
+        const { panel, ...obj } = await printObj(o, ctx, pi);
+        if (obj.items.length) specPanels[panel].objs.push(obj);
+      }
     }
     const players = [];
     for (let i = 0; i < rows.length; i++) {
@@ -2238,7 +2308,7 @@ async function buildPrintSpec(rows, onProgress) {
       players.push({ name: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase(), objs });
       if (onProgress) onProgress(i + 1, rows.length);
     }
-    if (ctx.fail.size) return { error: `เตรียมไฟล์ผลิตไม่ได้: ${[...ctx.fail].join(", ")} — เปลี่ยนฟอนต์/รูปแล้วลองใหม่` };
+    if (ctx.fail.size) return { error: `เตรียมไฟล์ผลิตไม่ได้: ${[...ctx.fail].join(", ")} — ใช้ฟอนต์ในรายการของโปรแกรมแทน หรือถ้าเป็นตัวหนังสือในโลโก้ที่นำเข้า ให้แปลงเป็นเส้น (Create Outlines) ในไฟล์โลโก้ก่อนนำเข้า` };
     const spec = {
       app: "axiom-print", v: 1, size: TPL_SIZE, reversible: curStyle === 2, team: orderName().slice(0, 80),
       body: colorHex(bodyColor) || "#ffffff", trimColor: colorHex(trimColor) || "#ffffff",

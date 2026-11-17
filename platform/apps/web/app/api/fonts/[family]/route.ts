@@ -29,6 +29,8 @@ const ALLOWED = new Set([
   "Sora", "Montserrat",
   // what the outliner falls back to for a character the chosen face lacks (a Japanese name in Sora)
   "Noto Sans JP",
+  // the open twins of Arial / Helvetica, Times and Courier (same letter widths), for text in imported logos
+  "Arimo", "Tinos", "Cousine",
 ]);
 
 /**

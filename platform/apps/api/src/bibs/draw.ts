@@ -9,12 +9,19 @@ import { textShape, type FontRef, type TextShape } from "./text";
  * so what the customer approves is what goes to the printer.
  */
 export type Shape =
-  | { kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[]; evenOdd?: boolean }
+  | {
+    kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[]; evenOdd?: boolean;
+    /** the artwork's own clip (a crop, a logo's clip path), inside the piece's */
+    artClip?: Seg[];
+    /** a dashed stroke: dash and gap lengths, mm */
+    dash?: number[];
+  }
   | {
     kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string;
     /** in place of x/y/w/h: the matrix [a b c d e f] that takes the image's unit square (y down) onto the page — a turned picture */
     m?: Affine;
     clip?: Seg[];
+    artClip?: Seg[];
   };
 
 /** an SVG matrix: x' = a·x + c·y + e, y' = b·x + d·y + f */
@@ -243,6 +250,6 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
 /** shapes moved by (dx, dy) */
 export function moveShapes(shapes: Shape[], dx: number, dy: number, k = 1): Shape[] {
   return shapes.map(s => s.kind === "image"
-    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy) }
-    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined });
+    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy) }
+    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined, dash: s.dash?.map(v => v * k) });
 }

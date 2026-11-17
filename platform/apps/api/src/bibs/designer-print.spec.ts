@@ -204,3 +204,30 @@ describe("found in the branch review", () => {
     await expect(svc.savePrint(spec({ images: ["bm90IGEgcG5n"] }))).rejects.toThrow(/รูปที่ 1/);
   });
 });
+
+describe("found trying hard designs", () => {
+  it("an item's own clip (a logo's clip path, a crop) and a dashed stroke reach the print, carried to the size", async () => {
+    const M = piecesFor("M", "A");
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24", clip: "M180 180H220V220H180Z" },
+        { d: "M150 300H250", m: [2, 0, 0, 2, 0, 0], stroke: "#231f20", sw: 1, dash: [6, 4] },
+        { img: 0, m: [100, 0, 0, 100, 150, 150], clip: "M160 160H200V200H160Z" },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const pics = pictures(d);
+    const front = designerPiece(d, pics, "M", "A", "front", M.front, null);
+    const clipped = front.find(s => s.kind === "path" && s.fill === "#ed1c24")!;
+    expect(clipped.kind === "path" && clipped.artClip?.length).toBeGreaterThan(0);
+    const dashed = front.find(s => s.kind === "path" && s.stroke === "#231f20")!;
+    expect(dashed.kind === "path" && dashed.dash).toEqual([12, 8]); // its units × the matrix's 2
+    expect(front.find(s => s.kind === "image")).toMatchObject({ artClip: expect.any(Array) });
+    // on another size the clip moves and grows with the object
+    const xl = designerPiece(d, pics, "XL", "A", "front", piecesFor("XL", "A").front, null).find(s => s.kind === "path" && s.fill === "#ed1c24")!;
+    expect(xl.kind === "path" && xl.artClip).not.toEqual(clipped.kind === "path" && clipped.artClip);
+    // and the print file takes them
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T12", date: new Date() });
+    expect(job.files.some(f => f.path.endsWith("_ol.pdf"))).toBe(true);
+  });
+});
