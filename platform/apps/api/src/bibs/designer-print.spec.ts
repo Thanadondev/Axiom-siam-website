@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
-import { buildDesignerJob, compose, designerPiece, designerRows, DesignerPrintSchema, FIT_MARGIN_MM, fitInPiece, fitToSize, patternBox, pictures, transformPath, type DesignerPrint } from "./designer-print";
+import { buildDesignerJob, compose, designerFacts, designerPiece, designerRows, DesignerPrintSchema, FIT_MARGIN_MM, fitInPiece, fitToSize, patternBox, pictures, transformPath, type DesignerPrint } from "./designer-print";
 import { piecesFor } from "./template";
 import { parsePath } from "./path";
 
@@ -144,6 +144,21 @@ describe("advanced designer print data", () => {
     expect(meta).toMatchObject({ template: "CB-005", source: "advanced designer", images: 1 });
     expect(meta.notes.join(" ")).toMatch(/Drawn on M/);
     expect(job.counts).toEqual({ M: 2, XL: 1 });
+  });
+
+  it("tells the print manager what a web bib's design.json does: the product, each side's trim colours, the fabric", async () => {
+    const r = DesignerPrintSchema.parse(spec({ reversible: true, trim: "neck", trimColor: "#fff200" }));
+    expect(designerFacts(r, "B1")).toEqual({
+      product: "bib_r",
+      sides: [{ body: "#1d4ed8", rib: { neck: "#fff200", arm: "#1d4ed8", hem: "#1d4ed8" } }, { body: "#1d4ed8", rib: { neck: "#fff200", arm: "#1d4ed8", hem: "#1d4ed8" } }],
+      kit: { id: "advanced", code: "ADV", name: "Advanced designer", fabric: "B1" },
+    });
+    // no trim: no bands; one side: an N-bib
+    expect(designerFacts(DesignerPrintSchema.parse(spec({ trim: "none" })))).toMatchObject({ product: "bib_n", sides: [{ body: "#1d4ed8" }] });
+    const job = await buildDesignerJob(r, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T11", date: new Date(), fabricId: "B1" });
+    const files = unzipSync(job.zip);
+    const dj = JSON.parse(strFromU8(files[Object.keys(files).find(f => f.endsWith("_design.json"))!]));
+    expect(dj.design).toMatchObject({ product: "bib_r", kit: { fabric: "B1" }, reversible: true });
   });
 
   it("an R-bib has side B's pieces too", async () => {

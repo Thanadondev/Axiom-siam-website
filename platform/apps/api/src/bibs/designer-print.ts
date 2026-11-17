@@ -376,7 +376,23 @@ function moveScaled(sh: Shape, dx: number, dy: number, k: number): Shape {
  * The job package, laid out as a web bib's (bibs/job.ts):
  *   <job>/<size>/<nn> No.<number> <name>_ol.pdf, <job>/<job>_<size>.jpg, <job>/<job>.xlsx, <job>/<job>_design.json
  */
-export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta: SheetMeta): Promise<BuiltJob> {
+/**
+ * What the print manager reads from <job>_design.json to lay the files out (its web_job.py,
+ * rule R1): the product, each side's body and trim band colours (a band of another colour
+ * means a vertical layout with a stroke), and the fabric (B1 / C1 vertical) — the same fields
+ * a web bib's design.json has.
+ */
+export function designerFacts(d: DesignerPrint, fabric?: string) {
+  const zones = TRIM_ZONES[d.trim];
+  const side = { body: d.body, ...(zones.length ? { rib: Object.fromEntries((["neck", "arm", "hem"] as const).map(z => [z, zones.includes(z) ? d.trimColor : d.body])) } : {}) };
+  return {
+    product: d.reversible ? "bib_r" as const : "bib_n" as const,
+    sides: d.reversible ? [side, side] : [side],
+    kit: { id: "advanced", code: "ADV", name: "Advanced designer", ...(fabric ? { fabric } : {}) },
+  };
+}
+
+export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta: SheetMeta & { fabricId?: string }): Promise<BuiltJob> {
   const d = DesignerPrintSchema.parse(input);
   const pics = pictures(d);
   const product = d.reversible ? "bib_r" : "bib_n";
@@ -413,7 +429,8 @@ export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
     }
-    const { svg } = designerSheetSvg(d, pics, size, rs[0], counts, { ...meta, notes });
+    const fabricName = meta.fabricId ? `${meta.fabricId === "mesh" ? "Mesh" : meta.fabricId} full sublimation` : meta.fabric;
+    const { svg } = designerSheetSvg(d, pics, size, rs[0], counts, { ...meta, fabric: fabricName, notes });
     const jpg = orderSheetJpeg(svg);
     files[`${name}/${name}_${safeName(SIZE_NAME[size])}.jpg`] = jpg;
     preview ??= jpg;
@@ -426,7 +443,8 @@ export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta
   // what was ordered, without the pictures (they are in every print file)
   const { images, ...rest } = d;
   files[`${name}/${name}_design.json`] = new TextEncoder().encode(JSON.stringify({
-    template: TEMPLATE.code, ref: meta.ref, source: "advanced designer", images: images.length, design: rest, offChart: [...offChart], notes,
+    template: TEMPLATE.code, ref: meta.ref, source: "advanced designer", images: images.length,
+    design: { ...designerFacts(d, meta.fabricId), ...rest }, offChart: [...offChart], notes,
   }));
 
   const zip = zipSync(files, { level: 6 });

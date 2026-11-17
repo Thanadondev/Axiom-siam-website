@@ -140,7 +140,7 @@ export class BibJobService {
     const o = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: {
-        id: true, orderNo: true, userId: true, createdAt: true,
+        id: true, orderNo: true, userId: true, createdAt: true, fabricSummary: true,
         items: { select: { designSnapshot: true, size: true, qty: true, roster: { select: { playerName: true, number: true, qty: true } } } },
         files: { select: { id: true, nasAt: true } },
       },
@@ -152,7 +152,9 @@ export class BibJobService {
       // an advanced design: drawn by the customer's browser, placed on each size here
       const d = await this.loadPrint(printId);
       const t1 = Date.now();
-      return this.save(o, await buildDesignerJob(d, designerRows(d, o.items), { ref: o.orderNo, date: o.createdAt }), t1);
+      // the fabric chosen at checkout ("N-bib · B1 · ขลิบ:full"): the print manager lays B1 / C1 out vertically
+      const fabricId = ["mesh", "B1", "C1"].find(f => (o.fabricSummary ?? "").split(" · ").includes(f));
+      return this.save(o, await buildDesignerJob(d, designerRows(d, o.items), { ref: o.orderNo, date: o.createdAt, fabricId }), t1);
     }
     let design: BibDesign, logoUrl: string | undefined;
     if (isBibSnapshot(snap)) { design = snap.design; logoUrl = snap.logoUrl; }
