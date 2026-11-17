@@ -294,8 +294,8 @@ describe("as Illustrator draws it", () => {
 describe("CMYK typed in", () => {
   it("a colour the customer gave as CMYK prints exactly that CMYK and isn't reported as off the chart", async () => {
     const d = DesignerPrintSchema.parse(spec({
-      trimColor: "#0A2E73",
-      inks: { "#E3262B": [5, 98, 95, 0], "#0a2e73": [100, 80, 0, 35] },
+      trimColor: "#0A2E73", body: "#004282",
+      inks: { "#E3262B": [5, 98, 95, 0], "#0a2e73": [100, 80, 0, 35], "#004282": [100, 70, 0, 30] },
       panels: [
         { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [{ d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#E3262B" }] }] },
         { side: "A", part: "back", objs: [] },
@@ -309,6 +309,7 @@ describe("CMYK typed in", () => {
       .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
     expect(content).toMatch(/\n0\.05 0\.98 0\.95 0 k\n/);
     expect(content).toMatch(/\n1 0\.8 0 0\.35 k\n/); // the trim too
+    expect(content).toMatch(/\n1 0\.7 0 0\.3 k\n/); // and the body
   });
 
   it("refuses inks that aren't CMYK 0–100 by a #rrggbb colour", () => {
