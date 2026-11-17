@@ -13,6 +13,10 @@ function DesignerBridge() {
   const { user, token } = useAuth();
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // the editor has said it is ready, and which design / template was opened in it:
+  // the editor is often ready before the sign-in is restored, and the design opens then
+  const readyRef = useRef(false);
+  const openedRef = useRef("");
   const sp = useSearchParams();
   const designId = sp.get("design");
   const templateId = sp.get("template");
@@ -29,25 +33,25 @@ function DesignerBridge() {
       iframeRef.current?.contentWindow?.postMessage(msg, "*");
     }
 
+    /** opens the design or template in the link once, when both the editor and the sign-in are ready */
+    async function openSaved() {
+      const want = designId ? `d:${designId}` : templateId ? `t:${templateId}` : "";
+      if (!want || !token || !readyRef.current || openedRef.current === want) return;
+      openedRef.current = want;
+      try {
+        const d = await apiFetch<{ stateJson: any }>(designId ? `/designs/${designId}` : `/templates/${templateId}/state`, { token });
+        reply({ type: "axiom-open", doc: d.stateJson });
+      } catch {
+        /* ignore — not owned or not found */
+      }
+    }
+
     async function onMessage(ev: MessageEvent) {
       const m = ev.data || {};
       if (m.type === "axiom-ready") {
         reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
-        if (designId && token) {
-          try {
-            const d = await apiFetch<{ stateJson: any }>(`/designs/${designId}`, { token });
-            reply({ type: "axiom-open", doc: d.stateJson });
-          } catch {
-            /* ignore */
-          }
-        } else if (templateId && token) {
-          try {
-            const d = await apiFetch<{ stateJson: any }>(`/templates/${templateId}/state`, { token });
-            reply({ type: "axiom-open", doc: d.stateJson });
-          } catch {
-            /* ignore — not owned or not found */
-          }
-        }
+        readyRef.current = true;
+        await openSaved();
         // Apply the colourway the buyer picked in the marketplace. Sent after
         // axiom-open so it wins over whatever the saved doc had.
         if (vBody || vTrim || vSize || vTrimLevel) {
@@ -155,6 +159,8 @@ function DesignerBridge() {
     window.addEventListener("message", onMessage);
     // proactively (re)send auth whenever it changes, in case the iframe loaded first
     reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
+    // the sign-in came back after the editor was ready: open the design now
+    void openSaved();
     return () => window.removeEventListener("message", onMessage);
   }, [user, token, designId, templateId, router, vBody, vTrim, vSize, vTrimLevel]);
 

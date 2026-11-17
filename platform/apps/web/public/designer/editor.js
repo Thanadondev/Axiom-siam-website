@@ -1123,9 +1123,15 @@ function openDoc(doc) {
     }
   } catch (e) { toast("เปิดดีไซน์ไม่สำเร็จ — ไฟล์อาจเสียหายหรือเป็นเวอร์ชันที่ไม่รองรับ", "err"); }
 }
+let heardFromPage = false;
 window.addEventListener("message", ev => {
   const m = ev.data || {};
-  if (m.type === "axiom-auth") isLoggedIn = !!m.user;
+  if (m.type === "axiom-auth") {
+    isLoggedIn = !!m.user;
+    // the page may not have been listening when this editor said it was ready (it loads from
+    // cache faster than the page starts): its first word to us is answered with "ready" again
+    if (!heardFromPage) { heardFromPage = true; window.parent.postMessage({ type: "axiom-ready" }, "*"); }
+  }
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }

@@ -3,7 +3,7 @@ import { isOpen } from "./launch";
 
 describe("bibs-only launch", () => {
   it("keeps the bib pages and everything around an order open", () => {
-    for (const p of ["/", "/order/bib", "/order/upload", "/shop/bib", "/shop/rim", "/checkout?design=x",
+    for (const p of ["/", "/order/bib", "/order/upload", "/shop/bib", "/shop/rim", "/checkout?design=x", "/design", "/design?kit=bib",
       "/orders/abc/invoice", "/account", "/login?next=/account", "/auth/magic", "/tracking", "/admin/production", "/coming-soon"]) {
       expect(isOpen(p), p).toBe(true);
     }
@@ -15,7 +15,7 @@ describe("bibs-only launch", () => {
     expect(isOpen("/shop/pacer")).toBe(false);
   });
   it("closes the other products", () => {
-    for (const p of ["/design", "/design?kit=bib", "/templates", "/templates/123", "/designers/1", "/showcase", "/order/new"]) {
+    for (const p of ["/designs", "/templates", "/templates/123", "/designers/1", "/showcase", "/order/new"]) {
       expect(isOpen(p), p).toBe(false);
     }
   });

@@ -4,7 +4,9 @@
  * and links to it carry a "Coming soon" tag.
  *
  * Open for bibs: designing bibs on the web (/order/bib), ordering with the
- * team's own zip (/order/upload) and the bib kit in the 3D studio (/shop/bib),
+ * team's own zip (/order/upload), the bib kit in the 3D studio (/shop/bib) and
+ * the advanced designer (/design) — it draws on the bib's pattern, and its
+ * orders carry their own print data (bibs/designer-print.ts in the API) —
  * plus everything around an order: sign-in, account, checkout, payment,
  * invoices, tracking and the admin side.
  *
@@ -17,7 +19,7 @@ export const LAUNCH_KIT = "bib";
 
 /** pages that are open, with everything under them */
 const OPEN = [
-  "/order/bib", "/order/upload",
+  "/order/bib", "/order/upload", "/design",
   "/shop/bib", "/shop/rim", // /shop/rim is the old address of /shop/bib
   "/checkout", "/orders", "/account",
   "/login", "/register", "/verify", "/forgot-password", "/reset-password", "/auth",
