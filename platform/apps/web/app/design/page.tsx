@@ -87,6 +87,19 @@ function DesignerBridge() {
           reply({ type: "axiom-save-result", ok: false, error: e.message });
         }
       }
+      if (m.type === "axiom-ai-pattern") {
+        if (!token) { reply({ type: "axiom-ai-pattern-result", id: m.id, ok: false, error: "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย" }); return; }
+        try {
+          const res = await apiFetch<{ patterns: unknown[]; remaining: number }>("/ai/patterns", {
+            method: "POST", token,
+            body: JSON.stringify({ prompt: m.prompt, body: m.body, trim: m.trim, count: m.count }),
+          });
+          reply({ type: "axiom-ai-pattern-result", id: m.id, ok: true, patterns: res.patterns, remaining: res.remaining });
+        } catch (e: any) {
+          reply({ type: "axiom-ai-pattern-result", id: m.id, ok: false, error: e.message });
+        }
+        return;
+      }
       if (m.type === "axiom-save-order") {
         if (!token) { reply({ type: "axiom-save-order-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }
         try {

@@ -279,6 +279,17 @@ $("#right").innerHTML = `
   <div class="panel">
     <div class="phead">ลายเต็มตัว (Sublimation)</div>
     <div class="pbody">
+      <div class="aibox">
+        <div style="font-weight:700;font-size:12.5px;margin-bottom:6px">✨ ให้ AI ออกแบบลาย</div>
+        <textarea id="aiPrompt" rows="2" maxlength="300" placeholder="บอกลายที่อยากได้ เช่น สายฟ้าเหลือง-ดำ ดุๆ แบบทีมบาส" style="width:100%;box-sizing:border-box;resize:vertical;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:7px 8px;color:var(--txt);font-size:12px;font-family:inherit;line-height:1.5"></textarea>
+        <div id="aiChips" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0"></div>
+        <div class="btnrow">
+          <button class="mini" id="aiGo" style="flex:2;font-weight:700;background:var(--accent);color:var(--oninv);border-color:transparent">✨ ออกแบบ</button>
+          <button class="mini" id="aiDemo" title="ลองสูตรลายตัวอย่าง (ไม่ใช้ AI)">🎲 ตัวอย่าง</button>
+        </div>
+        <div id="aiMsg" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5"></div>
+        <div class="patgrid" id="aiResults" style="grid-template-columns:repeat(4,1fr)"></div>
+      </div>
       <div class="btnrow">
         <button class="mini" id="patUp" title="อัปโหลดลาย (คลิปเข้าทรงเสื้อ)">⬆ อัปโหลดลาย</button>
         <button class="mini" id="patClr" title="ล้างลาย">✕ ล้างลาย</button>
@@ -565,6 +576,8 @@ function placeGarment(p) {
     if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; bgObjects.push(g); panelGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
+    // an AI pattern on this piece: inside it, now that its shape is here
+    userObjects().filter(o => o._aiPattern && o._aiPanel === p.id).forEach(applyClip);
   });
   fabric.loadSVGFromString(garmentOverlaySVG(p.tpl), (objs, opts) => {
     if (!objs || !objs.length || gen !== garmentGen) return;
@@ -724,7 +737,8 @@ function userObjects() { return canvas.getObjects().filter(o => !o._bg && !o._te
 function hint(msg) { $("#hint").textContent = msg || ""; }
 
 /* ---------- history (undo/redo) ---------- */
-function serialize() { return JSON.stringify(userObjects().map(o => o.toObject(["name", "rosterTag"]))); }
+// undo keeps what a saved design keeps: a warp's or a path's text, a clip group, an AI pattern
+function serialize() { return JSON.stringify(userObjects().map(o => o.toObject(ARC_PROPS))); }
 function pushHistory() {
   if (restoring) return;
   history = history.slice(0, hIndex + 1);
@@ -736,7 +750,7 @@ function restore(json) {
   restoring = true;
   userObjects().forEach(o => canvas.remove(o));
   let arr = []; try { arr = JSON.parse(json); } catch (e) {}
-  fabric.util.enlivenObjects(arr, objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); restoring = false; canvas.requestRenderAll(); refreshLayers(); syncProps(); }, "fabric");
+  fabric.util.enlivenObjects(arr, objs => { objs.forEach(o => { lockAi(o); canvas.add(o); }); fixBackOrder(); restoring = false; canvas.requestRenderAll(); refreshLayers(); syncProps(); }, "fabric");
 }
 function undo() { if (hIndex > 0) { hIndex--; restore(history[hIndex]); } }
 function redo() { if (hIndex < history.length - 1) { hIndex++; restore(history[hIndex]); } }
@@ -1110,7 +1124,7 @@ const bodyPickEl = document.getElementById("bodyPick"); if (bodyPickEl) bodyPick
 const trimPickEl = document.getElementById("trimPick"); if (trimPickEl) trimPickEl.oninput = e => setTrimColor(e.target.value);
 const bodyWhiteEl = document.getElementById("bodyWhite"); if (bodyWhiteEl) bodyWhiteEl.onclick = () => setBodyColor("#ffffff");
 $("#patUp").onclick = () => document.getElementById("filePat").click();
-$("#patClr").onclick = () => { lastPat = null; setPattern(null); toast("ล้างลายแล้ว"); };
+$("#patClr").onclick = () => { lastPat = null; setPattern(null); aiTargets().forEach(i => aiOnPanel(i).forEach(o => canvas.remove(o))); canvas.requestRenderAll(); refreshLayers(); toast("ล้างลายแล้ว"); };
 document.getElementById("filePat").addEventListener("change", ev => {
   const f = ev.target.files[0]; if (!f) return;
   const r = new FileReader();
@@ -1764,6 +1778,85 @@ function bindRulers() {
 
 $("#btnRepeat").onclick = () => stepRepeat();
 
+/* ---------- ✨ AI full-print patterns ----------
+   The customer's words go to the API through the page (it holds the login);
+   Claude answers with recipes, drawn here as vector shapes (ai-patterns.js)
+   over each piece of the side chosen, under everything else, locked, always
+   inside the garment. They print as the shapes they are: sharp, in CMYK. */
+const AI = window.AXIOM_AI_PATTERN;
+const AI_CHIPS = ["สายฟ้าเหลือง-ดำ ดุๆ", "ข้าวหลามตัดไล่สีชมพู", "คลื่นทะเลสไตล์ญี่ปุ่น น้ำเงิน", "ลายพรางดิจิทัลแดง", "ฮาล์ฟโทนไล่ลง สีทีม", "เศษแก้วแตก ม่วง-ส้ม"];
+let aiSeq = 0, aiWaiting = null;
+/** the panels the pattern goes on: the side chosen of an R-bib, else all */
+function aiTargets() {
+  return panels.map((p, i) => [p, i]).filter(([p]) => curStyle !== 2 || bodySide === "both" || (bodySide === "A") === !String(p.id).startsWith("inner")).map(([, i]) => i);
+}
+/** an AI pattern stays put (Layers unlocks it), and inside its piece */
+function lockAi(o) {
+  if (!o || !o._aiPattern) return;
+  o.set({ lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, selectable: false, evented: false });
+  if (canvas && canvas.getObjects().includes(o)) applyClip(o); else setTimeout(() => applyClip(o), 0);
+}
+const aiOnPanel = i => userObjects().filter(o => o._aiPattern && o._aiPanel === panels[i].id);
+function aiThumb(spec) {
+  const { svg } = AI.render(spec, 400, 480);
+  const img = document.createElement("img"); img.className = "aithumb"; img.title = spec.name; img.alt = spec.name;
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  return img;
+}
+function aiShow(specs, note) {
+  const box = $("#aiResults"); box.innerHTML = "";
+  specs.forEach(s => {
+    const cell = document.createElement("div");
+    const im = aiThumb(s); im.onclick = () => applyAiPattern(s);
+    const cap = document.createElement("div"); cap.textContent = s.name; cap.style.cssText = "font-size:10px;color:var(--muted);text-align:center;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    cell.appendChild(im); cell.appendChild(cap); box.appendChild(cell);
+  });
+  $("#aiMsg").textContent = note || "คลิกลายเพื่อใส่ · ปรับสี/ขนาดต่อได้ · ลายเป็นเวกเตอร์ พิมพ์คมทุกขนาด";
+}
+/** the recipe drawn on each piece of the side chosen, replacing an AI pattern already there */
+async function applyAiPattern(spec) {
+  const targets = aiTargets(); if (!targets.length) return;
+  $("#aiMsg").textContent = "กำลังวางลาย…";
+  for (const i of targets) {
+    const p = panels[i];
+    aiOnPanel(i).forEach(o => canvas.remove(o));
+    const W = p.w * MM_PER_UNIT, H = p.h * MM_PER_UNIT;
+    const { svg } = AI.render(spec, W, H);
+    const g = await new Promise(ok => fabric.loadSVGFromString(svg, (objs, opts) => ok(fabric.util.groupSVGElements(objs, opts))));
+    g.set({ scaleX: 1 / MM_PER_UNIT, scaleY: 1 / MM_PER_UNIT, originX: "center", originY: "center", left: p.cx, top: p.cy, objectCaching: true });
+    g._aiPattern = true; g._aiPanel = p.id; g.aiSpec = spec; g.name = "✨ " + spec.name;
+    g.set({ lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, selectable: false, evented: false });
+    canvas.insertAt(g, 0);
+    g.setCoords(); applyClip(g);
+  }
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory();
+  $("#aiMsg").textContent = `ใส่ลาย “${spec.name}” แล้ว${curStyle === 2 && bodySide !== "both" ? (bodySide === "A" ? " (ด้านนอก)" : " (ด้านใน)") : ""} · ปลดล็อกได้ในแผง Layers`;
+}
+function aiReply(m) {
+  if (!aiWaiting || m.id !== aiWaiting.id) return;
+  aiWaiting = null; $("#aiGo").disabled = false; $("#aiGo").textContent = "✨ ออกแบบ";
+  if (!m.ok) { $("#aiMsg").textContent = m.error || "AI ออกแบบไม่สำเร็จ ลองอีกครั้ง"; return; }
+  aiShow(m.patterns || [], m.remaining !== undefined ? `เลือกลายที่ชอบ · วันนี้ใช้ได้อีก ${m.remaining} ครั้ง` : "");
+}
+$("#aiGo").onclick = () => {
+  const prompt = ($("#aiPrompt").value || "").trim();
+  if (prompt.length < 2) { $("#aiMsg").textContent = "พิมพ์ลายที่อยากได้ก่อน หรือคลิกตัวอย่างด้านบน"; return; }
+  if (!inFrame() || !isLoggedIn) { $("#aiMsg").textContent = "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย · ลองปุ่ม 🎲 ตัวอย่าง ได้เลย"; return; }
+  const own = curStyle === 2 && bodySide === "B" && sideB ? sideB.color : bodyColor;
+  aiWaiting = { id: "ai" + (++aiSeq) };
+  $("#aiGo").disabled = true; $("#aiGo").textContent = "กำลังคิด…"; $("#aiMsg").textContent = "AI กำลังออกแบบ 3 แบบ (ประมาณ 10–30 วินาที)";
+  window.parent.postMessage({ type: "axiom-ai-pattern", id: aiWaiting.id, prompt, body: colorHex(own) || undefined, trim: colorHex(trimColor) || undefined, count: 3 }, "*");
+  // no answer at all: say so rather than spin forever
+  const mine = aiWaiting.id;
+  setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) aiReply({ id: mine, ok: false, error: "AI ไม่ตอบกลับ ลองอีกครั้ง" }); }, 90000);
+};
+$("#aiDemo").onclick = () => {
+  const ex = AI.EXAMPLES.slice(), out = [];
+  while (out.length < 4 && ex.length) out.push(ex.splice(Math.floor(Math.random() * ex.length), 1)[0]);
+  aiShow(out, "สูตรตัวอย่าง (ไม่ได้ใช้ AI) · คลิกเพื่อใส่");
+};
+AI_CHIPS.forEach(t => { const c = document.createElement("span"); c.className = "aichip"; c.textContent = t; c.onclick = () => { $("#aiPrompt").value = t; $("#aiPrompt").focus(); }; $("#aiChips").appendChild(c); });
+
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
 function moveBy(o, dx, dy) {
@@ -1898,7 +1991,7 @@ function delSelected() { canvas.getActiveObjects().forEach(o => canvas.remove(o)
 
 /* ---------- copy / paste ---------- */
 let clipboard = null;
-const CLONE_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask"];
+const CLONE_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask", "_aiPattern", "_aiPanel", "aiSpec"];
 function doCopy() { const o = canvas.getActiveObject(); if (!o) return; o.clone(cl => { clipboard = cl; toast("คัดลอกแล้ว"); }, CLONE_PROPS); }
 function doPaste() {
   if (!clipboard) return;
@@ -2041,7 +2134,7 @@ function openDoc(doc) {
     sideB = doc.sideB && typeof doc.sideB.color === "string" ? { color: doc.sideB.color, pat: doc.sideB.pat || null } : null;
     bodySide = "both"; showBodySide();
     buildTemplate();
-    fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
+    fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => { lockAi(o); canvas.add(o); }); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
     zoomFit(); updateDim(); toast("เปิดดีไซน์แล้ว");
     // imported fonts live in memory, not in the file — say so instead of
     // silently rendering the design in a substitute face
@@ -2060,6 +2153,7 @@ window.addEventListener("message", ev => {
     // cache faster than the page starts): its first word to us is answered with "ready" again
     if (!heardFromPage) { heardFromPage = true; window.parent.postMessage({ type: "axiom-ready" }, "*"); }
   }
+  else if (m.type === "axiom-ai-pattern-result") aiReply(m);
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }
@@ -2762,7 +2856,7 @@ function panelOf(obj) {
 }
 function applyClip(obj) {
   if (!obj || obj._bg || obj._temp) return;
-  if (!clipOn) { if (obj.clipPath) { obj.clipPath = null; obj.dirty = true; canvas.requestRenderAll(); } return; }
+  if (!clipOn && !obj._aiPattern) { if (obj.clipPath) { obj.clipPath = null; obj.dirty = true; canvas.requestRenderAll(); } return; }
   const src = panelGroups[panelOf(obj)]; if (!src) return;
   src.clone(cl => { cl.absolutePositioned = true; obj.clipPath = cl; obj.dirty = true; canvas.requestRenderAll(); });
 }
@@ -2800,7 +2894,7 @@ let rosterOrig = null;
    is a Group of single characters rotated along a circle. `arcMeta` keeps
    everything needed to re-render it, so it round-trips through save/open and
    can be flattened back to a plain IText when the curve returns to 0.        */
-const ARC_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask"];
+const ARC_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask", "_aiPattern", "_aiPanel", "aiSpec"];
 
 function isArc(o) { return !!(o && (o.arcMeta || o._warpPending)); }
 
