@@ -8,6 +8,7 @@ import PayPanel from "../../components/PayPanel";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, JERSEY_SIZES, type RosterRow, type Size } from "../../lib/order-draft";
+import { designerBib as designerBibOf } from "../../lib/designer-doc";
 import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, kitSizes, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
 import { useKitAssets } from "../../lib/use-kit-assets";
 import "../app.css";
@@ -102,9 +103,7 @@ function Checkout() {
   // a hoodie or shorts is priced as such (the server reads the garment from the design itself)
   // the advanced designer draws on the bib's pattern: "แบบ 2" (both sides) is an R-bib (the API decides the same way, pricing.ts fromDesigner)
   const doc = design?.stateJson;
-  const designerBib = doc && (doc.app === "axiom-roster" || doc.app === "axiom-designer")
-    ? (Number(doc.style ?? doc.template?.style) === 2 ? "bib_r" : "bib_n")
-    : null;
+  const designerBib = designerBibOf(doc);
   const designerLabel = designerBib === "bib_r" ? "เอี๊ยม R-bib 2 ด้าน" : designerBib ? "เอี๊ยม N-bib" : "";
   // a bib kit made reversible is an R-bib
   const garment = doc?.kind === "kit-studio" ? kitPriceGarment(kit, cfg) : designerBib ?? "jersey";

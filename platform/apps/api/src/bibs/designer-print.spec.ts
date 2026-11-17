@@ -170,3 +170,37 @@ describe("advanced designer print data", () => {
     expect(job.name).toMatch(/R-bib/);
   });
 });
+
+describe("found in the branch review", () => {
+  it("lettering is carried to another size uniformly, even when it spans the piece; a background still stretches", () => {
+    const from = { w: 500, h: 600 }, to = { w: 600, h: 660 };
+    const name = fitToSize({ c: [250, 120], w: 470, h: 40, text: true }, from, to);
+    expect(name[0]).toBeCloseTo(name[3]);
+    const band = fitToSize({ c: [250, 300], w: 500, h: 40 }, from, to);
+    expect(band[0]).not.toBeCloseTo(band[3]);
+  });
+
+  it("side B's pattern picture is mirrored, as the designer shows the inside; side A's is not", () => {
+    const d = DesignerPrintSchema.parse(spec({ pattern: 0, reversible: true, panels: [
+      { side: "A", part: "front", objs: [] }, { side: "A", part: "back", objs: [] },
+      { side: "B", part: "front", objs: [] }, { side: "B", part: "back", objs: [] },
+    ] }));
+    const pics = pictures(d);
+    const p = piecesFor("M", "B").front;
+    const b = designerPiece(d, pics, "M", "B", "front", p, null).find(s => s.kind === "image")!;
+    const a = designerPiece(d, pics, "M", "A", "front", piecesFor("M", "A").front, null).find(s => s.kind === "image")!;
+    expect(b.kind === "image" && b.m![0]).toBeLessThan(0);
+    expect(a.kind === "image" && a.m).toBeUndefined();
+  });
+
+  it("the bib kit's old id (rim) still gets its print files", async () => {
+    const { kitOnBib } = await import("./kit");
+    expect(kitOnBib({ kind: "kit-studio", kit: "rim", colors: { body: "#ffffff", trim: "#ffffff", stripe: "#ffffff", number: "#231f20" } })).toBe(true);
+  });
+
+  it("print data whose picture isn't a PNG is refused before an order can use it", async () => {
+    const { BibJobService } = await import("./bib-jobs.service");
+    const svc = new BibJobService({} as never, {} as never);
+    await expect(svc.savePrint(spec({ images: ["bm90IGEgcG5n"] }))).rejects.toThrow(/รูปที่ 1/);
+  });
+});

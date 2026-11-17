@@ -14,6 +14,9 @@ async function bootstrap() {
 
   // Slips arrive base64 inside JSON. Express defaults to a 100kb body, which
   // every phone screenshot exceeds — without this, upload fails with 413.
+  // The advanced designer's print data carries its pictures (a pattern up to 3000 px, logos):
+  // allowed more than other bodies, on that one route.
+  app.use("/api/v1/designer-prints", express.json({ limit: "64mb" }));
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ limit: "12mb", extended: true }));
 

@@ -66,6 +66,12 @@ export class BibJobService {
       const i = p.error.issues[0];
       throw new BadRequestException(`ข้อมูลไฟล์ผลิตไม่ถูกต้อง: ${i?.path.join(".") ?? ""} ${i?.message ?? ""}`.trim());
     }
+    // every picture must be a PNG the job can print: found now, not once the order is placed
+    for (const [i, b] of p.data.images.entries()) {
+      try { pngSize(new Uint8Array(Buffer.from(b, "base64"))); } catch {
+        throw new BadRequestException(`รูปที่ ${i + 1} ในแบบอ่านไม่ได้ — ลบรูปนั้นแล้วใส่ใหม่ (PNG / JPG)`);
+      }
+    }
     const buf = Buffer.from(JSON.stringify(p.data));
     const id = createHash("sha256").update(buf).digest("hex");
     await fs.mkdir(this.prints, { recursive: true });

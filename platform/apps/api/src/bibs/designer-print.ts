@@ -8,7 +8,7 @@ import { printPdf } from "./print-pdf";
 import { BIB_SIZES, layoutFor, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part, type Piece, type Side } from "./template";
 import { textShape } from "./text";
 import { xlsx } from "./xlsx";
-import { cmykText, ink } from "./color";
+import { inkText } from "./color";
 import type { BuiltJob } from "./job";
 
 /**
@@ -49,6 +49,8 @@ const Obj = z.object({
   c: z.tuple([num, num]),
   w: z.number().min(0),
   h: z.number().min(0),
+  /** lettering: carried to another size uniformly, never stretched like a background */
+  text: z.boolean().optional(),
   items: z.array(Item).max(20_000),
 });
 
@@ -112,9 +114,9 @@ const SPAN = 0.9;
  * keeps its place across (from the middle) and down (from the top), and it grows
  * with the piece's width — or, spanning the piece, with its width and height.
  */
-export function fitToSize(o: { c: [number, number]; w: number; h: number }, from: { w: number; h: number }, to: { w: number; h: number }): Affine {
+export function fitToSize(o: { c: [number, number]; w: number; h: number; text?: boolean }, from: { w: number; h: number }, to: { w: number; h: number }): Affine {
   const kw = to.w / from.w, kh = to.h / from.h;
-  const spans = o.w > SPAN * from.w || o.h > SPAN * from.h;
+  const spans = !o.text && (o.w > SPAN * from.w || o.h > SPAN * from.h);
   const sx = kw, sy = spans ? kh : kw;
   const cx = to.w / 2 + (o.c[0] - from.w / 2) * kw, cy = o.c[1] * kh;
   return [sx, 0, 0, sy, cx - sx * o.c[0], cy - sy * o.c[1]];
@@ -191,6 +193,18 @@ export function pictures(d: DesignerPrint): DesignerPictures {
   return { png, size: png.map(p => pngSize(p)) };
 }
 
+/** path data parsed once: a team's shared artwork is the same on every bib of the job */
+const parsed = new Map<string, Seg[]>();
+function parsedOnce(d: string): Seg[] {
+  let segs = parsed.get(d);
+  if (!segs) {
+    segs = parsePath(d);
+    if (parsed.size > 5000) parsed.clear();
+    parsed.set(d, segs);
+  }
+  return segs;
+}
+
 const TRIM_ZONES: Record<DesignerPrint["trim"], ("neck" | "arm" | "hem")[]> = {
   none: [], neck: ["neck"], neckarm: ["neck", "arm"], full: ["neck", "arm", "hem"],
 };
@@ -210,14 +224,18 @@ export function designerPiece(
     const { w, h } = pics.size[d.pattern];
     const box = patternBox(piece);
     const k = Math.max(box.w / w, box.h / h);
-    out.push({ kind: "image", png: pics.png[d.pattern], x: (piece.w - w * k) / 2, y: (piece.h - h * k) / 2, w: w * k, h: h * k, clip: cut });
+    const x = (piece.w - w * k) / 2, y = (piece.h - h * k) / 2;
+    // the designer shows the inside (side B) mirrored — the picture with it, the artwork not
+    out.push(side === "B"
+      ? { kind: "image", png: pics.png[d.pattern], x: 0, y: 0, w: 1, h: 1, m: [-w * k, 0, 0, h * k, x + w * k, y], clip: cut }
+      : { kind: "image", png: pics.png[d.pattern], x, y, w: w * k, h: h * k, clip: cut });
   }
 
   const idx = d.panels.findIndex(p => p.side === side && p.part === part);
   const mine = player?.objs.filter(o => o.panel === idx) ?? [];
   const objs: PrintObj[] = idx < 0 ? [] : [...d.panels[idx].objs, ...mine];
   for (const o of objs) {
-    let fit = fitToSize(o, drawn, piece);
+    let fit = fitToSize(mine.includes(o as (typeof mine)[number]) ? { ...o, text: true } : o, drawn, piece);
     // a player's name / number on another size: kept inside that piece at its height
     if (mine.includes(o as (typeof mine)[number])) {
       const c: [number, number] = [fit[0] * o.c[0] + fit[4], fit[3] * o.c[1] + fit[5]];
@@ -231,7 +249,7 @@ export function designerPiece(
         continue;
       }
       if (!it.fill && !it.stroke) continue;
-      const segs = transformPath(parsePath(it.d), m);
+      const segs = transformPath(parsedOnce(it.d), m);
       const scale = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
       out.push({
         kind: "path", segs, clip: cut,
@@ -344,7 +362,7 @@ export function designerSheetSvg(d: DesignerPrint, pics: DesignerPictures, size:
   else {
     out.push({ kind: "path", segs: box(rx + 16, ry + 50, 40, 40), fill: d.trimColor, stroke: "#bcbec0", width: 2 });
     label({ neck: "Neck", neckarm: "Neck, sleeves", full: "Neck, sleeves, hem" }[d.trim], 15, { x: rx + 66, cy: ry + 70 }, INK, out);
-    label(cmykText(ink(d.trimColor).cmyk), 13, { x: rx + 16, top: ry + 106 }, "#6d6e71", out);
+    label(inkText(d.trimColor), 13, { x: rx + 16, top: ry + 106 }, "#6d6e71", out);
   }
 
   const fy = H - 230;

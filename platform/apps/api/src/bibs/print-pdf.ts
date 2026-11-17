@@ -31,8 +31,18 @@ export interface PrintPdf {
 }
 
 /** a DeviceCMYK image (with a soft mask for the PNG's transparency); a tint prints its shape in one ink */
+/** a picture's CMYK conversion, kept for the job's other print files (a team's logo and pattern are on every bib) */
+const converted = new WeakMap<Uint8Array, Map<string, ReturnType<typeof pngToCmyk>>>();
+function toCmyk(png: Uint8Array, tint?: string) {
+  let byTint = converted.get(png);
+  if (!byTint) converted.set(png, (byTint = new Map()));
+  let c = byTint.get(tint ?? "");
+  if (!c) byTint.set(tint ?? "", (c = tint ? tintCmyk(png, tint) : pngToCmyk(png)));
+  return c;
+}
+
 function cmykImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef {
-  const { w, h, cmyk, alpha } = tint ? tintCmyk(png, tint) : pngToCmyk(png);
+  const { w, h, cmyk, alpha } = toCmyk(png, tint);
   const ctx = doc.context;
   const smask = alpha ? ctx.register(ctx.flateStream(alpha, { Type: "XObject", Subtype: "Image", Width: w, Height: h, ColorSpace: "DeviceGray", BitsPerComponent: 8 })) : undefined;
   return ctx.register(ctx.flateStream(cmyk, {

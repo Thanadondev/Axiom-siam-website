@@ -7,6 +7,7 @@ import KitThumb from "../../../components/KitThumb";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 import { kitById, restoreConfig, sideLook, KITS, type Kit, type KitSide } from "../../../lib/kits";
+import { designerBib, designerDoc } from "../../../lib/designer-doc";
 import { useKitAssets } from "../../../lib/use-kit-assets";
 import { assetHref } from "../../../lib/kit-assets";
 import { apiHref } from "../../../lib/order-upload";
@@ -292,7 +293,7 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
   const snap = o?.items?.[0]?.designSnapshot;
   const look: Look | null = snap && snap.kind === "kit-studio" ? snap : null;
   // a bib from the advanced designer whose print files the website made from its own drawing
-  const designerPrint = !!designerOf(snap)?.printId;
+  const designerPrint = !!designerDoc(snap)?.printId;
   const kit = kitOf(look) ?? (look ? KITS[0] : null);
   const cfg = kit ? restoreConfig(kit, look ? { ...look } : null) : null;
   // the customer's own logo and font travel inside the order's design snapshot
@@ -587,17 +588,12 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
  */
 /** a bib designed on the web: its print files are made by the website; the team can make them again */
 /** kits from the kit studio cut on the bib template: their print files are made by the website (apps/api/src/bibs/kit.ts) */
-const KITS_ON_BIB = ["bib"];
+const KITS_ON_BIB = ["bib", "rim"]; // rim: the bib kit's old id (/shop/rim)
 
-/** a design from the advanced designer (a saved order "axiom-roster", or a design "axiom-designer") */
-function designerOf(snap: any): { printId?: string; style?: number; template?: { style?: number } } | null {
-  return snap && (snap.app === "axiom-roster" || snap.app === "axiom-designer") ? snap : null;
-}
 /** what an advanced design is, for the job sheet: drawn on the bib's pattern, "แบบ 2" both sides */
-function designerLabel(snap: any): string | null {
-  const d = designerOf(snap);
-  if (!d) return null;
-  return `เอี๊ยมจากโปรแกรมออกแบบขั้นสูง · ${Number(d.style ?? d.template?.style) === 2 ? "R-bib 2 ด้าน" : "N-bib"}`;
+function designerLabel(snap: unknown): string | null {
+  const bib = designerBib(snap);
+  return bib ? `เอี๊ยมจากโปรแกรมออกแบบขั้นสูง · ${bib === "bib_r" ? "R-bib 2 ด้าน" : "N-bib"}` : null;
 }
 
 function BibJobLine({ o, built, token, onChanged, what }: { o: any; built: boolean; token: string; onChanged: () => void; what: string }) {

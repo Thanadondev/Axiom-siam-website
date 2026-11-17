@@ -2154,7 +2154,7 @@ async function printObj(o, ctx) {
   const pts = [[br.left, br.top], [br.left + br.width, br.top], [br.left, br.top + br.height], [br.left + br.width, br.top + br.height]].map(([x, y]) => applyM(toMm, x, y));
   const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  return { panel: pi, c: [r4((x0 + x1) / 2), r4((y0 + y1) / 2)], w: r4(x1 - x0), h: r4(y1 - y0), items };
+  return { panel: pi, c: [r4((x0 + x1) / 2), r4((y0 + y1) / 2)], w: r4(x1 - x0), h: r4(y1 - y0), ...(isTextish(o) ? { text: true } : {}), items };
 }
 /* A player's name or number set in the template's size can be wider than the piece
    (a long name across the back): it shrinks, about its centre, to sit inside the

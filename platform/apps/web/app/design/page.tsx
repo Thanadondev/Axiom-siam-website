@@ -33,7 +33,20 @@ function DesignerBridge() {
       iframeRef.current?.contentWindow?.postMessage(msg, "*");
     }
 
-    /** opens the design or template in the link once, when both the editor and the sign-in are ready */
+    /** the colourway the buyer picked in the marketplace: sent after axiom-open so it wins over the saved doc's */
+    function sendVariant() {
+      if (vBody || vTrim || vSize || vTrimLevel) {
+        setTimeout(() => reply({
+          type: "axiom-set-variant",
+          bodyColor: vBody || undefined,
+          trimColor: vTrim || undefined,
+          size: vSize || undefined,
+          trim: vTrimLevel || undefined,
+        }), 250);
+      }
+    }
+
+    /** opens the design or template in the link once, when both the editor and the sign-in are ready; then its colourway */
     async function openSaved() {
       const want = designId ? `d:${designId}` : templateId ? `t:${templateId}` : "";
       if (!want || !token || !readyRef.current || openedRef.current === want) return;
@@ -44,6 +57,7 @@ function DesignerBridge() {
       } catch {
         /* ignore — not owned or not found */
       }
+      sendVariant();
     }
 
     async function onMessage(ev: MessageEvent) {
@@ -51,18 +65,8 @@ function DesignerBridge() {
       if (m.type === "axiom-ready") {
         reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
         readyRef.current = true;
-        await openSaved();
-        // Apply the colourway the buyer picked in the marketplace. Sent after
-        // axiom-open so it wins over whatever the saved doc had.
-        if (vBody || vTrim || vSize || vTrimLevel) {
-          setTimeout(() => reply({
-            type: "axiom-set-variant",
-            bodyColor: vBody || undefined,
-            trimColor: vTrim || undefined,
-            size: vSize || undefined,
-            trim: vTrimLevel || undefined,
-          }), 250);
-        }
+        // a design or template to open sends the colourway after it (now, or once the sign-in is back); nothing to open, now
+        if (designId || templateId) await openSaved(); else sendVariant();
       }
       if (m.type === "axiom-save") {
         if (!token) { reply({ type: "axiom-save-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }

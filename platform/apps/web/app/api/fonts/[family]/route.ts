@@ -84,6 +84,8 @@ export async function GET(req: NextRequest, { params }: { params: { family: stri
     let buf = await fetchTtf(family, weight, text);
     if (!buf && weight !== "400") { served = "400"; buf = await fetchTtf(family, "400", text); }
     if (!buf) throw new Error("Google CSS: no such weight");
+    // letters asked for (text=) make many small fonts: keep the newest few hundred, not every one ever asked
+    if (cache.size >= 300) cache.delete(cache.keys().next().value!);
     cache.set(key, { buf, served });
     return ttfResponse(buf, served);
   } catch (e: any) {

@@ -8,6 +8,8 @@ import { BIB_SIZES, type BibSize } from "./template";
  */
 export const KITS_ON_BIB: Record<string, { code: string; name: string }> = {
   bib: { code: "BK-03", name: "Basketball" },
+  // the same kit's old id (/shop/rim): designs and orders saved before the rename still get their print files
+  rim: { code: "BK-03", name: "Basketball" },
 };
 
 /** what the kit studio saves with a design (apps/web/lib/kits.ts KitConfig, plus the uploaded files) */
