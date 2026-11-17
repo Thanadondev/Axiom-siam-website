@@ -1,11 +1,13 @@
 import UPNG from "@pdf-lib/upng";
 import CHART from "./dtp-chart.json";
+import FACTORY from "./factory-cmyk.json";
 
 /**
  * The factory prints from CMYK only. Colours picked on the website come from
  * its DTP chart (the same 280 swatches the kit studio offers), so each one maps
- * to the chart's exact CMYK. A colour typed in off the chart is converted
- * plainly and reported, so the graphics team can check it.
+ * to the chart's exact CMYK. A colour typed in off the chart is converted as
+ * the factory's Illustrator would (factoryCmyk) and reported, so the graphics
+ * team can check it.
  */
 export type Cmyk = [number, number, number, number]; // 0–100 each
 
@@ -26,15 +28,49 @@ export function parseCmyk(s: string): Cmyk | null {
 
 export const cmykText = (c: Cmyk) => `C${c[0]} M${c[1]} Y${c[2]} K${c[3]}`;
 
-const round1 = (v: number) => Math.round(v * 10) / 10;
+const lut = FACTORY as { grid: number[]; cmyk: number[] };
 
-/** a plain conversion with full black generation: for colours off the chart only */
-export function naiveCmyk(hex: string): Cmyk {
+/** the chart's greys, K only, by how light they are: [0–255, K] from white to black */
+const greys: [number, number][] = [[255, 0], ...Object.entries(chart)
+  .map(([h, s]) => [h, parseCmyk(s)] as const)
+  .filter(([, c]) => c && !c[0] && !c[1] && !c[2])
+  .map(([h, c]): [number, number] => [rgbOf(h).reduce((a, v) => a + v, 0) / 3, c![3]])
+  .sort((a, b) => b[0] - a[0])];
+
+function rgbOf(hex: string): [number, number, number] {
   const v = parseInt(hex.slice(1), 16);
-  const r = ((v >> 16) & 255) / 255, g = ((v >> 8) & 255) / 255, b = (v & 255) / 255;
-  const k = 1 - Math.max(r, g, b);
-  if (k >= 1) return [0, 0, 0, 100];
-  return [round1(((1 - r - k) / (1 - k)) * 100), round1(((1 - g - k) / (1 - k)) * 100), round1(((1 - b - k) / (1 - k)) * 100), round1(k * 100)];
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/**
+ * A colour off the chart, as the factory's Illustrator makes it CMYK (its own
+ * colour settings, read into factory-cmyk.json by scripts/factory-cmyk.jsx; the
+ * chart's 280 colours were made the same way: the same CMYK within 2 points).
+ * A grey is printed in black only, as the chart's greys are, where Illustrator
+ * would mix all four inks. The plain formula this replaced put black in every
+ * colour: a dark green #255934 came out C58 M0 Y42 K65, muddy, where the
+ * factory gives C83 M40 Y90 K37.
+ */
+export function factoryCmyk(hex: string): Cmyk {
+  const c = rgbOf(hex);
+  if (Math.max(...c) - Math.min(...c) <= 6) {
+    const l = (c[0] + c[1] + c[2]) / 3;
+    for (let i = 1; i < greys.length; i++) {
+      const [l0, k0] = greys[i - 1], [l1, k1] = greys[i];
+      if (l >= l1) return [0, 0, 0, Math.round(k0 + ((l0 - l) / (l0 - l1)) * (k1 - k0))];
+    }
+    return [0, 0, 0, 100];
+  }
+  const { grid, cmyk } = lut, n = grid.length;
+  const at = c.map(v => { let i = 0; while (i < n - 2 && grid[i + 1] <= v) i++; return [i, (v - grid[i]) / (grid[i + 1] - grid[i])] as const; });
+  const out = [0, 0, 0, 0];
+  for (let r = 0; r < 2; r++) for (let g = 0; g < 2; g++) for (let b = 0; b < 2; b++) {
+    const w = (r ? at[0][1] : 1 - at[0][1]) * (g ? at[1][1] : 1 - at[1][1]) * (b ? at[2][1] : 1 - at[2][1]);
+    if (!w) continue;
+    const p = (((at[0][0] + r) * n + at[1][0] + g) * n + at[2][0] + b) * 4;
+    for (let k = 0; k < 4; k++) out[k] += w * cmyk[p + k];
+  }
+  return out.map(v => Math.min(100, Math.max(0, Math.round(v)))) as Cmyk;
 }
 
 export interface Ink { hex: string; cmyk: Cmyk; onChart: boolean }
@@ -44,7 +80,7 @@ export function ink(hex: string): Ink {
   // the fabric itself: no ink
   if (h === "#ffffff") return { hex: h, cmyk: [0, 0, 0, 0], onChart: true };
   const c = chart[h] ? parseCmyk(chart[h]) : null;
-  return c ? { hex: h, cmyk: c, onChart: true } : { hex: h, cmyk: naiveCmyk(h), onChart: false };
+  return c ? { hex: h, cmyk: c, onChart: true } : { hex: h, cmyk: factoryCmyk(h), onChart: false };
 }
 
 /**

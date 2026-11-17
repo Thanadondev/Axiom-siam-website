@@ -5,7 +5,7 @@ import { parsePath, bounds, pathData } from "./path";
 import { textShape } from "./text";
 import { BibDesignSchema } from "./design";
 import { drawPiece, frontNumber, edgeX, FRONT_NUMBER_CLEAR } from "./draw";
-import { ink, naiveCmyk } from "./color";
+import { factoryCmyk, ink } from "./color";
 import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND } from "./template";
 import { buildBibJob } from "./job";
 
@@ -126,7 +126,20 @@ describe("colour", () => {
     expect(ink(BLACK).cmyk).toEqual([0, 0, 0, 100]);
     expect(ink("#ffffff")).toMatchObject({ cmyk: [0, 0, 0, 0], onChart: true });
     expect(ink("#123456").onChart).toBe(false);
-    expect(naiveCmyk("#ff0000")).toEqual([0, 100, 100, 0]);
+    expect(ink("#123456").cmyk).toEqual(factoryCmyk("#123456"));
+  });
+
+  it("converts an off-chart colour as the factory's Illustrator does; a grey in black only, like the chart's", () => {
+    // values Illustrator gives with the factory's colour settings
+    expect(factoryCmyk("#ff0000")).toEqual([0, 99, 100, 0]);
+    expect(factoryCmyk("#255934")).toEqual([83, 40, 90, 37]); // not the muddy C58 M0 Y42 K65 of the plain formula
+    // the chart's own colours come out within a few points of the chart
+    for (const [hex, cmyk] of [["#f26522", [0, 75, 100, 0]], ["#ffcc4e", [0, 20, 80, 0]]] as const)
+      factoryCmyk(hex).forEach((v, i) => expect(Math.abs(v - cmyk[i])).toBeLessThanOrEqual(3));
+    expect(factoryCmyk("#000000")).toEqual([0, 0, 0, 100]);
+    expect(factoryCmyk("#939598")).toEqual([0, 0, 0, 50]); // a chart grey
+    expect(factoryCmyk("#7f7f7f")[3]).toBeGreaterThan(55);
+    expect(factoryCmyk("#7f7f7f").slice(0, 3)).toEqual([0, 0, 0]);
   });
 
   it("prints the CMYK written under each swatch on the factory's chart (DTP-28color-cs4.svg), by its number", async () => {
@@ -207,7 +220,7 @@ describe("the job package", () => {
     const pdf = await PDFDocument.load(unzipSync(job.zip)[`${job.name}/M/01 No.2 SORA_ol.pdf`]);
     expect(mm(pdf.getPage(0).getSize().height)).toBeCloseTo(layoutFor("M", ["A"]).page.h, 0);
     expect(job.name).toContain("N-bib");
-    expect(job.offChart).toEqual(["#123456 → C79.1 M39.5 Y0 K66.3"]);
+    expect(job.offChart).toEqual(["#123456 → C98 M80 Y41 K34"]);
   }, 30_000);
 });
 
