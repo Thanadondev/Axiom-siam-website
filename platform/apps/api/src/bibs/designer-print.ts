@@ -265,15 +265,15 @@ export function designerSheetSvg(d: DesignerPrint, pics: DesignerPictures, size:
   });
 
   // the trim colour, right of the pieces
-  const rx = W - 230, ry = top + 20, bw = 210;
+  const rx = W - 262, ry = top + 20, bw = 244;
   out.push({ kind: "path", segs: box(rx, ry, bw, 150), stroke: RED, width: 3, fill: "#ffffff" });
   out.push({ kind: "path", segs: box(rx, ry, bw, 36), fill: RED });
   label("RIB COLOUR", 16, { cx: rx + bw / 2, cy: ry + 18 }, "#ffffff", out);
   if (d.trim === "none") label("No rib bands", 18, { x: rx + 16, cy: ry + 90 }, INK, out);
   else {
-    out.push({ kind: "path", segs: box(rx + 16, ry + 52, 44, 44), fill: d.trimColor, stroke: "#bcbec0", width: 2 });
-    label(cmykText(ink(d.trimColor).cmyk), 14, { x: rx + 70, cy: ry + 74 }, "#6d6e71", out);
-    label({ neck: "Neck", neckarm: "Neck, sleeves", full: "Neck, sleeves, hem" }[d.trim], 17, { x: rx + 16, top: ry + 110 }, INK, out);
+    out.push({ kind: "path", segs: box(rx + 16, ry + 50, 40, 40), fill: d.trimColor, stroke: "#bcbec0", width: 2 });
+    label({ neck: "Neck", neckarm: "Neck, sleeves", full: "Neck, sleeves, hem" }[d.trim], 15, { x: rx + 66, cy: ry + 70 }, INK, out);
+    label(cmykText(ink(d.trimColor).cmyk), 13, { x: rx + 16, top: ry + 106 }, "#6d6e71", out);
   }
 
   const fy = H - 230;

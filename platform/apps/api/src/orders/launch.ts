@@ -13,11 +13,12 @@ export function bibsOnly(env: NodeJS.ProcessEnv = process.env): boolean {
 export const LAUNCH_GARMENTS: readonly Garment[] = ["bib_n", "bib_r"];
 
 /**
- * The advanced designer's bibs: the factory still makes their print files by hand, so
- * they open with everything else (OPEN_ALL), not with the bibs-only launch.
+ * The advanced designer's bibs open with the bibs-only launch once the design carries
+ * its print data (the designer sends it on "สั่งผลิต", bibs/designer-print.ts); one
+ * without it would need its files made by hand, so it waits for everything else (OPEN_ALL).
  */
 export function designerBlock(isDesigner: boolean, env: NodeJS.ProcessEnv = process.env): string | null {
-  return isDesigner && bibsOnly(env) ? "โปรแกรมออกแบบขั้นสูงยังไม่เปิดสั่งผลิต — สั่งเอี๊ยมได้ที่หน้าออกแบบเอี๊ยม" : null;
+  return isDesigner && bibsOnly(env) ? "แบบนี้ยังไม่มีไฟล์ผลิต — เปิดแบบในหน้าออกแบบขั้นสูงแล้วกด สั่งผลิต อีกครั้ง" : null;
 }
 
 /** null when the order can be placed; the reason in Thai when it can't */

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { launchBlock, bibsOnly, designerBlock } from "./launch";
 import { garmentOf, fromDesigner } from "./pricing";
+import { designerPrintId, madeOnWeb } from "../bibs/bib-jobs.service";
 
 describe("bibs-only launch", () => {
   it("takes bib orders: web-designed, the team's zip, the bib kit from the studio", () => {
@@ -28,9 +29,20 @@ describe("bibs-only launch", () => {
     expect(garmentOf({ app: "axiom-designer", style: 2 })).toBe("bib_r"); // a saved design, not an order
     expect(garmentOf({ app: "axiom-roster", template: { style: 2 } })).toBe("bib_r");
     expect(fromDesigner({ kind: "kit-studio", kit: "bib" })).toBeNull();
-    expect(designerBlock(true, {})).toMatch(/ยังไม่เปิดสั่งผลิต/);
+    expect(designerBlock(true, {})).toMatch(/ยังไม่มีไฟล์ผลิต/);
     expect(designerBlock(false, {})).toBeNull();
     expect(designerBlock(true, { OPEN_ALL: "1" })).toBeNull();
+  });
+  it("an advanced design with its print data is made by the website; without it, or with a bad id, it isn't", () => {
+    const id = "a".repeat(64);
+    const order = { app: "axiom-roster", style: 1, template: { app: "axiom-designer" } };
+    expect(designerPrintId({ ...order, printId: id })).toBe(id);
+    expect(madeOnWeb({ ...order, printId: id })).toBe(true);
+    expect(designerPrintId(order)).toBeNull();
+    expect(madeOnWeb(order)).toBe(false);
+    expect(designerPrintId({ ...order, printId: "../../etc/passwd" })).toBeNull();
+    // only on a design from the advanced designer
+    expect(designerPrintId({ kind: "kit-studio", kit: "bib", printId: id })).toBeNull();
   });
   it("opens every product with OPEN_ALL=1 or the web's NEXT_PUBLIC_OPEN_ALL=1", () => {
     expect(bibsOnly({})).toBe(true);

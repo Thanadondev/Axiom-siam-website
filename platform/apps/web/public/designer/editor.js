@@ -1306,15 +1306,18 @@ function normWeight(w) {
   return /^\d{3}$/.test(s) ? s : "400";
 }
 
-async function loadOutlineFont(family, weight) {
-  const key = `${family}|${weight}`;
+async function loadOutlineFont(family, weight, text) {
+  const key = `${family}|${weight}${text ? "|" + text : ""}`;
   if (fontCache.has(key)) return fontCache.get(key);
   if (fontFails.has(key)) return null;
   if (typeof opentype === "undefined") { fontFails.add(key); return null; }
   try {
-    const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}`);
+    const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}${text ? "&text=" + encodeURIComponent(text) : ""}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const font = opentype.parse(await res.arrayBuffer());
+    // bold asked of a family with no bold: the browser draws the regular thickened (synthetic bold)
+    const served = res.headers.get("X-Font-Weight");
+    if (+weight >= 600 && served && +served < 600) font._fauxBold = true;
     fontCache.set(key, font);
     return font;
   } catch (e) {
@@ -1334,10 +1337,58 @@ function textNeeds(doc) {
   return [...need.values()];
 }
 
-/** convert one <text> element into a <path>, in place */
-function textToPath(t, font) {
+/** whether the font draws this character (not its empty "missing" box) */
+function hasGlyph(font, ch) {
+  if (!ch.trim()) return true;
+  const i = font.charToGlyphIndex(ch);
+  return i !== null && i !== undefined && i > 0;
+}
+/** every family in a CSS font stack, generic names left out */
+function stackFamilies(css) {
+  return String(css || "").split(",").map(f => f.trim().replace(/^['"]|['"]$/g, "")).filter(f => f && !/^(serif|sans-serif|monospace|cursive|fantasy|system-ui)$/i.test(f));
+}
+/** after the text's own stack, the faces the browser falls back to for Thai and Japanese */
+const OUTLINE_FALLBACKS = ["Noto Sans Thai", "Noto Sans JP"];
+
+/**
+ * The fonts a text needs, in order: its own, then — for each character its own
+ * font lacks — the next in its stack or a fallback, as the browser picks one on
+ * screen. A Thai or Japanese name set in a Latin face would otherwise come out as
+ * empty boxes. `missing`: characters no font has.
+ */
+async function fontsForText(t, primary, weight) {
+  const chars = [...new Set([...(t.textContent || "")])];
+  let missing = chars.filter(ch => !hasGlyph(primary, ch));
+  const fonts = [primary];
+  // the text's own family first (its file holds one script; asked for the letters it has them all), then its stack, then the fallbacks
+  const stack = stackFamilies(t.getAttribute("font-family") || t.style.fontFamily);
+  for (const fam of [...new Set([...stack, ...OUTLINE_FALLBACKS])]) {
+    if (!missing.length) break;
+    if (importedFonts.has(fam)) continue; // the customer's own file: what it lacks, it lacks
+    const want = missing.slice().sort().join("");
+    const f = (await loadOutlineFont(fam, weight, want)) || (weight !== "400" ? await loadOutlineFont(fam, "400", want) : null);
+    if (!f || fonts.includes(f)) continue;
+    if (missing.some(ch => hasGlyph(f, ch))) { fonts.push(f); missing = missing.filter(ch => !hasGlyph(f, ch)); }
+  }
+  return { fonts, missing };
+}
+
+/** convert one <text> element into a <path>, in place; `fonts`: its own first, then fallbacks per character */
+function textToPath(t, fonts) {
+  if (!Array.isArray(fonts)) fonts = [fonts];
   const size = parseFloat(t.getAttribute("font-size") || t.style.fontSize || "40");
   const spacing = parseFloat(t.style.letterSpacing || "0") || 0;
+  const pick = ch => fonts.find(f => hasGlyph(f, ch)) || fonts[0];
+  // the text split where its font changes, so each run is shaped (kerned) by its own font
+  const pieces = text => {
+    const out = [];
+    for (const ch of text) {
+      const f = pick(ch), last = out[out.length - 1];
+      if (last && last.font === f && !spacing) last.text += ch; else out.push({ font: f, text: ch });
+    }
+    return out;
+  };
+  const width = text => pieces(text).reduce((w, pc) => w + pc.font.getAdvanceWidth(pc.text, size), 0) + spacing * Math.max(0, [...text].length - 1);
 
   // Fabric writes one <tspan> per line (or per char), each carrying the
   // absolute x/y of its baseline. That is precisely what opentype wants.
@@ -1348,35 +1399,41 @@ function textToPath(t, font) {
 
   const anchor = t.getAttribute("text-anchor") || "start";
 
-  let d = "";
+  // a font without the bold asked for is drawn thickened, as the browser does (synthetic bold): kept apart
+  let d = "", dBold = "";
   for (const run of runs) {
     if (!run.text) continue;
     let x = run.x;
-    if (anchor !== "start") {
-      const w = font.getAdvanceWidth(run.text, size) + spacing * Math.max(0, [...run.text].length - 1);
-      x -= anchor === "middle" ? w / 2 : w;
-    }
-    if (spacing) {
-      // advance glyph by glyph so letter-spacing survives
-      for (const ch of run.text) {
-        d += font.getPath(ch, x, run.y, size).toPathData(3) + " ";
-        x += font.getAdvanceWidth(ch, size) + spacing;
-      }
-    } else {
-      d += font.getPath(run.text, x, run.y, size).toPathData(3) + " ";
+    if (anchor !== "start") { const w = width(run.text); x -= anchor === "middle" ? w / 2 : w; }
+    for (const pc of pieces(run.text)) {
+      const pd = pc.font.getPath(pc.text, x, run.y, size).toPathData(3) + " ";
+      if (pc.font._fauxBold) dBold += pd; else d += pd;
+      x += pc.font.getAdvanceWidth(pc.text, size) + (spacing ? spacing : 0);
     }
   }
-  if (!d.trim()) { t.remove(); return; }
+  if (!d.trim() && !dBold.trim()) { t.remove(); return; }
 
-  const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
-  p.setAttribute("d", d.trim());
-  // carry over every paint attribute the text had
-  for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform"]) {
-    const v = t.getAttribute(a);
-    if (v) p.setAttribute(a, v);
-  }
-  if (!p.getAttribute("fill")) p.setAttribute("fill", t.style.fill || "#000");
-  t.parentNode.replaceChild(p, t);
+  const mk = (data, faux) => {
+    const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", data.trim());
+    // carry over every paint attribute the text had
+    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform"]) {
+      const v = t.getAttribute(a);
+      if (v) p.setAttribute(a, v);
+    }
+    if (!p.getAttribute("fill")) p.setAttribute("fill", t.style.fill || "#000");
+    // synthetic bold: the outline grown by about 1/28 of the size, in its own colour
+    const strokeNone = !p.getAttribute("stroke") || p.getAttribute("stroke") === "none" || !(parseFloat(p.getAttribute("stroke-width")) > 0);
+    if (faux && strokeNone) {
+      p.setAttribute("stroke", p.getAttribute("fill"));
+      p.setAttribute("stroke-width", String(+(size / 28).toFixed(3)));
+      p.setAttribute("stroke-linejoin", "round");
+    }
+    return p;
+  };
+  if (dBold.trim()) t.parentNode.insertBefore(mk(dBold, true), t);
+  if (d.trim()) t.parentNode.insertBefore(mk(d, false), t);
+  t.remove();
 }
 
 /** returns { svg, converted, skipped[] } */
@@ -1395,14 +1452,16 @@ async function outlineSVG(svgStr) {
 
   let converted = 0;
   const skipped = new Set();
-  doc.querySelectorAll("text").forEach(t => {
+  for (const t of [...doc.querySelectorAll("text")]) {
     const fam = firstFamily(t.getAttribute("font-family") || t.style.fontFamily);
     const w = normWeight(t.getAttribute("font-weight") || t.style.fontWeight);
     const font = fonts.get(`${fam}|${w}`);
-    if (!font) { skipped.add(fam || "?"); return; }   // leave as <text>, warn below
-    textToPath(t, font);
+    if (!font) { skipped.add(fam || "?"); continue; }   // leave as <text>, warn below
+    const { fonts: list, missing } = await fontsForText(t, font, w);
+    if (missing.length) skipped.add(`${fam} (ไม่มีตัว ${missing.join(" ")})`);
+    textToPath(t, list);
     converted++;
-  });
+  }
 
   return { svg: new XMLSerializer().serializeToString(doc), converted, skipped: [...skipped] };
 }
@@ -1964,7 +2023,185 @@ async function generateBatch() {
   if (prog) prog.textContent = `เสร็จ ✓ ${rows.length} ตัว (PNG + SVG ต่อคน)`;
   toast("ดาวน์โหลด ZIP แล้ว ✓");
 }
-function saveOrder(goOrder) {
+/* ---------- print data for the factory ----------
+   When a team orders, the bib is printed from what this page draws, not from a
+   file the graphics team re-makes. Every shape is laid down here as an outline
+   (text in the very font on screen), in mm on the CB-005 piece of the size it was
+   drawn on: origin at the cut line's top-left, y down. The API (bibs/designer-print.ts)
+   places it on each size's pieces and builds the job a web bib gets.
+   The shared art goes once; each player only carries their own name / number fields. */
+const PRINT_MAX_PX = 3000;   // a picture's longest side in the print data
+function mulM(A, B) { return [A[0]*B[0]+A[2]*B[1], A[1]*B[0]+A[3]*B[1], A[0]*B[2]+A[2]*B[3], A[1]*B[2]+A[3]*B[3], A[0]*B[4]+A[2]*B[5]+A[4], A[1]*B[4]+A[3]*B[5]+A[5]]; }
+function applyM(m, x, y) { return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]; }
+const r4 = n => Math.round(n * 1e4) / 1e4;
+const nf = a => parseFloat(a) || 0;
+/** canvas units → mm on the panel's piece (the garment sits centred on (200, 235) in sizes.js units, turned by the layout's angle) */
+function panelToMm(p) {
+  const sz = window.AXIOM_SIZES[TPL_SIZE];
+  const bb = pathBBox(p.tpl === "front" ? sz.front : sz.back);
+  const th = -(p.angle || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), U = MM_PER_UNIT;
+  const toLocal = mulM([1, 0, 0, 1, 200 - bb.x, 235 - bb.y], mulM([c, s, -s, c, 0, 0], [1, 0, 0, 1, -p.cx, -p.cy]));
+  return mulM([U, 0, 0, U, 0, 0], toLocal);
+}
+function colorHex(v) {
+  try { const c = new fabric.Color(v); return c.getAlpha() === 0 ? null : "#" + c.toHex().toLowerCase(); } catch (e) { return null; }
+}
+/** a paint, as a flat colour: a gradient prints as its first stop */
+function paintHex(v, el, warn) {
+  if (!v || v === "none") return null;
+  const u = /url\(["']?#([^"')]+)/.exec(v);
+  if (u) {
+    const g = el.ownerDocument.getElementById(u[1]);
+    const stop = g && g.querySelector("stop");
+    warn.add("ไล่สี (gradient) พิมพ์เป็นสีเดียว");
+    return stop ? colorHex(getComputedStyle(stop).stopColor) : null;
+  }
+  return colorHex(v);
+}
+function ellipseD(cx, cy, rx, ry) {
+  const k = 0.5522847498, ox = rx * k, oy = ry * k;
+  return `M${cx - rx} ${cy}C${cx - rx} ${cy - oy} ${cx - ox} ${cy - ry} ${cx} ${cy - ry}C${cx + ox} ${cy - ry} ${cx + rx} ${cy - oy} ${cx + rx} ${cy}C${cx + rx} ${cy + oy} ${cx + ox} ${cy + ry} ${cx} ${cy + ry}C${cx - ox} ${cy + ry} ${cx - rx} ${cy + oy} ${cx - rx} ${cy}Z`;
+}
+function rectD(x, y, w, h, rx, ry) {
+  if (!(rx > 0 || ry > 0)) return `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+  rx = Math.min(rx || ry, w / 2); ry = Math.min(ry || rx, h / 2);
+  const k = 0.5522847498, ox = rx * k, oy = ry * k;
+  return `M${x + rx} ${y}H${x + w - rx}C${x + w - rx + ox} ${y} ${x + w} ${y + ry - oy} ${x + w} ${y + ry}V${y + h - ry}C${x + w} ${y + h - ry + oy} ${x + w - rx + ox} ${y + h} ${x + w - rx} ${y + h}H${x + rx}C${x + rx - ox} ${y + h} ${x} ${y + h - ry + oy} ${x} ${y + h - ry}V${y + ry}C${x} ${y + ry - oy} ${x + rx - ox} ${y} ${x + rx} ${y}Z`;
+}
+/** any path data → absolute M/L/C/Q/Z only (arcs become curves), as the API reads it */
+function simplePathD(d) {
+  const cmds = fabric.util.makePathSimpler(fabric.util.parsePath(d));
+  return cmds.map(c => c[0] + c.slice(1).map(n => r4(n)).join(" ")).join("");
+}
+function geometryD(el) {
+  const t = el.tagName.toLowerCase(), A = n => nf(el.getAttribute(n));
+  if (t === "path") { const d = el.getAttribute("d"); return d ? simplePathD(d) : ""; }
+  if (t === "rect") return rectD(A("x"), A("y"), A("width"), A("height"), A("rx"), A("ry"));
+  if (t === "circle") return ellipseD(A("cx"), A("cy"), A("r"), A("r"));
+  if (t === "ellipse") return ellipseD(A("cx"), A("cy"), A("rx"), A("ry"));
+  if (t === "line") return `M${A("x1")} ${A("y1")}L${A("x2")} ${A("y2")}`;
+  if (t === "polyline" || t === "polygon") {
+    const n = (el.getAttribute("points") || "").trim().split(/[\s,]+/).map(Number);
+    if (n.length < 4) return "";
+    let d = `M${n[0]} ${n[1]}`; for (let i = 2; i + 1 < n.length; i += 2) d += `L${n[i]} ${n[i + 1]}`;
+    return t === "polygon" ? d + "Z" : d;
+  }
+  return "";
+}
+/** a picture as a PNG (base64) no bigger than PRINT_MAX_PX, shared by index */
+async function printImage(href, images, seen) {
+  if (seen.has(href)) return seen.get(href);
+  const img = new Image(); img.crossOrigin = "anonymous"; img.src = href;
+  await img.decode();
+  const k = Math.min(1, PRINT_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+  let b64;
+  if (k === 1 && /^data:image\/png;base64,/.test(href)) b64 = href.slice(href.indexOf(",") + 1);
+  else {
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    b64 = c.toDataURL("image/png").split(",")[1];
+  }
+  images.push(b64); seen.set(href, images.length - 1);
+  return images.length - 1;
+}
+/** one fabric object as print items, in mm on its panel's piece */
+async function printObj(o, ctx) {
+  const pi = panelOf(o), p = panels[pi], toMm = panelToMm(p);
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10" height="10">${o.toSVG()}</svg>`);
+  r.skipped.forEach(f => ctx.fail.add(`ฟอนต์ ${f}`));
+  ctx.host.innerHTML = r.svg;
+  const svg = ctx.host.querySelector("svg");
+  const items = [];
+  for (const el of svg ? svg.querySelectorAll("path,rect,circle,ellipse,line,polyline,polygon,image") : []) {
+    if (el.closest("clipPath,defs,mask,pattern,marker,symbol")) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    let op = 1;
+    for (let n = el; n && n !== svg; n = n.parentElement) { const v = parseFloat(getComputedStyle(n).opacity); op *= isNaN(v) ? 1 : v; }
+    if (op <= 0) continue;
+    if (op < 0.999) ctx.warn.add("ความโปร่งใสพิมพ์เป็นสีทึบ");
+    const ctm = el.getCTM(); if (!ctm) continue;
+    const m = mulM(toMm, [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f]);
+    if (el.tagName.toLowerCase() === "image") {
+      const href = el.getAttribute("href") || el.getAttribute("xlink:href"); if (!href) continue;
+      const w = nf(el.getAttribute("width")), h = nf(el.getAttribute("height")); if (!w || !h) continue;
+      try {
+        const idx = await printImage(href, ctx.images, ctx.seen);
+        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4) });
+      } catch (e) { ctx.fail.add("รูปที่โหลดไม่ได้"); }
+      continue;
+    }
+    const d = geometryD(el); if (!d) continue;
+    const fill = parseFloat(cs.fillOpacity) === 0 ? null : paintHex(cs.fill, el, ctx.warn);
+    const stroke = parseFloat(cs.strokeOpacity) === 0 ? null : paintHex(cs.stroke, el, ctx.warn);
+    const sw = nf(cs.strokeWidth);
+    const it = { d, m: m.map(r4) };
+    if (fill && !/^(line|polyline)$/i.test(el.tagName)) it.fill = fill;
+    if (stroke && sw > 0) { it.stroke = stroke; it.sw = r4(sw); }
+    if (!it.fill && !it.stroke) continue;
+    if (cs.fillRule === "evenodd") it.eo = true;
+    items.push(it);
+  }
+  ctx.host.innerHTML = "";
+  // its centre and size on the piece, to carry it to the other sizes
+  const br = o.getBoundingRect(true, true);
+  const pts = [[br.left, br.top], [br.left + br.width, br.top], [br.left, br.top + br.height], [br.left + br.width, br.top + br.height]].map(([x, y]) => applyM(toMm, x, y));
+  const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { panel: pi, c: [r4((x0 + x1) / 2), r4((y0 + y1) / 2)], w: r4(x1 - x0), h: r4(y1 - y0), items };
+}
+/** the whole order's print data: { spec, warnings } or { error } */
+async function buildPrintSpec(rows, onProgress) {
+  if (!window.AXIOM_SIZES || !window.AXIOM_SIZES[TPL_SIZE]) return { error: "ไม่พบแพทเทิร์นของไซซ์นี้" };
+  if (curLayout === "horizontal") return { error: "สลับกลับเป็นแนวตั้งก่อนสั่งผลิต" };
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;left:-100000px;top:0;width:10px;height:10px;overflow:hidden;opacity:0;pointer-events:none"; // not visibility: it is inherited, and hidden shapes are skipped
+  document.body.appendChild(host);
+  const ctx = { host, images: [], seen: new Map(), warn: new Set(), fail: new Set() };
+  const nameObjs = taggedObjs("name"), numObjs = taggedObjs("number");
+  const tagged = [...nameObjs, ...numObjs];
+  const savedN = nameObjs.map(o => o.text), savedM = numObjs.map(o => o.text);
+  try {
+    const specPanels = panels.map(p => ({ side: String(p.id).startsWith("inner") ? "B" : "A", part: p.tpl, objs: [] }));
+    for (const o of userObjects()) {
+      if (tagged.includes(o) || o.visible === false) continue;
+      const { panel, ...obj } = await printObj(o, ctx);
+      if (obj.items.length) specPanels[panel].objs.push(obj);
+    }
+    const players = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      applyRow(nameObjs, numObjs, r);
+      const objs = [];
+      for (const o of tagged) {
+        if (o.visible === false || !o.text) continue;
+        if (o.initDimensions) o.initDimensions();
+        o.setCoords();
+        const po = await printObj(o, ctx);
+        if (po.items.length) objs.push(po);
+      }
+      players.push({ name: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase(), objs });
+      if (onProgress) onProgress(i + 1, rows.length);
+    }
+    if (ctx.fail.size) return { error: `เตรียมไฟล์ผลิตไม่ได้: ${[...ctx.fail].join(", ")} — เปลี่ยนฟอนต์/รูปแล้วลองใหม่` };
+    const spec = {
+      app: "axiom-print", v: 1, size: TPL_SIZE, reversible: curStyle === 2, team: orderName().slice(0, 80),
+      body: colorHex(bodyColor) || "#ffffff", trimColor: colorHex(trimColor) || "#ffffff",
+      trim: curTrim, images: ctx.images, panels: specPanels, players,
+    };
+    if (bodyPatternSrc) spec.pattern = await printImage(bodyPatternSrc, ctx.images, ctx.seen);
+    return { spec, warnings: [...ctx.warn] };
+  } catch (e) {
+    return { error: "เตรียมไฟล์ผลิตไม่สำเร็จ: " + ((e && e.message) || e) };
+  } finally {
+    nameObjs.forEach((o, i) => o.set("text", savedN[i]));
+    numObjs.forEach((o, i) => o.set("text", savedM[i]));
+    if (clipOn) reclipAll();
+    canvas.requestRenderAll();
+    host.remove();
+  }
+}
+async function saveOrder(goOrder) {
   const rows = parseRoster();
   if (!taggedObjs("name").length && !taggedObjs("number").length) { toast("แท็กช่องชื่อ/เบอร์ก่อนบันทึก", "warn"); return; }
   if (!rows.length) { toast("ยังไม่มีรายชื่อ", "warn"); return; }
@@ -1972,11 +2209,20 @@ function saveOrder(goOrder) {
   const preview = exportPNG(0.5);
   const prog = document.getElementById("rosterProg");
   if (inFrame() && isLoggedIn) {
+    // the factory prints from this page's own drawing: lay it down as print data first
+    if (prog) prog.textContent = "กำลังเตรียมไฟล์ผลิต...";
+    const built = await buildPrintSpec(rows, (i, n) => { if (prog) prog.textContent = `กำลังเตรียมไฟล์ผลิต ${i}/${n}`; });
+    if (built.error) {
+      if (prog) prog.textContent = "";
+      toast(built.error, "err");
+      if (goOrder) return;
+    } else if (built.warnings.length) toast("หมายเหตุไฟล์ผลิต: " + built.warnings.join(" · "), "warn");
     window.parent.postMessage({
       type: "axiom-save-order",
       payload: {
         name: orderName(), style: curStyle, size: TPL_SIZE, count: rows.length, doc: orderDoc, preview,
         goOrder: !!goOrder,
+        print: built.spec || null,
         fabric: curFabric, trim: curTrim, reversible: curStyle === 2,
         roster: rows.map(r => ({ playerName: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase() })),
       },

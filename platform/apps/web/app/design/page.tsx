@@ -84,13 +84,20 @@ function DesignerBridge() {
         try {
           const p = m.payload || {};
           const nm = `${p.name || "ออเดอร์ทีม"} (${p.count || 0} ตัว)`;
+          // the print data the designer laid down (every shape outlined, on the bib's pattern):
+          // kept by the API, its id in the design, so the order's print files are made from it
+          let doc = p.doc;
+          if (p.print) {
+            const pr = await apiFetch<{ id: string }>("/designer-prints", { method: "POST", token, body: JSON.stringify(p.print) });
+            doc = { ...doc, printId: pr.id };
+          }
           const res = await apiFetch<{ id: string }>("/designs", {
             method: "POST",
             token,
             body: JSON.stringify({
               name: nm,
               mode: p.style === 2 ? "reversible" : "single",
-              stateJson: p.doc,
+              stateJson: doc,
               previewUrl: p.preview,
             }),
           });

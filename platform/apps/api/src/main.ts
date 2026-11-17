@@ -25,6 +25,8 @@ async function bootstrap() {
   // The customer's print files (bib orders) are their artwork: signed links only,
   // GET /api/v1/order-files/:id/zip — see orders/order-file-link.ts.
   app.use("/uploads/order-files", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
+  // The advanced designer's print data (names, artwork): read by the job builder only.
+  app.use("/uploads/designer-prints", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
   // Team logos and fonts (kit studio). Named by content hash, so they never change:
   // cache for a year. The web app draws them into WebGL from another origin, which
   // needs CORS; they are print artwork, not personal data.

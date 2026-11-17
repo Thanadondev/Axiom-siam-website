@@ -8,11 +8,11 @@ import { NasExportService } from "./nas-export";
 import { ErpSyncService } from "../erp/erp-sync.service";
 import { RateLimitGuard } from "../common/rate-limit.guard";
 import { BibJobService } from "../bibs/bib-jobs.service";
-import { BibsController, AdminBibsController } from "../bibs/bibs.controller";
+import { BibsController, AdminBibsController, DesignerPrintsController } from "../bibs/bibs.controller";
 
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [OrdersController, AdminOrdersController, OrderFilesController, BibsController, AdminBibsController],
+  controllers: [OrdersController, AdminOrdersController, OrderFilesController, BibsController, AdminBibsController, DesignerPrintsController],
   providers: [OrdersService, OrderFilesService, NasExportService, ErpSyncService, RateLimitGuard, BibJobService],
   exports: [OrdersService, ErpSyncService],
 })

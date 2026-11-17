@@ -14,7 +14,7 @@ import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
 import { orderFileView } from "./order-files.service";
 import { tri, statusTitle, stepTitle } from "../notify/text";
-import { BibJobService, madeOnWeb as madeByWebsite, type BibSnapshot } from "../bibs/bib-jobs.service";
+import { BibJobService, madeOnWeb as madeByWebsite, designerPrintId, type BibSnapshot } from "../bibs/bib-jobs.service";
 import { kitOnBib } from "../bibs/kit";
 import { BIB_SIZES } from "../bibs/template";
 
@@ -104,13 +104,23 @@ export class OrdersService {
     // the garment is read from the design itself, never taken from the request
     // (a file order says what it's for: the team checks the file before production)
     const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
-    const closed = launchBlock(garment) ?? designerBlock(!bib && !file && !!fromDesigner(snapshot));
+    // an advanced design is made by the website once it carries its print data (the designer sends it on "สั่งผลิต")
+    const designerPrint = !bib && !file ? designerPrintId(snapshot) : null;
+    const closed = launchBlock(garment) ?? designerBlock(!bib && !file && !!fromDesigner(snapshot) && !designerPrint);
     if (closed) throw new BadRequestException(closed);
     // XXL (3L) is cut only on the bib's pattern
     if (garment !== "bib_n" && garment !== "bib_r" && (lines.some(l => l.size === "XXL") || dto.roster?.some(r => r.size === "XXL"))) {
       throw new BadRequestException("ไซซ์ XXL มีเฉพาะเอี๊ยม");
     }
     // the schema requires fabric and trim unless it's a bib (file or web-designed), whose set price ignores them
+    // every name on the order must be one the designer drew: checked now, not when the job is built
+    if (designerPrint) {
+      if (!this.bibs) throw new ServiceUnavailableException("ยังสร้างไฟล์งานไม่ได้ ลองใหม่อีกครั้ง");
+      await this.bibs.checkDesigner(snapshot, lines.map(l => ({
+        size: l.size, qty: l.qty,
+        roster: (dto.roster ?? []).filter(r => r.size === l.size).map(r => ({ playerName: r.playerName ?? null, number: r.number ?? null, qty: r.qty ?? 1 })),
+      })));
+    }
     const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file
       ? `${GARMENT_LABEL[garment]} · ไฟล์ลูกค้า`
@@ -167,8 +177,9 @@ export class OrdersService {
     // A failure doesn't lose the order: the team is told, and builds it again from the order board.
     // So is a kit from the kit studio that is cut on the bib template (the basketball singlet).
     const kitBib = !bib && !file && kitOnBib(snapshot) && !!this.bibs;
+    const designerBib = !!designerPrint && !!this.bibs;
     let built = true;
-    if (bib || kitBib) {
+    if (bib || kitBib || designerBib) {
       try { await this.bibs!.attach(order.id); } catch (e: any) {
         built = false;
         this.log.error(`${order.orderNo}: building the ${bib ? "bib" : "kit"} job failed: ${e?.message ?? e}`);
@@ -179,6 +190,7 @@ export class OrdersService {
       file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)`
         : bib ? `ออเดอร์ใหม่ ${order.orderNo} · เอี๊ยมออกแบบบนเว็บ${built ? "" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : kitBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบบนเว็บ (${(snapshot as { kit: string }).kit})${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
+        : designerBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบขั้นสูง${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : `ออเดอร์ใหม่ ${order.orderNo}`,
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,

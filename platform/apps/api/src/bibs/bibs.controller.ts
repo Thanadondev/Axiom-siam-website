@@ -28,6 +28,22 @@ export class BibsController {
   }
 }
 
+/**
+ * The advanced designer sends a design's print data here when the team orders
+ * (every shape outlined, on the bib's pattern), and keeps the returned id in the design.
+ */
+@Controller("designer-prints")
+export class DesignerPrintsController {
+  constructor(private readonly bibs: BibJobService) {}
+
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @RateLimit({ limit: 60, windowMs: 60 * 60_000 })
+  @Post()
+  save(@Body() body: unknown) {
+    return this.bibs.savePrint(body);
+  }
+}
+
 /** the team builds a web-designed bib's print files again (after a failure, or a fix to the generator) */
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("admin")

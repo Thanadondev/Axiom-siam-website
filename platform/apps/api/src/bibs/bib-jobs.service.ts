@@ -1,15 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { promises as fs } from "fs";
+import { createHash } from "crypto";
 import { resolve } from "path";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "../orders/order-files.service";
 import { BibDesignSchema, type BibDesign } from "./design";
-import { buildBibJob, logoArt } from "./job";
+import { buildBibJob, logoArt, type BuiltJob } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
 import { fitPng, PREVIEW_LOGO_PX } from "./raster";
 import { kitBibDesign, kitLogoUrl, kitOnBib, kitRoster } from "./kit";
+import { buildDesignerJob, designerRows, DesignerPrintSchema, type DesignerPrint } from "./designer-print";
+import { fromDesigner } from "../orders/pricing";
 
 /** what a web-designed bib order keeps on its items: enough to build the job again */
 export interface BibSnapshot {
@@ -28,8 +31,20 @@ const LOGO_URL = /^\/uploads\/kit-assets\/logos\/([a-f0-9]{64})\.png$/;
 /** a team font the kit studio stored */
 const FONT_URL = /^\/uploads\/kit-assets\/fonts\/([a-f0-9]{64}\.(?:ttf|otf|woff|woff2))$/;
 
-/** an order whose print files the website makes: a bib designed on the web, or a kit cut on the bib template */
-export const madeOnWeb = (s: unknown) => isBibSnapshot(s) || kitOnBib(s);
+/**
+ * The print data an advanced-designer design carries (POST /designer-prints, kept
+ * by its hash in the design as `printId`): with it the website makes the job.
+ */
+export function designerPrintId(s: unknown): string | null {
+  if (!fromDesigner(s)) return null;
+  const id = (s as { printId?: unknown }).printId;
+  return typeof id === "string" && /^[a-f0-9]{64}$/.test(id) ? id : null;
+}
+
+/** an order whose print files the website makes: a bib designed on the web, a kit cut on the bib template, or an advanced design with its print data */
+export const madeOnWeb = (s: unknown) => isBibSnapshot(s) || kitOnBib(s) || !!designerPrintId(s);
+
+type OrderItems = { size: string; qty: number; roster: { playerName: string | null; number: string | null; qty: number }[] }[];
 
 /**
  * Bibs designed on the website become the same job package the graphics team
@@ -42,6 +57,42 @@ export class BibJobService {
   private readonly log = new Logger("BibJobs");
   private readonly logos = resolve(process.env.UPLOAD_DIR ?? "./uploads", "kit-assets", "logos");
   private readonly fonts = resolve(process.env.UPLOAD_DIR ?? "./uploads", "kit-assets", "fonts");
+  private readonly prints = resolve(process.env.UPLOAD_DIR ?? "./uploads", "designer-prints");
+
+  /** keeps the advanced designer's print data (checked first), once per content; its id goes in the design */
+  async savePrint(input: unknown): Promise<{ id: string; bytes: number; players: number }> {
+    const p = DesignerPrintSchema.safeParse(input);
+    if (!p.success) {
+      const i = p.error.issues[0];
+      throw new BadRequestException(`ข้อมูลไฟล์ผลิตไม่ถูกต้อง: ${i?.path.join(".") ?? ""} ${i?.message ?? ""}`.trim());
+    }
+    const buf = Buffer.from(JSON.stringify(p.data));
+    const id = createHash("sha256").update(buf).digest("hex");
+    await fs.mkdir(this.prints, { recursive: true });
+    await fs.writeFile(resolve(this.prints, `${id}.json`), buf, { flag: "wx" }).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+    return { id, bytes: buf.length, players: p.data.players.length };
+  }
+
+  /** the print data a design points at */
+  async loadPrint(id: string): Promise<DesignerPrint> {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw new BadRequestException("ไม่พบไฟล์ผลิตของแบบนี้");
+    const buf = await fs.readFile(resolve(this.prints, `${id}.json`)).catch(() => null);
+    if (!buf) throw new BadRequestException("ไม่พบไฟล์ผลิตของแบบนี้ — เปิดแบบแล้วกดสั่งผลิตอีกครั้ง");
+    return DesignerPrintSchema.parse(JSON.parse(buf.toString("utf8")));
+  }
+
+  /**
+   * Before an advanced design is ordered: its print data is there and has every
+   * name on the order (a bib the designer never drew can't be printed).
+   */
+  async checkDesigner(snapshot: unknown, items: OrderItems) {
+    const id = designerPrintId(snapshot);
+    if (!id) return;
+    const d = await this.loadPrint(id);
+    try { designerRows(d, items); } catch {
+      throw new BadRequestException("รายชื่อในออเดอร์ไม่ตรงกับแบบ — เปิดแบบแล้วกดสั่งผลิตอีกครั้ง");
+    }
+  }
 
   constructor(private prisma: PrismaService, private files: OrderFilesService) {}
 
@@ -96,6 +147,13 @@ export class BibJobService {
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
     const snap = o.items[0]?.designSnapshot;
+    const printId = designerPrintId(snap);
+    if (printId) {
+      // an advanced design: drawn by the customer's browser, placed on each size here
+      const d = await this.loadPrint(printId);
+      const t1 = Date.now();
+      return this.save(o, await buildDesignerJob(d, designerRows(d, o.items), { ref: o.orderNo, date: o.createdAt }), t1);
+    }
     let design: BibDesign, logoUrl: string | undefined;
     if (isBibSnapshot(snap)) { design = snap.design; logoUrl = snap.logoUrl; }
     else if (kitOnBib(snap)) {
@@ -109,6 +167,11 @@ export class BibJobService {
       logoPng: await this.logo(logoUrl),
       fontData: await this.font(design.fontUrl),
     });
+    return this.save(o, job, t0);
+  }
+
+  /** attaches a built job as the order's print file */
+  private async save(o: { id: string; orderNo: string; userId: string; files: { id: string; nasAt: Date | null }[] }, job: BuiltJob, t0: number) {
     const saved = await this.files.saveGenerated(o.userId, o.id, `${job.name}.zip`, Buffer.from(job.zip), Buffer.from(job.preview));
     // an earlier build the team hasn't taken yet goes; one already on the NAS stays on record
     for (const f of o.files) if (!f.nasAt && f.id !== saved.id) await this.files.remove(f.id);
