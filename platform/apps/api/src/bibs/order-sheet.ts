@@ -59,7 +59,7 @@ export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; 
       fillRef = `url(#${id})`;
     }
     const see = s.opacity !== undefined && s.opacity < 1 ? ` opacity="${s.opacity}"` : "";
-    const paint = `fill="${fillRef}"${see}` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
+    const paint = `fill="${fillRef}"${see}` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="${s.join ?? "round"}"${s.join === "miter" ? ` stroke-miterlimit="${s.miter ?? 4}"` : ""}` : "");
     const dash = s.stroke && s.dash?.length ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
     const path = `<path d="${pathData(s.segs)}" ${paint}${dash}${s.artClip ? clipOf(s.artClip) : ""}/>`;
     body += clip ? `<g${clip}>${path}</g>` : path;

@@ -316,3 +316,28 @@ describe("CMYK typed in", () => {
     expect(() => DesignerPrintSchema.parse(spec({ inks: { red: [5, 98, 95, 0] } }))).toThrow();
   });
 });
+
+describe("stroke corners", () => {
+  it("a sharp or cut corner prints as drawn (miter up to its limit, bevel); round stays the default", async () => {
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#231f20", sw: 4, join: "miter", ml: 10 },
+        { d: "M150 300H250V350H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#ed1c24", sw: 4, join: "bevel" },
+        { d: "M150 400H250V450H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#00a651", sw: 4 },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    expect(front.find(s => s.kind === "path" && s.stroke === "#231f20")).toMatchObject({ join: "miter", miter: 10 });
+    expect(front.find(s => s.kind === "path" && s.stroke === "#ed1c24")).toMatchObject({ join: "bevel" });
+    expect(front.find(s => s.kind === "path" && s.stroke === "#00a651")).not.toHaveProperty("join");
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T15", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\n0 j\n10 M\n/);
+    expect(content).toMatch(/\n2 j\n/);
+    const { svgShapes } = await import("./order-sheet");
+    expect(svgShapes(front, { n: 0 }).body).toMatch(/stroke-linejoin="miter" stroke-miterlimit="10"/);
+  });
+});

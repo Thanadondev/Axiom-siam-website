@@ -15,6 +15,9 @@ export type Shape =
     artClip?: Seg[];
     /** a dashed stroke: dash and gap lengths, mm */
     dash?: number[];
+    /** the stroke's corners (round when not given) and, for sharp ones, how far a spike may reach (× the width) */
+    join?: "miter" | "bevel";
+    miter?: number;
     /** a gradient fill, in place of `fill` (which stays its first colour, for anything that draws one colour) */
     grad?: Grad;
     /** see-through: 0–1 (1, or none, is solid) */

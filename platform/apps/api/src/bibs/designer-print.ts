@@ -55,6 +55,9 @@ const PathItem = z.object({
   clip: z.string().min(1).max(200_000).optional(),
   /** a gradient fill, with `fill` its first colour */
   grad: Gradient.optional(),
+  /** the stroke's corners: round (the default), miter (sharp, up to `ml` × the width) or bevel */
+  join: z.enum(["round", "miter", "bevel"]).optional(),
+  ml: z.number().min(1).max(100).optional(),
   op: opacity,
 });
 /** a picture: `img` indexes `images`, `m` takes its unit square (y down) to mm */
@@ -290,6 +293,7 @@ export function designerPiece(
         ...(artClip ? { artClip } : {}),
         ...(it.stroke && it.dash?.length ? { dash: it.dash.map(v => v * scale) } : {}),
         ...(it.fill && it.grad ? { grad: { ...it.grad, m: compose(fit, it.grad.m as Affine) } } : {}),
+        ...(it.stroke && it.join && it.join !== "round" ? { join: it.join, ...(it.join === "miter" ? { miter: it.ml ?? 4 } : {}) } : {}),
         ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}),
       });
     }

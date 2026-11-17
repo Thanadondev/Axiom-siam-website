@@ -129,6 +129,14 @@ $("#right").innerHTML = `
         <button class="swbtn" id="strokeBtn"><span class="chip" id="strokeChip"></span>Stroke</button>
       </div>
       <div class="row"><label>เส้นขอบ</label><div class="num" style="flex:1"><input type="range" id="swRange" min="0" max="40" step="0.5" value="0"><span id="swVal" style="min-width:26px">0</span></div></div>
+      <div class="row" title="มุมของเส้นขอบ (Corner) แบบ Stroke panel ใน Illustrator — ใช้กับขอบนอก (Offset) ด้วย">
+        <label>มุมขอบ</label>
+        <div class="btnrow" style="flex:1">
+          <button class="mini" data-join="round" title="มุมมน (Round Join)">◜ มน</button>
+          <button class="mini" data-join="miter" title="มุมแหลม (Miter Join)">◸ แหลม</button>
+          <button class="mini" data-join="bevel" title="มุมตัด (Bevel Join)">⬠ ตัด</button>
+        </div>
+      </div>
       <div class="row"><label>ความทึบ</label><div class="num" style="flex:1"><input type="range" id="opRange" min="0" max="100" value="100"><span id="opVal" style="min-width:26px">100</span></div></div>
       <div class="row" title="Offset Path: ขอบนอกรอบตัวอักษร/รูปทรง เป็นชั้นใหม่ด้านหลัง (ทำซ้ำได้หลายชั้น)">
         <label>ขอบนอก</label>
@@ -1108,6 +1116,7 @@ function syncProps() {
     const cur = g || (fillTarget === "fill" ? first.fill : first.stroke); if (typeof cur === "string") showCode(cur); }
   $("#strokeChip").style.background = first.stroke || "transparent";
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
+  showJoin(first.strokeLineJoin);
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
   $("#tW").value = Math.round(o.getScaledWidth() * MM_PER_UNIT); $("#tH").value = Math.round(o.getScaledHeight() * MM_PER_UNIT); $("#tR").value = Math.round(o.angle || 0);
   try { const [x, y] = centreMm(o); $("#tX").value = Math.round(x); $("#tY").value = Math.round(y); } catch (e) { $("#tX").value = ""; $("#tY").value = ""; }
@@ -1336,6 +1345,17 @@ async function pathfinder(op) {
 }
 document.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => pathfinder(b.dataset.pf));
 
+/* ---------- stroke corners (Illustrator's Stroke panel: round / miter / bevel) ---------- */
+let curJoin = "round";
+function showJoin(j) { curJoin = j || "round"; document.querySelectorAll("[data-join]").forEach(b => b.classList.toggle("on", b.dataset.join === curJoin)); }
+document.querySelectorAll("[data-join]").forEach(b => b.onclick = () => {
+  showJoin(b.dataset.join);
+  const objs = canvas.getActiveObjects(); if (!objs.length) return;
+  // Illustrator's miter limit: a spike up to 10 × the width, then it is cut
+  objs.forEach(o => (o._objects || [o]).forEach(x => x.set({ strokeLineJoin: curJoin, strokeMiterLimit: 10 })));
+  canvas.requestRenderAll(); pushHistory();
+});
+
 /* ---------- Offset Path: an outline round the object, a new layer behind it ---------- */
 async function offsetPath() {
   const o = canvas.getActiveObject();
@@ -1349,7 +1369,7 @@ async function offsetPath() {
     const k = x.strokeUniform ? 1 : ((Math.abs(x.scaleX) + Math.abs(x.scaleY)) / 2) * (x.group ? (Math.abs(x.group.scaleX) + Math.abs(x.group.scaleY)) / 2 : 1);
     // a keyline already under the fill reaches half its width out: the new one goes past it
     const had = x.stroke && x.strokeWidth && x.paintFirst === "stroke" ? x.strokeWidth : 0;
-    x.set({ fill: isGrad(x.fill) || x.fill ? color : x.fill, stroke: color, strokeWidth: had + (2 * u) / (x.strokeUniform ? 1 : k), strokeLineJoin: "round", paintFirst: "stroke" });
+    x.set({ fill: isGrad(x.fill) || x.fill ? color : x.fill, stroke: color, strokeWidth: had + (2 * u) / (x.strokeUniform ? 1 : k), strokeLineJoin: curJoin, strokeMiterLimit: 10, paintFirst: "stroke" });
   };
   if (c._objects) c._objects.forEach(widen); else widen(c);
   if (o.rosterTag) c.rosterTag = o.rosterTag; // a name's outline changes with the name
@@ -2917,6 +2937,8 @@ async function printObj(o, ctx, onPanel) {
     if (stroke && /url\(/.test(cs.stroke)) ctx.warn.add("เส้นขอบไล่สีพิมพ์เป็นสีเดียว");
     if (stroke && sw > 0) {
       it.stroke = stroke; it.sw = r4(sw);
+      const lj = String(cs.strokeLinejoin || "miter");
+      if (lj === "miter" || lj === "bevel") { it.join = lj; if (lj === "miter") it.ml = Math.min(100, Math.max(1, parseFloat(cs.strokeMiterlimit) || 4)); }
       const dash = String(cs.strokeDasharray || "").split(/[\s,]+/).map(parseFloat).filter(v => v >= 0);
       if (dash.length && dash.some(v => v > 0)) it.dash = (dash.length % 2 ? dash.concat(dash) : dash).map(r4);
     }
@@ -2934,7 +2956,7 @@ async function printObj(o, ctx, onPanel) {
       const { fill: f, grad: g0, op: o0, ...under } = it;
       if (seeStroke < 0.999) under.op = r4(seeStroke);
       items.push(under);
-      const { stroke: s1, sw: s2, dash: s3, ...over } = it;
+      const { stroke: s1, sw: s2, dash: s3, join: s4, ml: s5, ...over } = it;
       items.push(over);
       continue;
     }

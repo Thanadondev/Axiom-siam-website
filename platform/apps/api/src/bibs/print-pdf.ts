@@ -1,5 +1,5 @@
 import {
-  PDFDict, PDFDocument, PDFName, PDFOperator, PDFOperatorNames, PDFRef, setDashPattern, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
+  PDFDict, PDFDocument, PDFName, PDFNumber, PDFOperator, PDFOperatorNames, PDFRef, setDashPattern, appendBezierCurve, clip, closePath, concatTransformationMatrix, drawObject,
   endPath, fill, fillAndStroke, lineTo, moveTo, popGraphicsState, pushGraphicsState, setFillingCmykColor, setLineJoin,
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle, setGraphicsState,
 } from "pdf-lib";
@@ -141,6 +141,8 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
       continue;
     }
     ops.push(pushGraphicsState(), ...seeThrough(s.opacity));
+    if (s.stroke && s.join) ops.push(setLineJoin(s.join === "miter" ? LineJoinStyle.Miter : LineJoinStyle.Bevel),
+      ...(s.join === "miter" ? [PDFOperator.of(PDFOperatorNames.SetLineMiterLimit, [PDFNumber.of(s.miter ?? 4)])] : []));
     if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
     if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
     if (s.fill && s.grad) {
