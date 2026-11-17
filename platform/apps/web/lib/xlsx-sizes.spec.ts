@@ -44,6 +44,8 @@ describe("a size written in an order list", () => {
   it("knows ours however it's written, reports others, ignores notes", () => {
     expect(["L", "Ｌ", "l", "L（大人サイズ）", "M (junior)", "ＸＬ", " S "].map(s => sizeToken(s)?.size)).toEqual(["L", "L", "L", "L", "M", "XL", "S"]);
     expect(["LL", "O", "SS", "2XL", "130"].map(s => sizeToken(s))).toEqual(["LL", "O", "SS", "2XL", "130"].map(t => ({ size: null, token: t })));
+    // XXL, also as the factory names it (CB-005 "XXL-3L"); LL / 2XL stay unclear
+    expect(["XXL", "ｘｘｌ", "3L", "XXL-3L", "XXL（3L）"].map(t => sizeToken(t)?.size)).toEqual(["XXL", "XXL", "XXL", "XXL", "XXL"]);
     expect(sizeToken("※リストはサイズごと背番号の順に")).toBeNull();
     expect(sizeToken("")).toBeNull();
   });
@@ -75,7 +77,7 @@ describe("counting sizes in a customer's order list", () => {
       [1, "L", 1, 81, "a", 21, "M", 2, 5, "b", 41, "S", 1, 3, "c"],
       [2, "M", 1, 55, "d", 22, null, null, null, null, 42, null, null, null, null],
     ]]]));
-    expect(r?.counts).toEqual({ S: 1, M: 3, L: 1, XL: 0 });
+    expect(r?.counts).toEqual({ S: 1, M: 3, L: 1, XL: 0, XXL: 0 });
   });
 
   it("the filled-in form: skips the worked example sheet, reads 'L（大人サイズ）', leaves the summary box alone", async () => {

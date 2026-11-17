@@ -7,15 +7,18 @@
  * "L（大人サイズ）", a summary box beside the list. What it can't read, it says so,
  * and the customer types the counts as before.
  *
- * Only S, M, L and XL are counted (the sizes we make); any other size written in
- * the list (LL, O, SS, 130…) is reported, never guessed.
+ * Only S, M, L, XL and XXL are counted (the sizes a bib is made in; XXL also as the
+ * factory writes it, 3L / XXL-3L); any other size written in the list (LL, O, SS,
+ * 130…) is reported, never guessed.
  *
  * An .xlsx is itself a zip of XML: read with the same zip reader, the XML with
  * plain patterns so it runs the same in the browser and in tests.
  */
 import { openZip, isJunk, type ZipFileRef } from "./zip-peek";
 
-export const SIZES = ["S", "M", "L", "XL"] as const;
+export const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
+/** XXL as the factory names it (CB-005: "XXL-3L") */
+const XXL_NAMES = ["3L", "XXL-3L", "XXL3L"];
 export type Size = (typeof SIZES)[number];
 
 export interface SizeCount {
@@ -53,6 +56,7 @@ export function sizeToken(raw: string): { size: Size | null; token: string } | n
   const t = norm(raw).toUpperCase().replace(/[（(].*$/, "").trim();
   if (!t) return null;
   if ((SIZES as readonly string[]).includes(t)) return { size: t as Size, token: t };
+  if (XXL_NAMES.includes(t)) return { size: "XXL", token: t };
   // a short size-looking word we don't make (LL, O, SS, 2XL, 130…); long text is a note, not a size
   if (/^([2-5]?X{0,3}[SML]{1,2}|O|XO|[2-5]?L|SS|\d{2,3})$/.test(t)) return { size: null, token: t };
   return null;
@@ -81,7 +85,7 @@ function gridOf(sheetXml: string, shared: string[]): Grid {
   return grid;
 }
 
-const empty = (): Record<Size, number> => ({ S: 0, M: 0, L: 0, XL: 0 });
+const empty = (): Record<Size, number> => ({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
 const qtyOf = (s: string | undefined) => {
   if (s === undefined || s === "") return 1; // a player listed with no count: one bib
   const n = Number(norm(s));

@@ -23,7 +23,8 @@ import { uploadZip, previewDataUrl, ZIP_MAX_BYTES, mb, UploadError, type Uploade
  * other languages the page says what went wrong in its own words.
  */
 
-const SIZES = ["S", "M", "L", "XL"] as const;
+// a bib is made S–XL and XXL (3L)
+const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
 const PRODUCTS = [
   { id: "bib_n", name: "N-bib", sub: ["บิบด้านเดียว", "Single-sided bib", "片面ビブス"] },
   { id: "bib_r", name: "R-bib", sub: ["บิบ 2 ด้าน (กลับด้านได้)", "Reversible bib (2 sides)", "リバーシブルビブス（両面）"] },
@@ -45,7 +46,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [peekErr, setPeekErr] = useState("");
   const [pic, setPic] = useState("");
   const [drag, setDrag] = useState(false);
-  const [qty, setQty] = useState<Record<string, number>>({ S: 0, M: 0, L: 0, XL: 0 });
+  const [qty, setQty] = useState<Record<string, number>>({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
   /** the counts read from the order list (.xlsx) in the zip, offered — never filled in unasked */
   const [fromList, setFromList] = useState<SizeCount | null>(null);
   const [listState, setListState] = useState<"" | "reading" | "done" | "unreadable">("");

@@ -272,7 +272,7 @@ a.noteitem:hover{background:var(--soft)}
 .ou-list li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); }
 .ou-list li span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .ou-list li span:last-child { flex: none; }
-.ou-sizes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.ou-sizes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .ou-warn { color: var(--err, #dc2626); font-size: 13px; margin: 10px 0 0; }
 .ou-hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
 .ou-fname { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }

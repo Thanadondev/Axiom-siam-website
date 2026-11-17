@@ -3,17 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { loadThreeWithGltf, hasWebGL, prefersReducedMotion } from "../lib/three-cdn";
 import { loadJersey, type JerseyLook } from "../lib/jersey3d";
-import type { Kit } from "../lib/kits";
+import { kitSizes, type Kit } from "../lib/kits";
+import type { Size } from "../lib/order-draft";
 import KitThumb from "./KitThumb";
 
-export type Size = "S" | "M" | "L" | "XL";
+export type { Size };
 export type CheckoutPhase = "build" | "pack" | "sent";
-
-const SIZES: Size[] = ["S", "M", "L", "XL"];
 /** folded shirts drawn per size column; the label carries the real count */
 const MAX_PER_STACK = 18;
 const SHIRT_H = 0.085;
-const STACK_X = [-2.1, -0.7, 0.7, 2.1];
+/** a stack per size the kit is made in, across the same floor: 4 (S–XL) 1.4 apart, the bib's 5 (with XXL) closer */
+const stackX = (n: number) => Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * (n > 4 ? 1.1 : 1.4));
 const STACK_Z = 1.25;
 const BOX = { w: 3.0, h: 1.35, d: 2.1, y: 0, z: 0.55 };
 
@@ -56,6 +56,11 @@ export default function CheckoutScene({
     if (!hasWebGL()) { setFlat(true); return; }
     let disposed = false;
     let cleanup: (() => void) | null = null;
+
+    // the sizes this kit is made in: a stack and a label each
+    const SIZES = kitSizes(kit) as Size[];
+    const STACK_X = stackX(SIZES.length);
+    const zero = () => Object.fromEntries(SIZES.map(s => [s, 0])) as Record<Size, number>;
 
     loadThreeWithGltf().then(async (THREE: any) => {
       const jersey = await loadJersey(THREE, kit);
@@ -183,9 +188,9 @@ export default function CheckoutScene({
 
       interface Shirt { mesh: any; size: Size; idx: number; born: number; leaving: number; from?: any; to?: any; flyAt?: number }
       const shirts: Shirt[] = [];
-      const stackCount: Record<Size, number> = { S: 0, M: 0, L: 0, XL: 0 };
-      const want: Record<Size, number> = { S: 0, M: 0, L: 0, XL: 0 };
-      const realCount: Record<Size, number> = { S: 0, M: 0, L: 0, XL: 0 };
+      const stackCount = zero();
+      const want = zero();
+      const realCount = zero();
 
       // size labels on the floor in front of each stack
       const labels: Record<Size, { canvas: HTMLCanvasElement; tex: any; mesh: any }> = {} as any;
@@ -194,7 +199,8 @@ export default function CheckoutScene({
         canvas.width = 256; canvas.height = 96;
         const tex = keep(new THREE.CanvasTexture(canvas));
         tex.encoding = THREE.sRGBEncoding;
-        const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(1.25, 0.47)), keep(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })));
+        const lw = SIZES.length > 4 ? 1.0 : 1.25;
+        const mesh = new THREE.Mesh(keep(new THREE.PlaneGeometry(lw, lw * 0.376)), keep(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })));
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(STACK_X[i], 0.02, STACK_Z + 0.72);
         scene.add(mesh);
@@ -345,11 +351,11 @@ export default function CheckoutScene({
         const n = flying.length;
         const span = Math.min(1.6, 0.06 * n);
         const per = n > 1 ? span / (n - 1) : 0;
-        // inside the carton: 4 columns, one per size
-        const layer: Record<Size, number> = { S: 0, M: 0, L: 0, XL: 0 };
+        // inside the carton: a column per size
+        const layer = zero();
         flying.forEach((x, k) => {
           const col = SIZES.indexOf(x.size);
-          const lx = (col - 1.5) * 0.68;
+          const lx = (col - (SIZES.length - 1) / 2) * (SIZES.length > 4 ? 0.55 : 0.68);
           const ly = T + SHIRT_H / 2 + layer[x.size]++ * SHIRT_H * 0.6;
           x.from = x.mesh.position.clone();
           x.to = new THREE.Vector3(lx, BOX.y + ly, BOX.z);
@@ -517,6 +523,7 @@ export default function CheckoutScene({
     return () => { disposed = true; cleanup?.(); };
   }, [kit]);
 
+  const SIZES = kitSizes(kit) as Size[];
   if (flat) {
     const total = SIZES.reduce((n, s) => n + (counts[s] || 0), 0);
     return (
