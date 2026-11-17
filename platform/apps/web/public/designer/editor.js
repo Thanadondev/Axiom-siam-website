@@ -127,6 +127,12 @@ $("#right").innerHTML = `
       </div>
       <div class="row"><label>เส้นขอบ</label><div class="num" style="flex:1"><input type="range" id="swRange" min="0" max="40" step="0.5" value="0"><span id="swVal" style="min-width:26px">0</span></div></div>
       <div class="row"><label>ความทึบ</label><div class="num" style="flex:1"><input type="range" id="opRange" min="0" max="100" value="100"><span id="opVal" style="min-width:26px">100</span></div></div>
+      <div class="row" title="Offset Path: ขอบนอกรอบตัวอักษร/รูปทรง เป็นชั้นใหม่ด้านหลัง (ทำซ้ำได้หลายชั้น)">
+        <label>ขอบนอก</label>
+        <input type="number" id="offMm" value="3" min="0.5" max="50" step="0.5" style="width:58px">
+        <span style="font-size:10.5px;color:var(--muted)">มม.</span>
+        <button class="mini" id="btnOffset">＋ Offset</button>
+      </div>
     </div>
   </div>
   <div class="panel" id="gradPanel">
@@ -238,6 +244,7 @@ $("#right").innerHTML = `
       </div>
       <div class="btnrow" style="margin-bottom:8px">
         <button class="mini" id="swNone" title="ไม่มีสี">∅ None</button>
+        <button class="mini" id="btnEyedrop" title="ดูดสี (Eyedropper): คลิกวัตถุอื่นเพื่อคัดลอกสีพื้น เส้นขอบ และไล่สีมาใส่ชิ้นที่เลือก">💧 ดูดสี</button>
         <input type="color" id="swPick" style="width:38px;height:32px;border:0;background:none;padding:0" title="เลือกสีเอง">
       </div>
       <div class="swatches" id="swGrid"></div>
@@ -1258,6 +1265,59 @@ async function pathfinder(op) {
 }
 document.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => pathfinder(b.dataset.pf));
 
+/* ---------- Offset Path: an outline round the object, a new layer behind it ---------- */
+async function offsetPath() {
+  const o = canvas.getActiveObject();
+  if (!o || o.type === "activeSelection") { toast("เลือกตัวอักษรหรือรูปทรง 1 ชิ้นก่อน", "info"); return; }
+  if (o.type === "image") { toast("รูปภาพทำขอบนอกไม่ได้ — ใช้กับตัวอักษร รูปทรง หรือโลโก้ SVG", "warn"); return; }
+  const mm = Math.max(0.5, +$("#offMm").value || 3), u = mm / MM_PER_UNIT;
+  // near-black, a ring of its own past any keyline already there; recoloured after, as in Illustrator
+  const color = "#231f20";
+  const c = await new Promise(ok => o.clone(ok, ["name", "rosterTag", "arcMeta"]));
+  const widen = x => {
+    const k = x.strokeUniform ? 1 : ((Math.abs(x.scaleX) + Math.abs(x.scaleY)) / 2) * (x.group ? (Math.abs(x.group.scaleX) + Math.abs(x.group.scaleY)) / 2 : 1);
+    // a keyline already under the fill reaches half its width out: the new one goes past it
+    const had = x.stroke && x.strokeWidth && x.paintFirst === "stroke" ? x.strokeWidth : 0;
+    x.set({ fill: isGrad(x.fill) || x.fill ? color : x.fill, stroke: color, strokeWidth: had + (2 * u) / (x.strokeUniform ? 1 : k), strokeLineJoin: "round", paintFirst: "stroke" });
+  };
+  if (c._objects) c._objects.forEach(widen); else widen(c);
+  if (o.rosterTag) c.rosterTag = o.rosterTag; // a name's outline changes with the name
+  c.name = (o.name || objLabel(o)) + " · ขอบนอก";
+  canvas.insertAt(c, canvas.getObjects().indexOf(o));
+  if (clipOn) applyClip(c);
+  canvas.setActiveObject(o); canvas.requestRenderAll(); refreshLayers(); pushHistory();
+  toast(`เพิ่มขอบนอก ${mm} มม. แล้ว (ชั้นด้านหลัง) — เลือกชั้นนั้นแล้วคลิกสีเพื่อเปลี่ยนสี`, "ok");
+}
+$("#btnOffset").onclick = () => offsetPath();
+
+/* ---------- eyedropper: the next object clicked gives its paint to the selection ---------- */
+let eyedropFor = null, eyedropBound = false;
+$("#btnEyedrop").onclick = () => {
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { toast("เลือกชิ้นที่จะเปลี่ยนสีก่อน แล้วกดดูดสี", "info"); return; }
+  eyedropFor = objs.slice();
+  canvas.defaultCursor = canvas.hoverCursor = "crosshair";
+  toast("คลิกวัตถุที่ต้องการดูดสี (Esc ยกเลิก)", "info");
+  if (eyedropBound) return;
+  eyedropBound = true;
+  canvas.on("mouse:down", opt => {
+    if (!eyedropFor) return;
+    const targets = eyedropFor; eyedropFor = null;
+    canvas.defaultCursor = "default"; canvas.hoverCursor = "move";
+    const t = opt.target, from = t && (t._objects ? t._objects.find(x => x.fill) || t._objects[0] : t);
+    const restore = () => { canvas.discardActiveObject(); canvas.setActiveObject(targets.length > 1 ? new fabric.ActiveSelection(targets, { canvas }) : targets[0]); canvas.requestRenderAll(); syncProps(); };
+    if (!from || targets.includes(t) || t.type === "image") { restore(); return; }
+    const paint = { fill: from.fill, stroke: from.stroke, strokeWidth: from.strokeWidth, paintFirst: from.paintFirst };
+    targets.forEach(o => (o._objects || [o]).forEach(x => {
+      x.set({ stroke: paint.stroke, strokeWidth: paint.strokeWidth, paintFirst: paint.paintFirst });
+      x.set("fill", isGrad(paint.fill) ? makeGrad(x, paint.fill.type, sortedStops(paint.fill), gradAngle(paint.fill)) : paint.fill);
+    }));
+    restore(); pushHistory();
+    toast("ดูดสีแล้ว", "ok");
+  });
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape" && eyedropFor) { eyedropFor = null; canvas.defaultCursor = "default"; canvas.hoverCursor = "move"; } });
+
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
 function moveBy(o, dx, dy) {
@@ -1983,7 +2043,22 @@ function starsPat(ctx, W, H, cols, sc){ ctx.fillStyle=cols[0]; ctx.fillRect(0,0,
 function flames(ctx, W, H, cols, sc){ const g=ctx.createLinearGradient(0,H,0,0); g.addColorStop(0,cols[0]); g.addColorStop(0.5,cols[Math.min(1,cols.length-1)]); g.addColorStop(1,cols[cols.length-1]); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=0.5; const n=Math.round(W/(60*sc))*3; for (let i=0;i<n;i++){ ctx.fillStyle=cols[cols.length-1]; const x=Math.random()*W, by=H, h=(60+Math.random()*160)*sc, w=(20+Math.random()*40)*sc; ctx.beginPath(); ctx.moveTo(x,by); ctx.quadraticCurveTo(x-w/2,by-h*0.6,x,by-h); ctx.quadraticCurveTo(x+w/2,by-h*0.6,x,by); ctx.fill(); } ctx.globalAlpha=1; }
 function graffiti(ctx, W, H, cols, sc){ ctx.fillStyle=cols[0]; ctx.fillRect(0,0,W,H); const c=cols.slice(1).length?cols.slice(1):[cols[cols.length-1]]; ctx.lineCap="round"; for (let i=0;i<22;i++){ ctx.strokeStyle=c[i%c.length]; ctx.lineWidth=(6+Math.random()*16)*sc; const x=Math.random()*W, y=Math.random()*H; ctx.beginPath(); ctx.moveTo(x,y); ctx.bezierCurveTo(x+(-60+Math.random()*120)*sc,y+(-60+Math.random()*120)*sc,x+(-60+Math.random()*120)*sc,y+(-60+Math.random()*120)*sc,x+(-80+Math.random()*160)*sc,y+(-80+Math.random()*160)*sc); ctx.stroke(); } for (let i=0;i<120;i++){ ctx.fillStyle=c[i%c.length]; ctx.beginPath(); ctx.arc(Math.random()*W,Math.random()*H,(1+Math.random()*5)*sc,0,7); ctx.fill(); } }
 function grad(ctx, W, H, cols, type){ let g; if (type==="radial") g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.hypot(W,H)/2); else g=ctx.createLinearGradient(0,0,type==="diag"?W:0,H); cols.forEach((c,i)=>g.addColorStop(i/(cols.length-1),c)); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+/** rows of diamonds, each shaded dark at the top to light at the bottom (cols: dark … light) */
+function diamonds(ctx, W, H, cols, sc){
+  const dark = cols[0], light = cols[cols.length - 1], cw = 118 * sc, ch = cw;
+  ctx.fillStyle = dark; ctx.fillRect(0, 0, W, H);
+  for (let r = -1, y = -ch / 2; y < H + ch; r++, y += ch / 2) {
+    const off = (r & 1) ? cw / 2 : 0;
+    for (let x = -cw + off; x < W + cw; x += cw) {
+      const g = ctx.createLinearGradient(0, y, 0, y + ch); g.addColorStop(0, dark); g.addColorStop(1, light);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x + cw / 2, y); ctx.lineTo(x + cw, y + ch / 2); ctx.lineTo(x + cw / 2, y + ch); ctx.lineTo(x, y + ch / 2); ctx.closePath(); ctx.fill();
+    }
+  }
+}
 const PATTERNS = [
+  { n: "ข้าวหลามตัดแดง", cols: ["#960a14","#eb282d"], g: diamonds },
+  { n: "ข้าวหลามตัดเขียว", cols: ["#145f1e","#78be32"], g: diamonds },
+  { n: "ข้าวหลามตัดน้ำเงิน", cols: ["#0b1f5c","#2f7de1"], g: diamonds },
   { n: "คาโม่เขียว", cols: ["#2f4a22","#6b8e3f","#213617","#9bbb63"], g: camo },
   { n: "คาโม่ทราย", cols: ["#8a6f3a","#b89b63","#5f4a24","#d9c48f"], g: camo },
   { n: "คาโม่เทา", cols: ["#565b62","#8a9096","#363b41","#b8bdc4"], g: camo },
@@ -2002,7 +2077,7 @@ const PATTERNS = [
   { n: "ไล่สีพระอาทิตย์", cols: ["#f97316","#db2777","#7c3aed"], g: (c,W,H,cl)=>grad(c,W,H,cl,"diag") },
   { n: "เรเดียล", cols: ["#22d3ee","#0e7490"], g: (c,W,H,cl)=>grad(c,W,H,cl,"radial") },
 ];
-function renderCurrentPattern(){ if (!lastPat) return; const cols = patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"); c.width = 560; c.height = 660; lastPat.g(c.getContext("2d"), 560, 660, cols, patScale); bodyPatternSrc = c.toDataURL("image/png"); bodyPattern = null; applyGarment(); }
+function renderCurrentPattern(){ if (!lastPat) return; const cols = patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"), K = 3; c.width = 560 * K; c.height = 660 * K; const x = c.getContext("2d"); x.scale(K, K); lastPat.g(x, 560, 660, cols, patScale); bodyPatternSrc = c.toDataURL("image/png"); bodyPattern = null; applyGarment(); }
 function applyPattern(pat){ lastPat = pat; renderCurrentPattern(); toast("ใส่ลาย " + pat.n); }
 function buildPatternGallery(){ const gr = document.getElementById("patGrid"); if (!gr) return; gr.innerHTML = ""; PATTERNS.forEach(pat => { const c = document.createElement("canvas"); c.className = "patthumb"; c.title = pat.n; c.width = 48; c.height = 58; pat.g(c.getContext("2d"), 48, 58, pat.cols, 0.4); c.onclick = () => applyPattern(pat); gr.appendChild(c); }); }
 const patSizeEl = document.getElementById("patSize"); if (patSizeEl) patSizeEl.oninput = e => { patScale = +e.target.value; const v = document.getElementById("patSizeV"); if (v) v.textContent = (+e.target.value).toFixed(1) + "×"; renderCurrentPattern(); };
