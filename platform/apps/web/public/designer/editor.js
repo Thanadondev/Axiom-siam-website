@@ -97,6 +97,24 @@ $("#right").innerHTML = `
           <input type="range" id="txArc" min="-100" max="100" step="1" value="0" style="flex:1">
           <span id="txArcV" style="min-width:34px;font-size:11px;color:var(--muted)">0</span>
         </div>
+        <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px" title="ดัดรูปข้อความ (Warp) แบบใน Illustrator">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ดัดรูป</label>
+          <select id="txWarp" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 6px;color:var(--txt);font-size:12px;font-family:inherit">
+            <option value="none">ไม่ดัด</option>
+            <option value="arc">โค้งทั้งคำ (Arc)</option>
+            <option value="arcUpper">โค้งด้านบน (Arc Upper)</option>
+            <option value="arcLower">โค้งด้านล่าง (Arc Lower)</option>
+            <option value="arch">สะพาน (Arch)</option>
+            <option value="bulge">พองกลาง (Bulge)</option>
+            <option value="flag">ธงพลิ้ว (Flag)</option>
+            <option value="rise">ไต่ขึ้น (Rise)</option>
+          </select>
+        </div>
+        <div class="row" id="txBendRow" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ระดับดัด</label>
+          <input type="range" id="txBend" min="-100" max="100" step="1" value="50" style="flex:1">
+          <span id="txBendV" style="min-width:34px;font-size:11px;color:var(--muted)">50</span>
+        </div>
         <div class="row" id="txEditRow" style="display:none;align-items:center;gap:8px;margin-bottom:4px">
           <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ข้อความ</label>
           <input type="text" id="txText" placeholder="แก้ข้อความโค้ง" style="flex:1">
@@ -1024,7 +1042,7 @@ function syncProps() {
   // the font row stays visible even with nothing selected: it also sets the
   // font used for the NEXT text you create, and it holds the import button
   if (textish && fs) {
-    const fam = isArc(o) ? o.arcMeta.fontFamily : o.fontFamily;
+    const fam = isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily;
     const m = /^"?([^",]+)/.exec(fam || "");
     fs.value = (m && FONTS.includes(m[1])) ? m[1] : curFont;
   } else if (fs) {
@@ -1042,6 +1060,10 @@ function syncProps() {
       set("txSize", Math.round(m.fontSize));
       set("txSpace", m.charSpacing || 0); lbl("txSpaceV", m.charSpacing || 0);
       set("txArc", m.curve || 0); lbl("txArcV", m.curve || 0);
+      const w = m.warp && m.warp.style !== "none" ? m.warp : null;
+      set("txWarp", w ? w.style : "none");
+      set("txBend", w ? w.bend : 50); lbl("txBendV", w ? w.bend : 50);
+      const br = document.getElementById("txBendRow"); if (br) br.style.display = w ? "flex" : "none";
       set("txText", m.text);
       const er = document.getElementById("txEditRow");
       if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
@@ -1877,7 +1899,7 @@ $("#btnSvg").onclick = () => runExport(async () => {
     // sell a template that renders in the wrong face on their screen
     const impUse = objectsUsingImportedFonts();
     if (impUse.length) {
-      const fams = [...new Set(impUse.map(o => (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily).split(",")[0].replace(/["']/g, "").trim()))];
+      const fams = [...new Set(impUse.map(o => (isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily).split(",")[0].replace(/["']/g, "").trim()))];
       toast(`เผยแพร่ขายไม่ได้: ดีไซน์ใช้ฟอนต์ที่นำเข้าเอง (${fams.join(", ")})\nคนซื้อไม่มีไฟล์ฟอนต์นี้ — เปลี่ยนเป็นฟอนต์ในระบบก่อน`, "err");
       return;
     }
@@ -2079,7 +2101,7 @@ function bindFontImport() {
 function objectsUsingImportedFonts() {
   return userObjects().filter(o => {
     if (!isTextish(o)) return false;
-    const fam = (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily) || "";
+    const fam = (isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily) || "";
     return isImported(fam.split(",")[0].trim().replace(/^["']|["']$/g, ""));
   });
 }
@@ -2154,7 +2176,7 @@ let rosterOrig = null;
    can be flattened back to a plain IText when the curve returns to 0.        */
 const ARC_PROPS = ["name", "rosterTag", "arcMeta"];
 
-function isArc(o) { return !!(o && o.arcMeta); }
+function isArc(o) { return !!(o && (o.arcMeta || o._warpPending)); }
 
 /** a real editable text object. Arc groups are deliberately excluded: the
  *  batch generator swaps `.text` on these in a loop, and rebuilding an arc
@@ -2241,6 +2263,7 @@ function reflowArcs() {
 
 /** metadata snapshot of any text-ish object */
 function arcMetaOf(o) {
+  if (o._warpPending) return { ...o._warpPending }; // a warp still being built
   if (isArc(o)) return { ...o.arcMeta };
   return {
     text: o.text || "",
@@ -2253,12 +2276,16 @@ function arcMetaOf(o) {
     fill: o.fill || "#111111",
     stroke: o.stroke || "",
     strokeWidth: o.strokeWidth || 0,
+    paintFirst: o.paintFirst || "fill",
+    warp: { style: "none", bend: 50 },
   };
 }
 
 /** replace `o` in-place with a re-rendered version carrying `patch` */
 function rebuildArc(o, patch) {
+  // a warp still being built: the next edit goes on top of it, not on the old text
   const meta = { ...arcMetaOf(o), ...patch };
+  if (meta.warp && meta.warp.style !== "none" && meta.warp.bend) { rebuildWarp(o, { ...meta, curve: 0 }); return o; }
   // the rebuilt object always has a centre origin; anchor it on the old centre
   // so straight ⇄ curved never makes the text jump half its width
   const c = o.getCenterPoint();
@@ -2280,6 +2307,65 @@ function rebuildArc(o, patch) {
   return next;
 }
 
+/* ---------- warped text, as Illustrator's Effect > Warp ----------
+   The text is outlined (the print's own outlines), its points flattened finely
+   and moved by the warp; arcMeta keeps the text, font and warp, so it can be
+   edited and re-warped (like the curved text) and saved. */
+const WARPS = {
+  // u: −1 (left) … 1 (right) across the text; v: 0 (top) … 1 (bottom); A: the bend in units
+  arc: (u, v, A) => -A * (1 - u * u),
+  arcUpper: (u, v, A) => -A * (1 - u * u) * (1 - v),
+  arcLower: (u, v, A) => A * (1 - u * u) * v,
+  arch: (u, v, A) => -A * (1 - u * u) * (1 - 0.5 * v),
+  bulge: (u, v, A) => -A * 0.6 * (1 - u * u) * (1 - 2 * v),
+  flag: (u, v, A) => A * 0.35 * Math.sin(u * Math.PI),
+  rise: (u, v, A) => -A * 0.5 * u,
+};
+async function warpedOutline(meta) {
+  await loadPaper();
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  const t = new fabric.IText(meta.text || " ", { fontSize: meta.fontSize, fontFamily: meta.fontFamily, fontWeight: meta.fontWeight, fontStyle: meta.fontStyle, charSpacing: meta.charSpacing || 0, fill: "#000000", left: 0, top: 0 });
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">${t.toSVG()}</svg>`);
+  const root = paper.project.importSVG(r.svg, { insert: false, expandShapes: true });
+  const whole = new paper.CompoundPath({ insert: false });
+  for (const c of root.getItems({ match: x => x instanceof paper.Path && !x.clipMask })) {
+    const p = c.clone({ insert: false });
+    p.applyMatrix = true;
+    if (c.parent) p.transform(c.parent.globalMatrix);
+    whole.addChild(p);
+  }
+  if (!whole.children.length) return null;
+  const b = whole.bounds, f = WARPS[meta.warp.style] || WARPS.arc;
+  const A = (meta.warp.bend / 100) * b.height;
+  whole.flatten(Math.max(0.02, b.height / 600));
+  for (const p of whole.children) for (const s of p.segments) {
+    const u = (s.point.x - b.center.x) / (b.width / 2), v = (s.point.y - b.top) / b.height;
+    s.point = new paper.Point(s.point.x, s.point.y + f(u, v, A));
+  }
+  return whole.pathData;
+}
+let warpSeq = 0;
+async function rebuildWarp(o, meta) {
+  const my = ++warpSeq, wasActive = canvas.getActiveObject() === o;
+  o._warpPending = meta;
+  let d;
+  try { d = await warpedOutline(meta); } catch (e) { o._warpPending = null; toast("ดัดรูปข้อความไม่ได้ — ตรวจอินเทอร์เน็ต/ฟอนต์", "err"); return; }
+  if (!d || my !== warpSeq || !canvas.getObjects().includes(o)) return;
+  o._warpPending = null;
+  const c = o.getCenterPoint();
+  const paint = { fill: isGrad(meta.fill) ? sortedStops(meta.fill)[0].color : meta.fill, stroke: meta.stroke || null, strokeWidth: meta.strokeWidth || 0, strokeUniform: true, paintFirst: meta.paintFirst || "fill" };
+  const next = new fabric.Path(d, { ...paint, angle: o.angle || 0, opacity: o.opacity ?? 1, name: o.name, objectCaching: false });
+  if (isGrad(meta.fill)) next.set("fill", makeGrad(next, meta.fill.type, sortedStops(meta.fill), gradAngle(meta.fill)));
+  next.setPositionByOrigin(c, "center", "center");
+  next.arcMeta = { ...meta, fill: meta.fill };
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(next);
+  if (idx >= 0) next.moveTo(idx);
+  if (clipOn) applyClip(next);
+  if (wasActive) canvas.setActiveObject(next);
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+
 function bindTextPanel() {
   const g = id => document.getElementById(id);
   const active = () => canvas.getActiveObject();
@@ -2296,14 +2382,16 @@ function bindTextPanel() {
       updateTagInfo && updateTagInfo();
     }
 
-    // an arc must be rebuilt; a plain text can be mutated in place
-    if (isArc(o) || (patch.curve !== undefined && patch.curve !== 0)) rebuildArc(o, patch);
+    // an arc or a warp must be rebuilt; a plain text can be mutated in place
+    const warping = patch.warp && patch.warp.style !== "none";
+    if (warping && o.rosterTag) { o.rosterTag = null; toast("ข้อความที่ดัดรูปใช้เป็นช่องชื่อ/เบอร์ไม่ได้ — ยกเลิกแท็กให้แล้ว", "warn"); updateTagInfo && updateTagInfo(); }
+    if (isArc(o) || warping || (patch.curve !== undefined && patch.curve !== 0)) rebuildArc(o, patch);
     else { o.set(patch); canvas.requestRenderAll(); }
     pushHistory(); syncProps();
   };
 
-  const weightOf = o => (isArc(o) ? o.arcMeta.fontWeight : o.fontWeight);
-  const styleOf = o => (isArc(o) ? o.arcMeta.fontStyle : o.fontStyle);
+  const weightOf = o => (isArc(o) ? arcMetaOf(o).fontWeight : o.fontWeight);
+  const styleOf = o => (isArc(o) ? arcMetaOf(o).fontStyle : o.fontStyle);
 
   if (g("txSize")) g("txSize").onchange = e => apply({ fontSize: Math.max(4, +e.target.value || 40) });
   if (g("txBold")) g("txBold").onclick = () => { const o = active(); if (!o || !isTextish(o)) return; const w = weightOf(o); apply({ fontWeight: (w === "bold" || w === "700" || w === 700) ? "normal" : "bold" }); };
@@ -2313,6 +2401,11 @@ function bindTextPanel() {
   if (g("txArc")) g("txArc").oninput = e => { const v = +e.target.value; const l = g("txArcV"); if (l) l.textContent = v; };
   if (g("txArc")) g("txArc").onchange = e => apply({ curve: +e.target.value });
   if (g("txText")) g("txText").onchange = e => apply({ text: e.target.value });
+  // a warp and the circle curve are one or the other
+  if (g("txWarp")) g("txWarp").onchange = e => apply({ warp: { style: e.target.value, bend: +g("txBend").value || 50 }, curve: 0 });
+  if (g("txBend")) g("txBend").oninput = e => { const l = g("txBendV"); if (l) l.textContent = e.target.value; };
+  if (g("txBend")) g("txBend").onchange = e => apply({ warp: { style: g("txWarp").value, bend: +e.target.value }, curve: 0 });
+  if (g("txArc")) { const was = g("txArc").onchange; g("txArc").onchange = e => { const o = active(); if (o && isArc(o) && arcMetaOf(o).warp && arcMetaOf(o).warp.style !== "none") { apply({ curve: +e.target.value, warp: { style: "none", bend: 50 } }); return; } was(e); }; }
 }
 
 function updateTagInfo() {
