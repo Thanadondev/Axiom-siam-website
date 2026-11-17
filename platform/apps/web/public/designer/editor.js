@@ -222,6 +222,14 @@ $("#right").innerHTML = `
         <span class="swcode" id="bodyCode" style="align-self:center"></span>
       </div>
       <div class="swatches" id="bodyGrid"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" data-ckapply="body" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
@@ -232,6 +240,14 @@ $("#right").innerHTML = `
         <span class="swcode" id="trimCode" style="align-self:center"></span>
       </div>
       <div class="swatches" id="trimGrid"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" data-ckapply="trim" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
@@ -1009,7 +1025,25 @@ $("#tgtFill").onclick = () => setTarget("fill");
 $("#tgtStroke").onclick = () => setTarget("stroke");
 $("#fillBtn").onclick = () => setTarget("fill");
 $("#strokeBtn").onclick = () => setTarget("stroke");
-function garmentCode(id, c) { const i = PALINFO.find(p => p.c.toLowerCase() === String(c).toLowerCase()); const el = document.getElementById(id); if (el) el.textContent = i ? i.k : c; }
+function garmentCode(id, c) {
+  const h = String(c).toLowerCase(), i = PALINFO.find(p => p.c.toLowerCase() === h), own = customInks[h];
+  const el = document.getElementById(id); if (el) el.textContent = own ? `CMYK ที่ใส่เอง: ${cmykText(own)}` : i ? i.k : c;
+  // the CMYK boxes under it show what prints
+  const pre = id === "bodyCode" ? "body" : "trim", v = own || (i && parseCmykText(i.k));
+  document.querySelectorAll(`[data-ck="${pre}"]`).forEach((b, j) => { if (document.activeElement !== b) b.value = v ? v[j] : ""; });
+}
+// the garment's own CMYK boxes (body, trim): the colour prints exactly that CMYK
+document.querySelectorAll("[data-ckapply]").forEach(btn => {
+  const pre = btn.dataset.ckapply, boxes = [...document.querySelectorAll(`[data-ck="${pre}"]`)];
+  const go = () => {
+    const c = boxes.map(b => { const v = parseFloat(b.value); return isNaN(v) ? 0 : Math.round(Math.min(100, Math.max(0, v)) * 10) / 10; });
+    const h = inkHex(c);
+    if (pre === "body") setBodyColor(h); else setTrimColor(h);
+    pushHistory();
+  };
+  btn.onclick = go;
+  boxes.forEach(b => b.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } }));
+});
 function setBodyColor(c) { bodyColor = c; bodyPattern = null; bodyPatternSrc = null; applyGarment(); garmentCode("bodyCode", c); }
 function setTrimColor(c) { trimColor = c; applyGarment(); garmentCode("trimCode", c); }
 function buildGarmentGrid(gridId, fn) {
@@ -1752,6 +1786,7 @@ function openDoc(doc) {
     curLayout = "vertical";
     if (doc.bodyColor) bodyColor = doc.bodyColor;
     if (doc.trimColor) trimColor = doc.trimColor;
+    garmentCode("bodyCode", bodyColor); garmentCode("trimCode", trimColor);
     bodyPattern = null; bodyPatternSrc = doc.bodyPatternSrc || null;
     buildTemplate();
     fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
