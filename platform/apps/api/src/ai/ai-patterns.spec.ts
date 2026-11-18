@@ -180,7 +180,7 @@ describe("AI pattern recipes with Gemini", () => {
     const r = await s.design("u1", { prompt: "คลื่นทะเล", body: "#0054a6" });
     expect(r.patterns).toHaveLength(1);
     const b = g.asked[0].body;
-    expect(g.asked[0].model).toBe("gemini-3.8-flash");
+    expect(g.asked[0].model).toBe("gemini-3.6-flash");
     expect(b.systemInstruction.parts[0].text).toBe(PATTERN_SYSTEM);
     expect(b.generationConfig.responseFormat.text).toEqual({ mimeType: "APPLICATION_JSON", schema: REPLY_JSON_SCHEMA });
     expect(b.contents[0].parts[0].text).toMatch(/คลื่นทะเล[\s\S]*body #0054a6/);
@@ -204,7 +204,7 @@ describe("AI pattern recipes with Gemini", () => {
     const c = fake({ patterns: [recipe()] });
     const a = both({ claude: c.model, gemini: down }, { order: "gemini>claude" });
     await a.s.design("u1", { prompt: "คลื่น" });
-    expect(a.rows.map(x => [x.model, x.ok])).toEqual([["gemini-3.8-flash", false], ["claude-opus-5-5", true]]);
+    expect(a.rows.map(x => [x.model, x.ok])).toEqual([["gemini-3.6-flash", false], ["gemini-3.5-flash-lite", false], ["claude-opus-5-5", true]]);
 
     const c2 = fake({ patterns: [recipe()] });
     const blocked = gem("", { candidates: [{ finishReason: "PROHIBITED_CONTENT" }] });
@@ -223,7 +223,7 @@ describe("AI pattern recipes with Gemini", () => {
     const rate = { create: async () => { throw new Anthropic.RateLimitError(429, { type: "error" }, "429 rate", new Headers()); } } as unknown as PatternModel;
     const a = both({ claude: rate, gemini: busy });
     await expect(a.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ยุ่งอยู่/);
-    expect(a.rows).toHaveLength(2);
+    expect(a.rows).toHaveLength(3); // Claude, then both Gemini models
     const b = both({ claude: noCredit(), gemini: busy });
     await expect(b.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ใช้ไม่ได้ชั่วคราว/);
 
@@ -233,6 +233,30 @@ describe("AI pattern recipes with Gemini", () => {
     const rep = await only.s.report();
     expect(rep.keySet).toBe(false);
     expect(rep.providers.map(p => [p.id, p.keySet])).toEqual([["claude", true], ["gemini", false]]);
+  });
+
+  it("an overloaded Gemini model passes the request to the next Gemini model, then to Claude", async () => {
+    const tried: string[] = [];
+    const g: GeminiModel = {
+      generate: async m => {
+        tried.push(m);
+        if (m === "gemini-3.6-flash") throw new GeminiError(503, "503 UNAVAILABLE high demand");
+        return (await gem({ patterns: [recipe()] }).model.generate(m, {})) as GeminiReply;
+      },
+    };
+    const a = both({ gemini: g }, { order: "gemini>claude" });
+    await a.s.design("u1", { prompt: "คลื่น" });
+    expect(tried).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    expect(a.rows.map(x => [x.model, x.ok])).toEqual([["gemini-3.6-flash", false], ["gemini-3.8-flash", true]]); // the stand-in always names 3.8 as its version
+
+    const allDown: GeminiModel = { generate: async () => { throw new GeminiError(503, "503 UNAVAILABLE"); } };
+    const c = fake({ patterns: [recipe()] });
+    const b = both({ claude: c.model, gemini: allDown }, { order: "gemini>claude" });
+    await b.s.design("u1", { prompt: "คลื่น" });
+    expect(b.rows.map(x => x.ok)).toEqual([false, false, true]);
+    expect(c.asked).toHaveLength(1);
+    expect(AiPatternsService.modelsOf(" gemini-3.5-flash-lite , gemini-3.6-flash ")).toEqual(["gemini-3.5-flash-lite", "gemini-3.6-flash"]);
+    expect(AiPatternsService.modelsOf("")).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
   });
 
   it("Gemini's price: a dated version costs as its model; an unknown one as the default", () => {

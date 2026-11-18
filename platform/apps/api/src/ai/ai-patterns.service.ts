@@ -29,7 +29,14 @@ export function costUsd(u: Usage) {
 }
 
 // ---------- Gemini (Google), through its REST API ----------
+/** the price used for a model not in the list */
 export const GEMINI_DEFAULT = "gemini-3.8-flash";
+/**
+ * tried in turn while one is overloaded or over its per-minute quota. 3.8 Flash is
+ * left out: in Nov 2026 it was "high demand" or queued past 90 s on most calls
+ * (GEMINI_MODEL="gemini-3.8-flash,gemini-3.6-flash" puts it back first)
+ */
+export const GEMINI_MODELS_DEFAULT = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
 /** US dollars per million tokens on Google's paid tier: input, output (thinking included), cached input */
 const GEMINI_PRICE: Record<string, { in: number; out: number; read: number }> = {
   "gemini-3.8-flash": { in: 0.75, out: 3.75, read: 0.075 },
@@ -73,7 +80,7 @@ function restGemini(key: string): GeminiModel {
           method: "POST",
           headers: { "content-type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(90_000), // a model stuck in a queue gives way to the next
         });
       } catch (e) {
         throw new GeminiError(0, `connection: ${(e as Error).message}`);
@@ -117,7 +124,12 @@ export class AiPatternsService {
   private readonly log = new Logger("AiPatterns");
   private readonly model: PatternModel | null;
   private readonly gemini: GeminiModel | null;
-  readonly geminiModel = process.env.GEMINI_MODEL?.trim() || GEMINI_DEFAULT;
+  /** GEMINI_MODEL: one model, or several separated by commas tried in turn */
+  readonly geminiModels = AiPatternsService.modelsOf(process.env.GEMINI_MODEL);
+  static modelsOf(env?: string) {
+    const list = (env ?? "").split(",").map(m => m.trim()).filter(Boolean);
+    return list.length ? list : GEMINI_MODELS_DEFAULT;
+  }
 
   constructor(private readonly prisma: PrismaService, private readonly settings: SettingsService) {
     this.model = process.env.ANTHROPIC_API_KEY?.trim() ? new Anthropic().beta.messages : null;
@@ -203,8 +215,7 @@ export class AiPatternsService {
     return { model: res.model ?? AI_MODEL, text, stop, why: String(res.stop_reason), spent: claudeSpent(res.usage as Usage) };
   }
 
-  private async askGemini(ask: string): Promise<Answer> {
-    const model = this.geminiModel;
+  private async askGemini(ask: string, model: string): Promise<Answer> {
     let res: GeminiReply;
     try {
       res = await this.gemini!.generate(model, {
@@ -250,18 +261,19 @@ export class AiPatternsService {
     const ask = `Customer's request: ${req.prompt.trim()}\nGarment colours: ${garment || "not chosen yet"}\nGive ${count} different recipes.`;
     const base = { userId, prompt: req.prompt.trim() };
 
-    // the first AI in the admin's order; the next one only when it can't answer at all
+    // the first AI in the admin's order (for Gemini, each of its models in turn); the next only when it can't answer at all
+    const tries = order.flatMap<{ p: Provider; m: string }>(p => (p === "claude" ? [{ p, m: AI_MODEL }] : this.geminiModels.map(m => ({ p, m }))));
     let ans: Answer | null = null, ms = 0, allBusy = true;
-    for (const p of order) {
+    for (const { p, m } of tries) {
       const t0 = Date.now();
       try {
-        ans = await (p === "claude" ? this.askClaude(ask) : this.askGemini(ask));
+        ans = await (p === "claude" ? this.askClaude(ask) : this.askGemini(ask, m));
         ms = Date.now() - t0;
         break;
       } catch (e) {
         if (!(e instanceof Down)) throw e;
         await this.record({ ...base, model: e.model, ok: false, error: e.message, ms: Date.now() - t0 });
-        this.log.error(`${p} could not answer: ${e.message}`);
+        this.log.error(`${m} could not answer: ${e.message}`);
         allBusy &&= e.busy;
       }
     }
@@ -325,10 +337,10 @@ export class AiPatternsService {
       config: cfg,
       /** an AI in the admin's order has a key: customers can design */
       keySet: usable.length > 0,
-      model: usable[0] === "gemini" ? this.geminiModel : AI_MODEL,
+      model: usable[0] === "gemini" ? this.geminiModels[0] : AI_MODEL,
       providers: [
         { id: "claude" as const, model: AI_MODEL, keySet: !!this.model, env: "ANTHROPIC_API_KEY" },
-        { id: "gemini" as const, model: this.geminiModel, keySet: !!this.gemini, env: "GEMINI_API_KEY" },
+        { id: "gemini" as const, model: this.geminiModels.join(", "), keySet: !!this.gemini, env: "GEMINI_API_KEY" },
       ],
       today: { calls: todayAgg._count, ok: todayOk, users: todayUsers.length, costUsd: spentUsd, overBudget: this.overBudget(cfg, spentUsd) },
       month: { calls: rows.length, costUsd: rows.reduce((s, r) => s + r.costUsd, 0) },
