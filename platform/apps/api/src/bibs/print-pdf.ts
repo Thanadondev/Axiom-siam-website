@@ -59,8 +59,8 @@ function pictureImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef 
 
 /**
  * A gradient as a PDF shading in CMYK (axial or radial, kept at its end
- * colours past the ends), which Illustrator opens as a gradient (a linear one;
- * see below): one colour blend per pair of stops, stitched along 0–1. As a
+ * colours past the ends), which Illustrator opens as a gradient (see below, and
+ * unitRadial): one colour blend per pair of stops, stitched along 0–1. As a
  * stroke's colour (a shading pattern) Illustrator opens it as the stroke's
  * outline filled with the gradient.
  */
@@ -77,7 +77,7 @@ function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PD
   for (let i = 1; i < stops.length - 1; i++) bounds.push(Math.min(1, Math.max(stops[i].o, (bounds[bounds.length - 1] ?? 0) + 1e-5)));
   // always stitched, even for two stops: Illustrator 2024 opens a linear shading as its own (editable)
   // gradient only when the function is a stitching one; a single blend comes in as a NonNativeItem
-  // (tested Nov 2026; radial ones come in as NonNativeItems either way, printing the same)
+  // (tested Nov 2026; a radial one also needs unitRadial)
   const fn = ctx.obj({ FunctionType: 3, Domain: [0, 1], Functions: parts, Bounds: bounds, Encode: parts.flatMap(() => [0, 1]) });
   const c = g.coords;
   return ctx.register(ctx.obj({
@@ -85,6 +85,21 @@ function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PD
     Coords: g.type === "linear" ? c : [c[3], c[4], 0, c[0], c[1], c[2]],
     Function: fn, Extend: [true, true],
   }));
+}
+
+type M6 = [number, number, number, number, number, number];
+/** A · B: B first, then A */
+const mul = (A: M6, B: M6): M6 => [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3], A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+/**
+ * A radial gradient as Illustrator writes its own: the unit circle at the origin, its matrix taking it
+ * onto the shape. Illustrator 2024 opens only that form as an editable gradient (any other centre or
+ * radius comes in as a NonNativeItem, printing the same; tested Nov 2026). Linear ones are left as they are.
+ */
+export function unitRadial(g: Grad): Grad {
+  if (g.type !== "radial") return g;
+  const [cx, cy, r, fx, fy] = g.coords;
+  if (!(r > 0)) return g;
+  return { ...g, coords: [0, 0, 1, (fx - cx) / r, (fy - cy) / r], m: mul(g.m as M6, [r, 0, 0, r, cx, cy]) };
 }
 
 export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: { title: string; inks?: OwnInks }): Promise<PrintPdf> {
@@ -115,7 +130,8 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
   // page's own (points, y up), not to the current one, so it takes the mm-to-points step too
   let nPat = 0;
   const toPage: [number, number, number, number, number, number] = [PT, 0, 0, -PT, 0, hMm * PT];
-  const patternOf = (g: Grad) => {
+  const patternOf = (g0: Grad) => {
+    const g = unitRadial(g0);
     const res = page.node.normalizedEntries().Resources;
     let dict = res.lookupMaybe(PDFName.of("Pattern"), PDFDict);
     if (!dict) { dict = doc.context.obj({}); res.set(PDFName.of("Pattern"), dict); }
@@ -177,9 +193,10 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
     if (s.fill && s.grad) {
       // the shape as a clip, the gradient painted through it; its stroke after, on top
-      const name = shadingName(shading(doc, s.grad, h => cmyk(h)));
+      const g = unitRadial(s.grad);
+      const name = shadingName(shading(doc, g, h => cmyk(h)));
       ops.push(pushGraphicsState(), ...pathOps(s.segs), s.evenOdd ? PDFOperator.of(PDFOperatorNames.ClipEvenOdd) : clip(), endPath(),
-        concatTransformationMatrix(...s.grad.m), PDFOperator.of(PDFOperatorNames.ShadingFill, [name]), popGraphicsState());
+        concatTransformationMatrix(...g.m), PDFOperator.of(PDFOperatorNames.ShadingFill, [name]), popGraphicsState());
       if (s.stroke) {
         ops.push(...strokePaint(s), setLineWidth(s.width ?? 0.353));
         if (s.dash?.length) ops.push(setDashPattern(s.dash, 0));

@@ -5,6 +5,7 @@ import { piecesFor } from "./template";
 import { parsePath } from "./path";
 import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { moveShapes } from "./draw";
+import { unitRadial } from "./print-pdf";
 
 // an 8×8 red PNG
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAAA1BMVEXmABL5rOCAAAAAC0lEQVR4nGNgQAUAABAAATm9j2UAAAAASUVORK5CYII=";
@@ -341,6 +342,19 @@ describe("as Illustrator draws it", () => {
     const { defs, body } = svgShapes(front, { n: 0 });
     expect(defs).toMatch(/<linearGradient id="g\d+"[^>]*><stop offset="0" stop-color="#fff200"\/>/);
     expect(body).toMatch(/fill="#0054a6" stroke="url\(#g\d+\)"/);
+  });
+
+  it("a radial gradient is written as Illustrator writes its own: the unit circle at the origin, moved onto the shape", () => {
+    const g = { type: "radial" as const, coords: [50, 40, 20, 55, 40], stops: [{ o: 0, c: "#ed1c24" }, { o: 1, c: "#231f20" }], m: [2, 0, 0, 3, 100, 10] as [number, number, number, number, number, number] };
+    const u = unitRadial(g);
+    expect(u.coords).toEqual([0, 0, 1, 0.25, 0]);
+    const at = (m: number[], x: number, y: number) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+    // the same circle on the page: its centre, a point on its edge, and the focus
+    expect(at(u.m, 0, 0)).toEqual(at(g.m, 50, 40));
+    expect(at(u.m, 1, 0)).toEqual(at(g.m, 70, 40));
+    expect(at(u.m, 0.25, 0)).toEqual(at(g.m, 55, 40));
+    const lin = { ...g, type: "linear" as const, coords: [0, 0, 1, 0] };
+    expect(unitRadial(lin)).toBe(lin);
   });
 
   it("a gradient moves with its shape when the piece is placed on the sheet", () => {
