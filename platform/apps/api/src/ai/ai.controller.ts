@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { CurrentUser } from "../auth/decorators";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { CurrentUser, Roles } from "../auth/decorators";
 import type { AuthUser } from "../auth/decorators";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
+import { SettingsService } from "../settings/settings.service";
+import { UpdateAiSchema, type UpdateAiDto } from "../settings/settings.dto";
 import { AiPatternsService } from "./ai-patterns.service";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -29,6 +32,24 @@ export class AiController {
 
   @Get("patterns/quota")
   quota(@CurrentUser() user: AuthUser) {
-    return { remaining: this.patterns.remaining(user.id), daily: this.patterns.daily };
+    return this.patterns.quota(user.id);
+  }
+}
+
+/** /admin → ✨ AI: what it costs, who uses it, on/off and the limits */
+@Controller("admin/ai")
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("admin")
+export class AiAdminController {
+  constructor(private readonly patterns: AiPatternsService, private readonly settings: SettingsService) {}
+
+  @Get()
+  report() {
+    return this.patterns.report();
+  }
+
+  @Patch("settings")
+  save(@CurrentUser() me: AuthUser, @Body(new ZodValidationPipe(UpdateAiSchema)) dto: UpdateAiDto) {
+    return this.settings.saveAi(dto, me.id);
   }
 }

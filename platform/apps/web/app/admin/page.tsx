@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
 import SlipReview from "../../components/SlipReview";
+import AiAdmin from "../../components/AiAdmin";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
@@ -11,7 +12,7 @@ import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
 
-type Tab = "dash" | "payments" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "settings";
+type Tab = "dash" | "payments" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "ai" | "settings";
 const TABS: { id: Tab; label: string }[] = [
   { id: "dash", label: "📊 ภาพรวม" },
   { id: "payments", label: "🧾 ตรวจสลิป" },
@@ -25,6 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "catalog", label: "🎨 ผ้า/ไซส์/สี" },
   { id: "analytics", label: "📈 วิเคราะห์เชิงลึก" },
   { id: "audit", label: "🕵️ Audit trail" },
+  { id: "ai", label: "✨ AI" },
   { id: "settings", label: "⚙️ ตั้งค่า" },
 ];
 
@@ -504,6 +506,8 @@ export default function AdminPage() {
       {/* ---------------- SLIP REVIEW ---------------- */}
       {/* approving a slip changes revenue, so refresh the dashboard's numbers too */}
       {tab === "payments" && token && <SlipReview token={token} onChange={() => loadTab("dash")} />}
+
+      {tab === "ai" && token && <AiAdmin token={token} />}
 
       {tab === "orders" && (
         <div className="acard">

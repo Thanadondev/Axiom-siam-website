@@ -69,6 +69,27 @@ export const KEY_DELIVERY = "delivery";
 export const DEFAULT_DELIVERY: DeliveryConfig = { agentEnabled: false, agentName: "", agentAddress: "", agentPhone: "", agentFee: 0 };
 
 /**
+ * ✨ AI patterns in the advanced designer (Claude): on or off, how many designs a
+ * customer gets a day, and a cap on what the whole site spends a day.
+ */
+export interface AiConfig {
+  enabled: boolean;
+  /** designs a customer a day (a design = one request, 3 patterns) */
+  dailyPerUser: number;
+  /** baht a day for everyone together; 0 = no cap */
+  dailyBudgetThb: number;
+  /** for showing the cost (Claude bills in US dollars) */
+  thbPerUsd: number;
+}
+export const KEY_AI = "ai";
+export const DEFAULT_AI: AiConfig = {
+  enabled: true,
+  dailyPerUser: Math.max(0, Number(process.env.AI_PATTERN_DAILY ?? 20) || 0),
+  dailyBudgetThb: Math.max(0, Number(process.env.AI_DAILY_BUDGET_THB ?? 300) || 0),
+  thbPerUsd: 33,
+};
+
+/**
  * Reads editable config from the `settings` table with an in-memory cache.
  * Any missing key falls back to the env/code default, so the app works
  * even before an admin has ever saved settings (or if the table is empty).
@@ -136,6 +157,14 @@ export class SettingsService {
   }
   saveDelivery(patch: Partial<DeliveryConfig>, adminId?: string) {
     return this.write<DeliveryConfig>(KEY_DELIVERY, patch, DEFAULT_DELIVERY, adminId);
+  }
+
+  // ---------- ✨ AI patterns ----------
+  ai() {
+    return this.read<AiConfig>(KEY_AI, DEFAULT_AI);
+  }
+  saveAi(patch: Partial<AiConfig>, adminId?: string) {
+    return this.write<AiConfig>(KEY_AI, patch, DEFAULT_AI, adminId);
   }
 
   async all() {
