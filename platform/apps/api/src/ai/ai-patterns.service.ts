@@ -123,7 +123,7 @@ export class AiPatternsService {
       });
     } catch (e) {
       const ms = Date.now() - t0;
-      if (e instanceof Anthropic.APIError) await this.record({ ...base, ok: false, error: `${e.status ?? ""} ${e.message}`.trim(), ms });
+      if (e instanceof Anthropic.APIError) await this.record({ ...base, ok: false, error: e.message, ms });
       if (e instanceof Anthropic.RateLimitError) throw new ServiceUnavailableException("AI ยุ่งอยู่ ลองใหม่อีกครั้งในอีกสักครู่");
       if (e instanceof Anthropic.AuthenticationError) { this.log.error("ANTHROPIC_API_KEY ใช้ไม่ได้"); throw new ServiceUnavailableException("AI ออกแบบลายใช้ไม่ได้ชั่วคราว"); }
       if (e instanceof Anthropic.APIError) { this.log.error(`Claude ${e.status}: ${e.message}`); throw new ServiceUnavailableException("AI ออกแบบลายใช้ไม่ได้ชั่วคราว ลองใหม่อีกครั้ง"); }
