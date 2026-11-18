@@ -4,7 +4,7 @@ import {
   setLineWidth, setStrokingCmykColor, stroke, LineJoinStyle, setGraphicsState,
 } from "pdf-lib";
 import { ink, pngToRgb, tintCmyk, type OwnInks } from "./color";
-import type { Grad, Shape } from "./draw";
+import { PDF_BLEND, type Blend, type Grad, type Shape } from "./draw";
 import type { Seg } from "./path";
 
 /**
@@ -107,12 +107,19 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     dict.set(name, ref);
     return name;
   };
-  const gStates = new Map<number, PDFName>();
-  const seeThrough = (op?: number): PDFOperator[] => {
-    if (op === undefined || op >= 1) return [];
-    const k = Math.round(op * 1000) / 1000;
-    let name = gStates.get(k);
-    if (!name) gStates.set(k, (name = page.node.newExtGState("GS", doc.context.register(doc.context.obj({ Type: "ExtGState", ca: k, CA: k })))));
+  const gStates = new Map<string, PDFName>();
+  /** see-through and blending mode: one graphics state for each pair used */
+  const seeThrough = (op?: number, bm?: Blend): PDFOperator[] => {
+    const k = op === undefined || op >= 1 ? 1 : Math.round(op * 1000) / 1000;
+    if (k === 1 && !bm) return [];
+    const key = `${k}|${bm ?? ""}`;
+    let name = gStates.get(key);
+    if (!name) {
+      const gs: Record<string, unknown> = { Type: "ExtGState" };
+      if (k < 1) { gs.ca = k; gs.CA = k; }
+      if (bm) gs.BM = PDFName.of(PDF_BLEND[bm]);
+      gStates.set(key, (name = page.node.newExtGState("GS", doc.context.register(doc.context.obj(gs as never)))));
+    }
     return [setGraphicsState(name)];
   };
   const ops: PDFOperator[] = [
@@ -131,7 +138,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
         name = page.node.newXObject("Image", pictureImage(doc, s.png, s.tint));
         byTint.set(s.tint ?? "", name);
       }
-      ops.push(pushGraphicsState(), ...seeThrough(s.opacity));
+      ops.push(pushGraphicsState(), ...seeThrough(s.opacity, s.blend));
       if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());
       if (s.artClip) ops.push(...pathOps(s.artClip), clip(), endPath());
       // the image space is a unit square, y up: flip it back
@@ -140,7 +147,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
         : [concatTransformationMatrix(s.w, 0, 0, -s.h, s.x, s.y + s.h)]), drawObject(name), popGraphicsState());
       continue;
     }
-    ops.push(pushGraphicsState(), ...seeThrough(s.opacity));
+    ops.push(pushGraphicsState(), ...seeThrough(s.opacity, s.blend));
     if (s.stroke && s.join) ops.push(setLineJoin(s.join === "miter" ? LineJoinStyle.Miter : LineJoinStyle.Bevel),
       ...(s.join === "miter" ? [PDFOperator.of(PDFOperatorNames.SetLineMiterLimit, [PDFNumber.of(s.miter ?? 4)])] : []));
     if (s.clip) ops.push(...pathOps(s.clip), clip(), endPath());

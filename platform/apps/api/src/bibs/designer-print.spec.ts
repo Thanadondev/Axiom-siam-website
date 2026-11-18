@@ -272,6 +272,36 @@ describe("as Illustrator draws it", () => {
     expect(content).toMatch(/\/GS\S* gs/);
   });
 
+  it("a blending mode reaches the piece, the print file (with the see-through in the same state) and the order sheet; one it can't print is drawn normally", async () => {
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24" },
+        { d: "M170 170H230V230H170Z", m: [1, 0, 0, 1, 0, 0], fill: "#0054a6", bm: "multiply", op: 0.6 },
+        { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#fff200", bm: "screen" },
+        { d: "M150 330H250V340H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", bm: "luminosity" },
+        { img: 0, m: [40, 0, 0, 40, 150, 340], bm: "overlay" },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    expect(front.find(s => s.kind === "path" && s.fill === "#0054a6")).toMatchObject({ blend: "multiply", opacity: 0.6 });
+    expect(front.find(s => s.kind === "image")).toMatchObject({ blend: "overlay" });
+    expect(front.find(s => s.kind === "path" && s.fill === "#231f20")).not.toHaveProperty("blend");
+
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T14", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const gs = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict && String(o.get(PDFName.of("Type"))) === "/ExtGState");
+    const of = (bm: string) => gs.find(o => String(o.get(PDFName.of("BM"))) === bm);
+    expect(String(of("/Multiply")!.get(PDFName.of("ca")))).toBe("0.6");
+    expect(of("/Screen")!.get(PDFName.of("ca"))).toBeUndefined(); // solid: the mode alone
+    expect(of("/Overlay")).toBeDefined();
+
+    const { svgShapes } = await import("./order-sheet");
+    const { body } = svgShapes(front, { n: 0 });
+    expect(body).toMatch(/mix-blend-mode:multiply/);
+    expect(body).toMatch(/mix-blend-mode:overlay/);
+  });
+
   it("a gradient moves with its shape when the piece is placed on the sheet", () => {
     const d = design();
     const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);

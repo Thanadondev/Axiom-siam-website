@@ -43,7 +43,8 @@ export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; 
       const img = s.m
         ? `<image x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${s.m.join(" ")})" href="${href}"/>`
         : `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="${href}"/>`;
-      const seen = s.opacity !== undefined && s.opacity < 1 ? `<g opacity="${s.opacity}">${img}</g>` : img;
+      const seen0 = s.opacity !== undefined && s.opacity < 1 ? `<g opacity="${s.opacity}">${img}</g>` : img;
+      const seen = s.blend ? `<g style="mix-blend-mode:${s.blend}">${seen0}</g>` : seen0;
       const inner = s.artClip ? `<g${clipOf(s.artClip)}>${seen}</g>` : seen;
       body += s.clip ? `<g${clipOf(s.clip)}>${inner}</g>` : inner;
       continue;
@@ -62,7 +63,8 @@ export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; 
     const paint = `fill="${fillRef}"${see}` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="${s.join ?? "round"}"${s.join === "miter" ? ` stroke-miterlimit="${s.miter ?? 4}"` : ""}` : "");
     const dash = s.stroke && s.dash?.length ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
     const path = `<path d="${pathData(s.segs)}" ${paint}${dash}${s.artClip ? clipOf(s.artClip) : ""}/>`;
-    body += clip ? `<g${clip}>${path}</g>` : path;
+    const mixed = s.blend ? `<g style="mix-blend-mode:${s.blend}">${path}</g>` : path;
+    body += clip ? `<g${clip}>${mixed}</g>` : mixed;
   }
   return { defs, body };
 }

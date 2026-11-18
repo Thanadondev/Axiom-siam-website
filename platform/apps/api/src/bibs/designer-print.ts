@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zipSync } from "fflate";
 import { jobFolderName, safeName } from "../orders/nas-export";
-import { CUT_COLOR, pngSize, type Affine, type Shape } from "./draw";
+import { BLENDS, CUT_COLOR, pngSize, type Affine, type Shape } from "./draw";
 import { orderSheetJpeg, svgShapes, label, box, type SheetMeta } from "./order-sheet";
 import { parsePath, type Seg } from "./path";
 import { printPdf } from "./print-pdf";
@@ -38,6 +38,8 @@ const Gradient = z.object({
 }).refine(g => g.coords.length === (g.type === "linear" ? 4 : 5), "linear: x1 y1 x2 y2; radial: cx cy r fx fy");
 /** see-through, 0–1 */
 const opacity = z.number().min(0).max(1).optional();
+/** a blending mode the factory can't print is drawn normally rather than refusing the order */
+const blend = z.enum(BLENDS).optional().catch(undefined);
 
 /** a filled / stroked outline: `d` in its own units, `m` taking them to mm */
 const PathItem = z.object({
@@ -59,6 +61,7 @@ const PathItem = z.object({
   join: z.enum(["round", "miter", "bevel"]).optional(),
   ml: z.number().min(1).max(100).optional(),
   op: opacity,
+  bm: blend,
 });
 /** a picture: `img` indexes `images`, `m` takes its unit square (y down) to mm */
 const ImageItem = z.object({
@@ -66,6 +69,7 @@ const ImageItem = z.object({
   /** a crop: the part of the picture shown, in mm on the piece drawn */
   clip: z.string().min(1).max(200_000).optional(),
   op: opacity,
+  bm: blend,
 });
 const Item = z.union([PathItem, ImageItem]);
 
@@ -285,7 +289,7 @@ export function designerPiece(
       // its own clip is in mm on the piece drawn: carried to this size with the object
       const artClip = it.clip ? transformPath(parsedOnce(it.clip), fit) : undefined;
       if ("img" in it) {
-        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut, ...(artClip ? { artClip } : {}), ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}) });
+        if (pics.png[it.img]) out.push({ kind: "image", png: pics.png[it.img], x: 0, y: 0, w: 1, h: 1, m, clip: cut, ...(artClip ? { artClip } : {}), ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}), ...(it.bm ? { blend: it.bm } : {}) });
         continue;
       }
       if (!it.fill && !it.stroke) continue;
@@ -301,6 +305,7 @@ export function designerPiece(
         ...(it.fill && it.grad ? { grad: { ...it.grad, m: compose(fit, it.grad.m as Affine) } } : {}),
         ...(it.stroke && it.join && it.join !== "round" ? { join: it.join, ...(it.join === "miter" ? { miter: it.ml ?? 4 } : {}) } : {}),
         ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}),
+        ...(it.bm ? { blend: it.bm } : {}),
       });
     }
   }

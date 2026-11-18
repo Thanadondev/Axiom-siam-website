@@ -22,6 +22,8 @@ export type Shape =
     grad?: Grad;
     /** see-through: 0–1 (1, or none, is solid) */
     opacity?: number;
+    /** how it mixes with what is under it (Illustrator's blending modes); normal when not given */
+    blend?: Blend;
   }
   | {
     kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string;
@@ -30,7 +32,18 @@ export type Shape =
     clip?: Seg[];
     artClip?: Seg[];
     opacity?: number;
+    blend?: Blend;
   };
+
+/** the blending modes, by their CSS names (the designer's canvas uses the same) */
+export const BLENDS = ["multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion"] as const;
+export type Blend = (typeof BLENDS)[number];
+/** the PDF's name for each (ISO 32000 11.3.5) */
+export const PDF_BLEND: Record<Blend, string> = {
+  multiply: "Multiply", screen: "Screen", overlay: "Overlay", darken: "Darken", lighten: "Lighten",
+  "color-dodge": "ColorDodge", "color-burn": "ColorBurn", "hard-light": "HardLight", "soft-light": "SoftLight",
+  difference: "Difference", exclusion: "Exclusion",
+};
 
 /**
  * A gradient fill as Illustrator makes one: linear between two points, or

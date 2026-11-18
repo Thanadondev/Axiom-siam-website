@@ -23,6 +23,8 @@ coverage/
 **/.env
 **/.env.local
 !**/.env.example
+# a note of an API key kept next to the project
+API Claude.txt
 
 # ---------- logs ----------
 *.log

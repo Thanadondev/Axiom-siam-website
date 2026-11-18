@@ -144,6 +144,23 @@ $("#right").innerHTML = `
         </div>
       </div>
       <div class="row"><label>ความทึบ</label><div class="num" style="flex:1"><input type="range" id="opRange" min="0" max="100" value="100"><span id="opVal" style="min-width:26px">100</span></div></div>
+      <div class="row" title="Blending Mode: วิธีผสมสีกับสิ่งที่อยู่ข้างใต้ เช่น Multiply ทำเงา/ลายผ้า, Screen ทำแสง">
+        <label>ผสมสี</label>
+        <select id="bmSel" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 6px;color:var(--txt);font-size:12px;font-family:inherit">
+          <option value="source-over">ปกติ (Normal)</option>
+          <option value="multiply">คูณ (Multiply) · เงา ลายผ้า</option>
+          <option value="screen">สว่าง (Screen) · แสง</option>
+          <option value="overlay">ซ้อน (Overlay)</option>
+          <option value="soft-light">แสงนุ่ม (Soft Light)</option>
+          <option value="hard-light">แสงแข็ง (Hard Light)</option>
+          <option value="darken">เข้มกว่า (Darken)</option>
+          <option value="lighten">อ่อนกว่า (Lighten)</option>
+          <option value="color-dodge">Color Dodge</option>
+          <option value="color-burn">Color Burn</option>
+          <option value="difference">ต่างสี (Difference)</option>
+          <option value="exclusion">Exclusion</option>
+        </select>
+      </div>
       <div class="row" title="Offset Path: ขอบนอกรอบตัวอักษร/รูปทรง เป็นชั้นใหม่ด้านหลัง (ทำซ้ำได้หลายชั้น)">
         <label>ขอบนอก</label>
         <input type="number" id="offMm" value="3" min="0.5" max="50" step="0.5" style="width:58px">
@@ -1185,6 +1202,11 @@ $("#swRange").oninput = e => { const v = +e.target.value; $("#swVal").textConten
 $("#swRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
 $("#opRange").oninput = e => { const v = +e.target.value; $("#opVal").textContent = v; canvas.getActiveObjects().forEach(o => o.set("opacity", v / 100)); canvas.requestRenderAll(); };
 $("#opRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
+$("#bmSel").onchange = e => {
+  const objs = canvas.getActiveObjects(); if (!objs.length) return;
+  objs.forEach(o => o.set("globalCompositeOperation", e.target.value));
+  canvas.requestRenderAll(); pushHistory();
+};
 /** sizes typed in mm, as printed; with the lock on, the other side follows (Illustrator's constrain proportions) */
 function setSizeMm(o, axis, mm) {
   if (!(mm > 0)) return;
@@ -1249,7 +1271,7 @@ function syncProps() {
       if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
     }
   }
-  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
+  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#bmSel").value = "source-over"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
   $("#fillChip").style.background = isGrad(first.fill) ? gradCss(first.fill) : (first.fill || "transparent");
   { const g = isGrad(first.fill) && fillTarget === "fill" ? sortedStops(first.fill)[Math.min(gradStop, first.fill.colorStops.length - 1)].color : null;
@@ -1258,6 +1280,7 @@ function syncProps() {
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
   showJoin(first.strokeLineJoin);
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
+  $("#bmSel").value = PRINT_BLENDS.includes(o.globalCompositeOperation) ? o.globalCompositeOperation : "source-over";
   $("#tW").value = Math.round(o.getScaledWidth() * MM_PER_UNIT); $("#tH").value = Math.round(o.getScaledHeight() * MM_PER_UNIT); $("#tR").value = Math.round(o.angle || 0);
   try { const [x, y] = centreMm(o); $("#tX").value = Math.round(x); $("#tY").value = Math.round(y); } catch (e) { $("#tX").value = ""; $("#tY").value = ""; }
 }
@@ -3572,6 +3595,8 @@ function panelsOf(o) {
   const hit = panels.map((p, i) => [p, i]).filter(([p]) => br.left < p.x + p.w && br.left + br.width > p.x && br.top < p.y + p.h && br.top + br.height > p.y).map(([, i]) => i);
   return hit.length ? hit : [panelOf(o)];
 }
+/** the blending modes the print file carries (the same names on the canvas, in CSS and in the API) */
+const PRINT_BLENDS = ["multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion"];
 /** one fabric object as print items, in mm on a panel's piece (its own, or the one given) */
 async function printObj(o, ctx, onPanel) {
   const pi = onPanel ?? panelOf(o), p = panels[pi], toMm = panelToMm(p);
@@ -3642,6 +3667,8 @@ async function printObj(o, ctx, onPanel) {
     items.push(it);
   }
   ctx.host.innerHTML = "";
+  // its blending mode goes on each of its shapes
+  if (PRINT_BLENDS.includes(o.globalCompositeOperation)) items.forEach(it => { it.bm = o.globalCompositeOperation; });
   // its centre and size on the piece, to carry it to the other sizes
   const br = o.getBoundingRect(true, true);
   const pts = [[br.left, br.top], [br.left + br.width, br.top], [br.left, br.top + br.height], [br.left + br.width, br.top + br.height]].map(([x, y]) => applyM(toMm, x, y));
