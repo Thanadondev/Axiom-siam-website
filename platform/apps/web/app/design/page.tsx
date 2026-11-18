@@ -87,6 +87,14 @@ function DesignerBridge() {
           reply({ type: "axiom-save-result", ok: false, error: e.message });
         }
       }
+      if (m.type === "axiom-ai-quota") {
+        if (!token) { reply({ type: "axiom-ai-quota-result", loggedIn: false }); return; }
+        try {
+          const q = await apiFetch<{ enabled: boolean; closed: string | null; daily: number; remaining: number }>("/ai/patterns/quota", { token });
+          reply({ type: "axiom-ai-quota-result", loggedIn: true, ...q });
+        } catch { /* say nothing: the button still answers for itself */ }
+        return;
+      }
       if (m.type === "axiom-ai-pattern") {
         if (!token) { reply({ type: "axiom-ai-pattern-result", id: m.id, ok: false, error: "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย" }); return; }
         try {

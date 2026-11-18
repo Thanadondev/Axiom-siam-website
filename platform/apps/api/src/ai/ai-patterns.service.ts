@@ -68,10 +68,12 @@ export class AiPatternsService {
     return cfg.dailyBudgetThb > 0 && spentUsd * cfg.thbPerUsd >= cfg.dailyBudgetThb;
   }
 
+  /** for the designer, before the customer types: can they design now, and how many are left */
   async quota(userId: string) {
     const cfg = await this.settings.ai();
-    const used = await this.usedToday(userId);
-    return { enabled: cfg.enabled && this.keySet, daily: cfg.dailyPerUser, remaining: Math.max(0, cfg.dailyPerUser - used) };
+    const [used, spent] = await Promise.all([this.usedToday(userId), this.spentToday()]);
+    const closed = !this.keySet || !cfg.enabled ? "off" : this.overBudget(cfg, spent) ? "budget" : null;
+    return { enabled: !closed, closed, daily: cfg.dailyPerUser, remaining: Math.max(0, cfg.dailyPerUser - used) };
   }
 
   private async record(row: { userId: string; prompt: string; model?: string; ok: boolean; error?: string; patterns?: number; usage?: Usage; ms: number }) {

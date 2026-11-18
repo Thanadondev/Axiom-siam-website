@@ -1871,11 +1871,29 @@ function aiTweak(kind) {
   applyAiPattern(s);
 }
 document.querySelectorAll("[data-aitw]").forEach(b => b.onclick = () => aiTweak(b.dataset.aitw));
+/** said before the customer types: off, out for today, or how many are left */
+let aiOpen = true;
+function aiQuota(m) {
+  if (aiWaiting) return;
+  const msg = $("#aiMsg"), go = $("#aiGo");
+  // the line under the box is only the quota's while nothing else is said there
+  const idle = !msg.textContent || msg.textContent === msg.dataset.quota;
+  const say = t => { if (idle) { msg.textContent = t; msg.dataset.quota = t; } };
+  aiOpen = !!m.loggedIn && m.enabled && m.remaining > 0;
+  go.disabled = !!m.loggedIn && !aiOpen; go.style.opacity = go.disabled ? ".5" : "";
+  if (!m.loggedIn) say("เข้าสู่ระบบเพื่อให้ AI ออกแบบลาย · ลองปุ่ม 🎲 ตัวอย่าง ได้เลย");
+  else if (m.closed === "budget") say("วันนี้มีผู้ใช้ AI ออกแบบลายเต็มแล้ว ลองใหม่พรุ่งนี้ · ปุ่ม 🎲 ตัวอย่าง ยังใช้ได้");
+  else if (!m.enabled) say("AI ออกแบบลายปิดให้บริการชั่วคราว · ปุ่ม 🎲 ตัวอย่าง ยังใช้ได้");
+  else if (m.remaining <= 0) say(`ใช้ AI ออกแบบลายครบ ${m.daily} ครั้งของวันนี้แล้ว ลองใหม่พรุ่งนี้`);
+  else say(`วันนี้ให้ AI ออกแบบได้อีก ${m.remaining} ครั้ง (ครั้งละ 3 ลาย)`);
+}
+const aiAskQuota = () => { if (inFrame()) window.parent.postMessage({ type: "axiom-ai-quota" }, "*"); };
 function aiReply(m) {
   if (!aiWaiting || m.id !== aiWaiting.id) return;
   aiWaiting = null; $("#aiGo").disabled = false; $("#aiGo").textContent = "✨ ออกแบบ";
-  if (!m.ok) { $("#aiMsg").textContent = m.error || "AI ออกแบบไม่สำเร็จ ลองอีกครั้ง"; return; }
+  if (!m.ok) { $("#aiMsg").textContent = m.error || "AI ออกแบบไม่สำเร็จ ลองอีกครั้ง"; aiAskQuota(); return; }
   aiShow(m.patterns || [], m.remaining !== undefined ? `เลือกลายที่ชอบ · วันนี้ใช้ได้อีก ${m.remaining} ครั้ง` : "");
+  if (m.remaining === 0) { $("#aiGo").disabled = true; $("#aiGo").style.opacity = ".5"; }
 }
 $("#aiGo").onclick = () => {
   const prompt = ($("#aiPrompt").value || "").trim();
@@ -2188,11 +2206,13 @@ window.addEventListener("message", ev => {
   const m = ev.data || {};
   if (m.type === "axiom-auth") {
     isLoggedIn = !!m.user;
+    aiAskQuota();
     // the page may not have been listening when this editor said it was ready (it loads from
     // cache faster than the page starts): its first word to us is answered with "ready" again
     if (!heardFromPage) { heardFromPage = true; window.parent.postMessage({ type: "axiom-ready" }, "*"); }
   }
   else if (m.type === "axiom-ai-pattern-result") aiReply(m);
+  else if (m.type === "axiom-ai-quota-result") aiQuota(m);
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }

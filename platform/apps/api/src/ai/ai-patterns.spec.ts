@@ -104,6 +104,11 @@ describe("AI pattern recipes", () => {
     rows[0].costUsd = 0.2; // ฿6.60: still room
     await s.design("u1", { prompt: "คลื่น" });
 
+    expect(await s.quota("u1")).toMatchObject({ enabled: true, closed: null, remaining: DEFAULT_AI.dailyPerUser - 1 });
+    rows[0].costUsd = 0.31; // the designer says so before the customer types
+    expect(await s.quota("u1")).toMatchObject({ enabled: false, closed: "budget" });
+    expect(await off.s.quota("u1")).toMatchObject({ enabled: false, closed: "off" });
+    rows[0].costUsd = 0.2;
     const r = await s.report();
     expect(r.today).toMatchObject({ calls: 2, ok: 2, users: 2, overBudget: false });
     expect(r.days).toHaveLength(30);
