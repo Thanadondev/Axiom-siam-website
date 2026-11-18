@@ -20,6 +20,8 @@ export type Shape =
     miter?: number;
     /** a gradient fill, in place of `fill` (which stays its first colour, for anything that draws one colour) */
     grad?: Grad;
+    /** a gradient stroke, in place of `stroke` (which stays its first colour) */
+    strokeGrad?: Grad;
     /** see-through: 0–1 (1, or none, is solid) */
     opacity?: number;
     /** how it mixes with what is under it (Illustrator's blending modes); normal when not given */
@@ -288,5 +290,6 @@ export function moveShapes(shapes: Shape[], dx: number, dy: number, k = 1): Shap
   return shapes.map(s => s.kind === "image"
     ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy) }
     : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined, dash: s.dash?.map(v => v * k),
-      ...(s.grad ? { grad: { ...s.grad, m: [s.grad.m[0] * k, s.grad.m[1] * k, s.grad.m[2] * k, s.grad.m[3] * k, s.grad.m[4] * k + dx, s.grad.m[5] * k + dy] as Affine } } : {}) });
+      ...(s.grad ? { grad: { ...s.grad, m: [s.grad.m[0] * k, s.grad.m[1] * k, s.grad.m[2] * k, s.grad.m[3] * k, s.grad.m[4] * k + dx, s.grad.m[5] * k + dy] as Affine } } : {}),
+      ...(s.strokeGrad ? { strokeGrad: { ...s.strokeGrad, m: [s.strokeGrad.m[0] * k, s.strokeGrad.m[1] * k, s.strokeGrad.m[2] * k, s.strokeGrad.m[3] * k, s.strokeGrad.m[4] * k + dx, s.strokeGrad.m[5] * k + dy] as Affine } } : {}) });
 }

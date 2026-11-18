@@ -59,8 +59,10 @@ function pictureImage(doc: PDFDocument, png: Uint8Array, tint?: string): PDFRef 
 
 /**
  * A gradient as a PDF shading in CMYK (axial or radial, kept at its end
- * colours past the ends), which Illustrator opens as a gradient: one colour
- * blend per pair of stops, stitched along 0–1.
+ * colours past the ends), which Illustrator opens as a gradient (a linear one;
+ * see below): one colour blend per pair of stops, stitched along 0–1. As a
+ * stroke's colour (a shading pattern) Illustrator opens it as the stroke's
+ * outline filled with the gradient.
  */
 function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PDFRef {
   const ctx = doc.context;
@@ -73,8 +75,10 @@ function shading(doc: PDFDocument, g: Grad, cmyk: (hex: string) => number[]): PD
   // a hard edge (two stops at one place) needs bounds that still increase
   const bounds: number[] = [];
   for (let i = 1; i < stops.length - 1; i++) bounds.push(Math.min(1, Math.max(stops[i].o, (bounds[bounds.length - 1] ?? 0) + 1e-5)));
-  const fn = parts.length === 1 ? parts[0]
-    : ctx.obj({ FunctionType: 3, Domain: [0, 1], Functions: parts, Bounds: bounds, Encode: parts.flatMap(() => [0, 1]) });
+  // always stitched, even for two stops: Illustrator 2024 opens a linear shading as its own (editable)
+  // gradient only when the function is a stitching one; a single blend comes in as a NonNativeItem
+  // (tested Nov 2026; radial ones come in as NonNativeItems either way, printing the same)
+  const fn = ctx.obj({ FunctionType: 3, Domain: [0, 1], Functions: parts, Bounds: bounds, Encode: parts.flatMap(() => [0, 1]) });
   const c = g.coords;
   return ctx.register(ctx.obj({
     ShadingType: g.type === "linear" ? 2 : 3, ColorSpace: "DeviceCMYK",
@@ -107,6 +111,25 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
     dict.set(name, ref);
     return name;
   };
+  // a gradient stroke: the shading as a pattern colour. A pattern's matrix is from its space to the
+  // page's own (points, y up), not to the current one, so it takes the mm-to-points step too
+  let nPat = 0;
+  const toPage: [number, number, number, number, number, number] = [PT, 0, 0, -PT, 0, hMm * PT];
+  const patternOf = (g: Grad) => {
+    const res = page.node.normalizedEntries().Resources;
+    let dict = res.lookupMaybe(PDFName.of("Pattern"), PDFDict);
+    if (!dict) { dict = doc.context.obj({}); res.set(PDFName.of("Pattern"), dict); }
+    const [a, b, c, d, e, f] = g.m, [A, B, C, D, E, F] = toPage;
+    const matrix = [A * a + C * b, B * a + D * b, A * c + C * d, B * c + D * d, A * e + C * f + E, B * e + D * f + F];
+    nPat += 1;
+    const name = PDFName.of("P" + nPat);
+    dict.set(name, doc.context.register(doc.context.obj({ PatternType: 2, Shading: shading(doc, g, h => cmyk(h)), Matrix: matrix })));
+    return name;
+  };
+  /** the stroke's paint: its colour, or its gradient */
+  const strokePaint = (s: Extract<Shape, { kind: "path" }>): PDFOperator[] => s.strokeGrad
+    ? [PDFOperator.of(PDFOperatorNames.StrokingColorspace, [PDFName.of("Pattern")]), PDFOperator.of(PDFOperatorNames.StrokingColorN, [patternOf(s.strokeGrad)])]
+    : [setStrokingCmykColor(...cmyk(s.stroke!))];
   const gStates = new Map<string, PDFName>();
   /** see-through and blending mode: one graphics state for each pair used */
   const seeThrough = (op?: number, bm?: Blend): PDFOperator[] => {
@@ -158,7 +181,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
       ops.push(pushGraphicsState(), ...pathOps(s.segs), s.evenOdd ? PDFOperator.of(PDFOperatorNames.ClipEvenOdd) : clip(), endPath(),
         concatTransformationMatrix(...s.grad.m), PDFOperator.of(PDFOperatorNames.ShadingFill, [name]), popGraphicsState());
       if (s.stroke) {
-        ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
+        ops.push(...strokePaint(s), setLineWidth(s.width ?? 0.353));
         if (s.dash?.length) ops.push(setDashPattern(s.dash, 0));
         ops.push(...pathOps(s.segs), stroke());
       }
@@ -166,7 +189,7 @@ export async function printPdf(shapes: Shape[], wMm: number, hMm: number, meta: 
       continue;
     }
     if (s.fill) ops.push(setFillingCmykColor(...cmyk(s.fill)));
-    if (s.stroke) ops.push(setStrokingCmykColor(...cmyk(s.stroke)), setLineWidth(s.width ?? 0.353));
+    if (s.stroke) ops.push(...strokePaint(s), setLineWidth(s.width ?? 0.353));
     if (s.stroke && s.dash?.length) ops.push(setDashPattern(s.dash, 0));
     // an even-odd fill (a ring drawn as two outlines in the same direction) keeps its hole
     ops.push(...pathOps(s.segs), s.fill && s.stroke ? (s.evenOdd ? PDFOperator.of(PDFOperatorNames.FillEvenOddAndStroke) : fillAndStroke())

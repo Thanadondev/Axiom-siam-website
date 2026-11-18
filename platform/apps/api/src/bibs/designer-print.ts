@@ -57,6 +57,8 @@ const PathItem = z.object({
   clip: z.string().min(1).max(200_000).optional(),
   /** a gradient fill, with `fill` its first colour */
   grad: Gradient.optional(),
+  /** a gradient stroke, with `stroke` its first colour */
+  sgrad: Gradient.optional(),
   /** the stroke's corners: round (the default), miter (sharp, up to `ml` × the width) or bevel */
   join: z.enum(["round", "miter", "bevel"]).optional(),
   ml: z.number().min(1).max(100).optional(),
@@ -303,6 +305,7 @@ export function designerPiece(
         ...(artClip ? { artClip } : {}),
         ...(it.stroke && it.dash?.length ? { dash: it.dash.map(v => v * scale) } : {}),
         ...(it.fill && it.grad ? { grad: { ...it.grad, m: compose(fit, it.grad.m as Affine) } } : {}),
+        ...(it.stroke && (it.sw ?? 1) > 0 && it.sgrad ? { strokeGrad: { ...it.sgrad, m: compose(fit, it.sgrad.m as Affine) } } : {}),
         ...(it.stroke && it.join && it.join !== "round" ? { join: it.join, ...(it.join === "miter" ? { miter: it.ml ?? 4 } : {}) } : {}),
         ...(it.op !== undefined && it.op < 1 ? { opacity: it.op } : {}),
         ...(it.bm ? { blend: it.bm } : {}),
@@ -436,7 +439,8 @@ function moveScaled(sh: Shape, dx: number, dy: number, k: number): Shape {
     return { ...sh, m: compose(m, own), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m) };
   }
   return { ...sh, segs: transformPath(sh.segs, m), clip: sh.clip && transformPath(sh.clip, m), artClip: sh.artClip && transformPath(sh.artClip, m), width: sh.width !== undefined ? sh.width * k : undefined, dash: sh.dash?.map(v => v * k),
-    ...(sh.grad ? { grad: { ...sh.grad, m: compose(m, sh.grad.m) } } : {}) };
+    ...(sh.grad ? { grad: { ...sh.grad, m: compose(m, sh.grad.m) } } : {}),
+    ...(sh.strokeGrad ? { strokeGrad: { ...sh.strokeGrad, m: compose(m, sh.strokeGrad.m) } } : {}) };
 }
 
 // ------------------------------------------------------------ the job

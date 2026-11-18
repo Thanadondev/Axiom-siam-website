@@ -302,6 +302,47 @@ describe("as Illustrator draws it", () => {
     expect(body).toMatch(/mix-blend-mode:overlay/);
   });
 
+  it("a gradient stroke reaches the piece, the print file (a shading pattern as the stroke's colour) and the order sheet", async () => {
+    const sgrad = { type: "linear" as const, coords: [0, 0, 1, 0], stops: [{ o: 0, c: "#fff200" }, { o: 1, c: "#ed1c24" }], m: [100, 0, 0, 100, 150, 150] as [number, number, number, number, number, number] };
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#0054a6", stroke: "#fff200", sw: 8, sgrad },
+        // no stroke width: nothing to paint the gradient on
+        { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", stroke: "#fff200", sw: 0, sgrad },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const s = front.find(x => x.kind === "path" && x.fill === "#0054a6")!;
+    expect(s).toMatchObject({ stroke: "#fff200", strokeGrad: { type: "linear", stops: sgrad.stops } });
+    expect(front.find(x => x.kind === "path" && x.fill === "#231f20")).not.toHaveProperty("strokeGrad");
+    // carried with its shape, to the sheet
+    const moved = moveShapes([s], 30, 40, 2)[0];
+    expect(moved.kind === "path" && moved.strokeGrad!.m).toEqual(s.kind === "path" && [2 * s.strokeGrad!.m[0], 0, 0, 2 * s.strokeGrad!.m[3], 2 * s.strokeGrad!.m[4] + 30, 2 * s.strokeGrad!.m[5] + 40]);
+
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T15", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const dicts = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict);
+    const pat = dicts.find(o => o.get(PDFName.of("PatternType")));
+    expect((pat!.get(PDFName.of("PatternType")) as PDFNumber).asNumber()).toBe(2);
+    // the pattern's matrix goes to the page's own space: points, y up
+    const mx = (pat!.get(PDFName.of("Matrix")) as unknown as { asArray(): PDFNumber[] }).asArray().map(n => n.asNumber());
+    expect(mx[0]).toBeGreaterThan(0);
+    expect(mx[3]).toBeLessThan(0);
+    const sh = pat!.lookup(PDFName.of("Shading"), PDFDict);
+    expect(String(sh.get(PDFName.of("ColorSpace")))).toBe("/DeviceCMYK");
+    // two stops, still a stitching function: the form Illustrator opens as its own gradient
+    expect((sh.lookup(PDFName.of("Function"), PDFDict).get(PDFName.of("FunctionType")) as PDFNumber).asNumber()).toBe(3);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(x => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(x).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\/Pattern CS\s+\/P1 SCN/);
+
+    const { svgShapes } = await import("./order-sheet");
+    const { defs, body } = svgShapes(front, { n: 0 });
+    expect(defs).toMatch(/<linearGradient id="g\d+"[^>]*><stop offset="0" stop-color="#fff200"\/>/);
+    expect(body).toMatch(/fill="#0054a6" stroke="url\(#g\d+\)"/);
+  });
+
   it("a gradient moves with its shape when the piece is placed on the sheet", () => {
     const d = design();
     const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);

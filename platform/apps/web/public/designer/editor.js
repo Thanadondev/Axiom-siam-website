@@ -170,7 +170,7 @@ $("#right").innerHTML = `
     </div>
   </div>
   <div class="panel" id="gradPanel">
-    <div class="phead">Gradient · ไล่สี</div>
+    <div class="phead">Gradient · ไล่สี <span id="gradFor" style="font-weight:500;color:var(--muted)"></span></div>
     <div class="pbody">
       <div class="btnrow" style="margin-bottom:8px">
         <button class="mini" data-gtype="none" title="สีเดียว">■ สีเดียว</button>
@@ -181,7 +181,7 @@ $("#right").innerHTML = `
         <div id="gradBar" title="คลิกบนแถบเพื่อเพิ่มจุดสี" style="position:relative;height:22px;border-radius:5px;border:1px solid var(--line2);margin:2px 7px 26px;cursor:copy"></div>
         <div class="row"><label>มุม</label><input type="number" id="gAngle" step="15" style="width:64px"><button class="mini" id="gRev" title="กลับด้านไล่สี">⇄ กลับด้าน</button><button class="mini" id="gDel" title="ลบจุดสีที่เลือก">− จุดสี</button></div>
         <div class="row"><label>ตำแหน่ง</label><div class="num" style="flex:1"><input type="range" id="gPos" min="0" max="100"><span id="gPosV" style="min-width:30px"></span></div></div>
-        <div style="font-size:10.5px;color:var(--muted);line-height:1.5">เลือกจุดสีใต้แถบ แล้วคลิกสีใน Swatches · คลิกแถบเพื่อเพิ่มจุดสี · ลากจุดสีเพื่อเลื่อน · พิมพ์ออกเป็นไล่สี CMYK แบบใน Illustrator</div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5">เลือกจุดสีใต้แถบ แล้วคลิกสีใน Swatches · คลิกแถบเพื่อเพิ่มจุดสี · ลากจุดสีเพื่อเลื่อน · สลับ พื้น/เส้นขอบ ที่ Fill/Stroke · พิมพ์ออกเป็นไล่สี CMYK แบบใน Illustrator</div>
       </div>
     </div>
   </div>
@@ -1102,6 +1102,9 @@ function setTarget(t) {
   $("#tgtStroke").classList.toggle("on", t === "stroke");
   $("#fillBtn").classList.toggle("on", t === "fill");
   $("#strokeBtn").classList.toggle("on", t === "stroke");
+  // the Gradient panel works on the fill or the stroke, whichever is chosen here
+  gradStop = 0;
+  if (canvas) { renderGradPanel(); syncProps(); }
 }
 $("#tgtFill").onclick = () => setTarget("fill");
 $("#tgtStroke").onclick = () => setTarget("stroke");
@@ -1173,7 +1176,7 @@ function showCode(color) {
   ["ckC", "ckM", "ckY", "ckK"].forEach((id, i) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = c ? c[i] : ""; });
 }
 function applyColor(color) {
-  if (fillTarget === "fill" && color !== "none" && gradColor(color)) return;
+  if (color !== "none" && gradColor(color)) return;
   const val = color === "none" ? "rgba(0,0,0,0)" : color;
   const objs = canvas.getActiveObjects();
   if (fillTarget === "fill") fillState.fill = val; else fillState.stroke = val;
@@ -1274,9 +1277,9 @@ function syncProps() {
   if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#bmSel").value = "source-over"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
   $("#fillChip").style.background = isGrad(first.fill) ? gradCss(first.fill) : (first.fill || "transparent");
-  { const g = isGrad(first.fill) && fillTarget === "fill" ? sortedStops(first.fill)[Math.min(gradStop, first.fill.colorStops.length - 1)].color : null;
-    const cur = g || (fillTarget === "fill" ? first.fill : first.stroke); if (typeof cur === "string") showCode(cur); }
-  $("#strokeChip").style.background = first.stroke || "transparent";
+  { const p = first[fillTarget], g = isGrad(p) ? sortedStops(p)[Math.min(gradStop, p.colorStops.length - 1)].color : null;
+    const cur = g || p; if (typeof cur === "string") showCode(cur); }
+  $("#strokeChip").style.background = isGrad(first.stroke) ? gradCss(first.stroke) : (first.stroke || "transparent");
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
   showJoin(first.strokeLineJoin);
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
@@ -1302,10 +1305,10 @@ function gradAngle(g) { const c = g.coords; return Math.round(Math.atan2(c.y2 - 
  * as fractions of its box: a text's box is wider than its letters, and the
  * print draws the letters' outlines, so a fraction would land elsewhere.
  */
-function makeGrad(o, type, stops, angle) {
+function makeGrad(o, type, stops, angle, prop = fillTarget) {
   const w = o.width || 1, h = o.height || 1;
   // the same kind at the same angle keeps where it was put (dragged with the Gradient tool)
-  const was = o.fill;
+  const was = o[prop];
   const keep = isGrad(was) && was.type === type && (type === "radial" || gradAngle(was) === Math.round(angle || 0)) ? { ...was.coords } : null;
   const a = (angle || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
   const half = (Math.abs(w * ca) + Math.abs(h * sa)) / 2; // reaches the box's corners along the angle
@@ -1317,10 +1320,21 @@ function makeGrad(o, type, stops, angle) {
     colorStops: stops.slice().sort((p, q) => p.offset - q.offset).map(t => ({ offset: Math.min(1, Math.max(0, t.offset)), color: t.color })),
   });
 }
-function setGrad(o, g, record = true) { o.set("fill", g); o.dirty = true; canvas.requestRenderAll(); renderGradPanel(); if (record) pushHistory(); }
+function setGrad(o, g, record = true) {
+  o.set(fillTarget, g);
+  // a gradient stroke needs a stroke to show on
+  if (fillTarget === "stroke" && !o.strokeWidth) o.set("strokeWidth", fillState.strokeW || 2);
+  o.dirty = true; canvas.requestRenderAll(); renderGradPanel(); if (record) pushHistory();
+}
+/** a paint's gradients drawn again for another object (a gradient is in its object's own units) */
+function fitPaint(x, paint) {
+  for (const k of ["fill", "stroke"]) if (isGrad(paint[k])) x.set(k, makeGrad(x, paint[k].type, sortedStops(paint[k]), gradAngle(paint[k]), k));
+}
+/** a paint with its gradients as their first colour, for building a new object before fitPaint */
+const flatPaint = paint => ({ ...paint, ...(isGrad(paint.fill) ? { fill: sortedStops(paint.fill)[0].color } : {}), ...(isGrad(paint.stroke) ? { stroke: sortedStops(paint.stroke)[0].color } : {}) });
 /** a swatch picked while a gradient is selected colours its selected stop; false when there's no gradient */
 function gradColor(color) {
-  const o = gradTarget(), g = o && o.fill;
+  const o = gradTarget(), g = o && o[fillTarget];
   if (!isGrad(g)) return false;
   const st = sortedStops(g); st[Math.min(gradStop, st.length - 1)].color = color;
   setGrad(o, makeGrad(o, g.type, st, gradAngle(g)));
@@ -1329,7 +1343,8 @@ function gradColor(color) {
 }
 function renderGradPanel() {
   const panel = document.getElementById("gradPanel"); if (!panel) return;
-  const o = gradTarget(), g = o && isGrad(o.fill) ? o.fill : null;
+  const o = gradTarget(), g = o && isGrad(o[fillTarget]) ? o[fillTarget] : null;
+  $("#gradFor").textContent = fillTarget === "stroke" ? "· เส้นขอบ" : "· พื้น";
   panel.style.opacity = o ? "" : ".55";
   document.querySelectorAll("[data-gtype]").forEach(b => b.classList.toggle("on", !!o && (g ? g.type : "none") === b.dataset.gtype));
   $("#gradEdit").style.display = g ? "" : "none";
@@ -1348,10 +1363,10 @@ function renderGradPanel() {
       const r = bar.getBoundingClientRect(); let moved = false;
       const move = e2 => {
         moved = true;
-        const now = sortedStops(o.fill), me = now[gradStop];
+        const now = sortedStops(o[fillTarget]), me = now[gradStop];
         me.offset = Math.min(1, Math.max(0, (e2.clientX - r.left) / r.width));
         const ordered = now.slice().sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
-        setGrad(o, makeGrad(o, g.type, ordered, gradAngle(o.fill)), false);
+        setGrad(o, makeGrad(o, g.type, ordered, gradAngle(o[fillTarget])), false);
       };
       const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (moved) pushHistory(); };
       window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
@@ -1364,18 +1379,19 @@ function renderGradPanel() {
 }
 document.querySelectorAll("[data-gtype]").forEach(b => b.onclick = () => {
   const o = gradTarget(); if (!o) { toast("เลือกรูปทรงหรือข้อความก่อน", "info"); return; }
-  const t = b.dataset.gtype, f = o.fill;
-  if (t === "none") { if (isGrad(f)) { o.set("fill", sortedStops(f)[0].color); canvas.requestRenderAll(); pushHistory(); syncProps(); } return; }
-  // Illustrator's default for a flat colour: the colour fading to black
-  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: colorHex(f) || "#ffffff" }, { offset: 1, color: "#231f20" }];
+  const t = b.dataset.gtype, f = o[fillTarget];
+  if (t === "none") { if (isGrad(f)) { o.set(fillTarget, sortedStops(f)[0].color); canvas.requestRenderAll(); renderGradPanel(); pushHistory(); syncProps(); } return; }
+  // Illustrator's default for a flat colour: the colour fading to black (a stroke with none: the fill's colour)
+  const base = colorHex(f) || (fillTarget === "stroke" ? colorHex(isGrad(o.fill) ? sortedStops(o.fill)[0].color : o.fill) : null) || "#ffffff";
+  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: base }, { offset: 1, color: "#231f20" }];
   gradStop = 0;
   setGrad(o, makeGrad(o, t, stops, isGrad(f) && f.type === "linear" ? gradAngle(f) : 0));
   syncProps();
 });
 $("#gradBar").onpointerdown = ev => {
-  const o = gradTarget(); if (!o || !isGrad(o.fill) || ev.target !== ev.currentTarget) return;
+  const o = gradTarget(); if (!o || !isGrad(o[fillTarget]) || ev.target !== ev.currentTarget) return;
   const r = ev.currentTarget.getBoundingClientRect(), at = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
-  const st = sortedStops(o.fill);
+  const g = o[fillTarget], st = sortedStops(g);
   // the colour already there, as Illustrator adds a stop
   const i = Math.max(1, st.findIndex(s => s.offset >= at)), a = st[Math.max(0, i - 1)], b = st[Math.min(st.length - 1, i)];
   const k = b.offset > a.offset ? (at - a.offset) / (b.offset - a.offset) : 0;
@@ -1383,22 +1399,24 @@ $("#gradBar").onpointerdown = ev => {
   const color = "#" + [0, 1, 2].map(j => Math.round(ca[j] + (cb[j] - ca[j]) * k).toString(16).padStart(2, "0")).join("");
   const me = { offset: at, color };
   const ordered = st.concat(me).sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
-  setGrad(o, makeGrad(o, o.fill.type, ordered, gradAngle(o.fill)));
+  setGrad(o, makeGrad(o, g.type, ordered, gradAngle(g)));
 };
-$("#gAngle").onchange = e => { const o = gradTarget(); if (o && isGrad(o.fill) && o.fill.type === "linear") setGrad(o, makeGrad(o, "linear", sortedStops(o.fill), +e.target.value || 0)); };
+/** the selected shape's gradient on the chosen paint (fill or stroke) */
+const curGrad = () => { const o = gradTarget(), g = o && o[fillTarget]; return isGrad(g) ? { o, g } : null; };
+$("#gAngle").onchange = e => { const c = curGrad(); if (c && c.g.type === "linear") setGrad(c.o, makeGrad(c.o, "linear", sortedStops(c.g), +e.target.value || 0)); };
 $("#gPos").oninput = e => {
-  const o = gradTarget(); if (!o || !isGrad(o.fill)) return;
-  const st = sortedStops(o.fill), me = st[gradStop]; me.offset = (+e.target.value) / 100;
+  const c = curGrad(); if (!c) return;
+  const st = sortedStops(c.g), me = st[gradStop]; me.offset = (+e.target.value) / 100;
   const ordered = st.sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
-  setGrad(o, makeGrad(o, o.fill.type, ordered, gradAngle(o.fill)), false);
+  setGrad(c.o, makeGrad(c.o, c.g.type, ordered, gradAngle(c.g)), false);
 };
 $("#gPos").onchange = () => pushHistory();
-$("#gRev").onclick = () => { const o = gradTarget(); if (o && isGrad(o.fill)) setGrad(o, makeGrad(o, o.fill.type, sortedStops(o.fill).map(s => ({ offset: 1 - s.offset, color: s.color })), gradAngle(o.fill))); };
+$("#gRev").onclick = () => { const c = curGrad(); if (c) setGrad(c.o, makeGrad(c.o, c.g.type, sortedStops(c.g).map(s => ({ offset: 1 - s.offset, color: s.color })), gradAngle(c.g))); };
 $("#gDel").onclick = () => {
-  const o = gradTarget(); if (!o || !isGrad(o.fill)) return;
-  const st = sortedStops(o.fill); if (st.length <= 2) return;
+  const c = curGrad(); if (!c) return;
+  const st = sortedStops(c.g); if (st.length <= 2) return;
   st.splice(gradStop, 1); gradStop = Math.max(0, gradStop - 1);
-  setGrad(o, makeGrad(o, o.fill.type, st, gradAngle(o.fill)));
+  setGrad(c.o, makeGrad(c.o, c.g.type, st, gradAngle(c.g)));
 };
 
 /* ---------- the Gradient tool (G): dragged across the object, as in Illustrator ---------- */
@@ -1428,7 +1446,7 @@ function gradDragEnd(p, shift) {
   const { a, line } = gradDrag; gradDrag = null; canvas.remove(line);
   const o = gradToolFor, b = shift ? snap45(a, p) : p;
   if (!o || Math.hypot(b.x - a.x, b.y - a.y) < 3 / canvas.getZoom()) { canvas.requestRenderAll(); return; }
-  const f = o.fill;
+  const f = o[fillTarget];
   const type = isGrad(f) ? f.type : "linear";
   const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: colorHex(f) || "#ffffff" }, { offset: 1, color: "#231f20" }];
   const A = toGradUnits(o, a), B = toGradUnits(o, b);
@@ -1438,7 +1456,9 @@ function gradDragEnd(p, shift) {
     coords: type === "linear" ? { x1: A.x, y1: A.y, x2: B.x, y2: B.y } : { x1: A.x, y1: A.y, r1: 0, x2: A.x, y2: A.y, r2: Math.hypot(B.x - A.x, B.y - A.y) },
     colorStops: stops.map(s => ({ offset: s.offset, color: s.color })),
   });
-  o.set("fill", g); o.dirty = true;
+  o.set(fillTarget, g);
+  if (fillTarget === "stroke" && !o.strokeWidth) o.set("strokeWidth", fillState.strokeW || 2);
+  o.dirty = true;
   canvas.setActiveObject(o); canvas.requestRenderAll(); renderGradPanel(); syncProps(); pushHistory();
 }
 
@@ -1496,8 +1516,8 @@ async function pathfinder(op) {
   if (!d || !(Math.abs(res.area) > 0.01)) { toast(op === "intersect" ? "รูปทรงไม่ได้ซ้อนกัน — ไม่มีส่วนที่เหลือ" : "ไม่มีรูปทรงเหลือ", "warn"); return; }
   const from = op === "minus" ? order[0] : order[order.length - 1];
   const paint = paintOf(from);
-  const shape = new fabric.Path(d, { fillRule: "evenodd", strokeUniform: false, ...paint, fill: isGrad(paint.fill) ? sortedStops(paint.fill)[0].color : paint.fill });
-  if (isGrad(paint.fill)) shape.set("fill", makeGrad(shape, paint.fill.type, sortedStops(paint.fill), gradAngle(paint.fill)));
+  const shape = new fabric.Path(d, { fillRule: "evenodd", strokeUniform: false, ...flatPaint(paint) });
+  fitPaint(shape, paint);
   const at = all.indexOf(from);
   order.forEach(o => canvas.remove(o));
   canvas.insertAt(shape, Math.min(at - order.filter(o => all.indexOf(o) < at).length, canvas.getObjects().length));
@@ -1617,8 +1637,8 @@ $("#btnEyedrop").onclick = () => {
     if (!from || targets.includes(t) || t.type === "image") { restore(); return; }
     const paint = { fill: from.fill, stroke: from.stroke, strokeWidth: from.strokeWidth, paintFirst: from.paintFirst };
     targets.forEach(o => (o._objects || [o]).forEach(x => {
-      x.set({ stroke: paint.stroke, strokeWidth: paint.strokeWidth, paintFirst: paint.paintFirst });
-      x.set("fill", isGrad(paint.fill) ? makeGrad(x, paint.fill.type, sortedStops(paint.fill), gradAngle(paint.fill)) : paint.fill);
+      x.set({ ...flatPaint(paint) });
+      fitPaint(x, paint);
     }));
     restore(); pushHistory();
     toast("ดูดสีแล้ว", "ok");
@@ -3157,9 +3177,9 @@ async function rebuildWarp(o, meta) {
   if (!d || my !== warpSeq || !canvas.getObjects().includes(o)) return;
   o._warpPending = null;
   const c = o.getCenterPoint();
-  const paint = { fill: isGrad(meta.fill) ? sortedStops(meta.fill)[0].color : meta.fill, stroke: meta.stroke || null, strokeWidth: meta.strokeWidth || 0, strokeUniform: true, paintFirst: meta.paintFirst || "fill" };
+  const paint = flatPaint({ fill: meta.fill, stroke: meta.stroke || null, strokeWidth: meta.strokeWidth || 0, strokeUniform: true, paintFirst: meta.paintFirst || "fill" });
   const next = new fabric.Path(d, { ...paint, angle: o.angle || 0, opacity: o.opacity ?? 1, name: o.name, objectCaching: false });
-  if (isGrad(meta.fill)) next.set("fill", makeGrad(next, meta.fill.type, sortedStops(meta.fill), gradAngle(meta.fill)));
+  fitPaint(next, meta);
   next.setPositionByOrigin(c, "center", "center");
   next.arcMeta = { ...meta, fill: meta.fill };
   const idx = canvas.getObjects().indexOf(o);
@@ -3638,9 +3658,10 @@ async function printObj(o, ctx, onPanel) {
       const g = gradientIn(el, svg, cs.fill, toMm, ctx.warn);
       if (g) it.grad = g;
     }
-    if (stroke && /url\(/.test(cs.stroke)) ctx.warn.add("เส้นขอบไล่สีพิมพ์เป็นสีเดียว");
     if (stroke && sw > 0) {
       it.stroke = stroke; it.sw = r4(sw);
+      const sg = gradientIn(el, svg, cs.stroke, toMm, ctx.warn);
+      if (sg) it.sgrad = sg;
       const lj = String(cs.strokeLinejoin || "miter");
       if (lj === "miter" || lj === "bevel") { it.join = lj; if (lj === "miter") it.ml = Math.min(100, Math.max(1, parseFloat(cs.strokeMiterlimit) || 4)); }
       const dash = String(cs.strokeDasharray || "").split(/[\s,]+/).map(parseFloat).filter(v => v >= 0);
@@ -3660,7 +3681,7 @@ async function printObj(o, ctx, onPanel) {
       const { fill: f, grad: g0, op: o0, ...under } = it;
       if (seeStroke < 0.999) under.op = r4(seeStroke);
       items.push(under);
-      const { stroke: s1, sw: s2, dash: s3, join: s4, ml: s5, ...over } = it;
+      const { stroke: s1, sw: s2, dash: s3, join: s4, ml: s5, sgrad: s6, ...over } = it;
       items.push(over);
       continue;
     }
