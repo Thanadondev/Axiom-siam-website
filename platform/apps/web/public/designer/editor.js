@@ -1818,7 +1818,7 @@ $("#btnRepeat").onclick = () => stepRepeat();
 
 /* ---------- ✨ AI full-print patterns ----------
    The customer's words go to the API through the page (it holds the login);
-   Claude answers with recipes, drawn here as vector shapes (ai-patterns.js)
+   The AI (Claude or Gemini) answers with recipes, drawn here as vector shapes (ai-patterns.js)
    over each piece of the side chosen, under everything else, locked, always
    inside the garment. They print as the shapes they are: sharp, in CMYK. */
 const AI = window.AXIOM_AI_PATTERN;

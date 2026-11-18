@@ -69,21 +69,27 @@ export const KEY_DELIVERY = "delivery";
 export const DEFAULT_DELIVERY: DeliveryConfig = { agentEnabled: false, agentName: "", agentAddress: "", agentPhone: "", agentFee: 0 };
 
 /**
- * ✨ AI patterns in the advanced designer (Claude): on or off, how many designs a
- * customer gets a day, and a cap on what the whole site spends a day.
+ * ✨ AI patterns in the advanced designer (Claude and Gemini): on or off, which AI
+ * answers, how many designs a customer gets a day, and a cap on what the whole
+ * site spends a day.
  */
+/** which AI answers: one alone, or one first and the other when the first can't (no credit, down, busy) */
+export const AI_ORDERS = ["claude>gemini", "gemini>claude", "claude", "gemini"] as const;
+export type AiOrder = (typeof AI_ORDERS)[number];
 export interface AiConfig {
   enabled: boolean;
+  order: AiOrder;
   /** designs a customer a day (a design = one request, 3 patterns) */
   dailyPerUser: number;
   /** baht a day for everyone together; 0 = no cap */
   dailyBudgetThb: number;
-  /** for showing the cost (Claude bills in US dollars) */
+  /** for showing the cost (both bill in US dollars) */
   thbPerUsd: number;
 }
 export const KEY_AI = "ai";
 export const DEFAULT_AI: AiConfig = {
   enabled: true,
+  order: (AI_ORDERS as readonly string[]).includes(process.env.AI_ORDER ?? "") ? (process.env.AI_ORDER as AiOrder) : "claude>gemini",
   dailyPerUser: Math.max(0, Number(process.env.AI_PATTERN_DAILY ?? 20) || 0),
   dailyBudgetThb: Math.max(0, Number(process.env.AI_DAILY_BUDGET_THB ?? 300) || 0),
   thbPerUsd: 33,

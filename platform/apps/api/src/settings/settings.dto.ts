@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AI_ORDERS } from "./settings.service";
 
 const money = z.coerce.number().int().min(0).max(1_000_000);
 /** a garment's price difference from a jersey: may be negative */
@@ -46,6 +47,7 @@ export type UpdateMarketDto = z.infer<typeof UpdateMarketSchema>;
 /** ✨ AI patterns: on/off, a customer's daily designs, the site's daily budget */
 export const UpdateAiSchema = z.object({
   enabled: z.boolean().optional(),
+  order: z.enum(AI_ORDERS).optional(),
   dailyPerUser: z.coerce.number().int().min(0).max(500).optional(),
   dailyBudgetThb: z.coerce.number().min(0).max(1_000_000).optional(),
   thbPerUsd: z.coerce.number().min(1).max(1000).optional(),

@@ -278,7 +278,7 @@ describe("as Illustrator draws it", () => {
         { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24" },
         { d: "M170 170H230V230H170Z", m: [1, 0, 0, 1, 0, 0], fill: "#0054a6", bm: "multiply", op: 0.6 },
         { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#fff200", bm: "screen" },
-        { d: "M150 330H250V340H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", bm: "luminosity" },
+        { d: "M150 330H250V340H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", bm: "luminosity" as never },
         { img: 0, m: [40, 0, 0, 40, 150, 340], bm: "overlay" },
       ] }] },
       { side: "A", part: "back", objs: [] },

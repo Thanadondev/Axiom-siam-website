@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { AiPatternsService, costUsd, startOfDay, type PatternModel } from "./ai-patterns.service";
+import Anthropic from "@anthropic-ai/sdk";
+import { AiPatternsService, costUsd, geminiSpent, GeminiError, startOfDay, type GeminiModel, type GeminiReply, type PatternModel } from "./ai-patterns.service";
 import { DEFAULT_AI, type AiConfig } from "../settings/settings.service";
 import { MOTIFS, readPatterns, REPLY_JSON_SCHEMA, PATTERN_SYSTEM } from "./pattern-spec";
 import { PatternRequestSchema } from "./ai.controller";
@@ -129,9 +130,10 @@ describe("AI pattern recipes", () => {
   });
 
   it("without a key it says what to set", async () => {
-    const before = process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_API_KEY;
-    try { const st = store(); await expect(new AiPatternsService(st.prisma, st.settings).design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ANTHROPIC_API_KEY/); }
-    finally { if (before !== undefined) process.env.ANTHROPIC_API_KEY = before; }
+    const a = process.env.ANTHROPIC_API_KEY, g = process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY; delete process.env.GEMINI_API_KEY;
+    try { const st = store(); await expect(new AiPatternsService(st.prisma, st.settings).design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ANTHROPIC_API_KEY หรือ GEMINI_API_KEY/); }
+    finally { if (a !== undefined) process.env.ANTHROPIC_API_KEY = a; if (g !== undefined) process.env.GEMINI_API_KEY = g; }
   });
 
   it("a request is a short description and the garment's colours", () => {
@@ -146,5 +148,95 @@ describe("AI pattern recipes", () => {
       expect(js).toMatch(new RegExp(`\\b${m}\\s*[:(]`));
       expect(PATTERN_SYSTEM).toContain(`- ${m}:`);
     }
+  });
+});
+
+/** a stand-in for Gemini's REST API */
+function gem(reply: unknown, over: Partial<GeminiReply> = {}) {
+  const asked: { model: string; body: any }[] = [];
+  const model: GeminiModel = {
+    generate: async (m, body) => {
+      asked.push({ model: m, body });
+      return {
+        candidates: [{ content: { parts: [{ text: typeof reply === "string" ? reply : JSON.stringify(reply) }] }, finishReason: "STOP" }],
+        usageMetadata: { promptTokenCount: 3000, cachedContentTokenCount: 2800, candidatesTokenCount: 900, thoughtsTokenCount: 1100 },
+        modelVersion: "gemini-3.8-flash",
+        ...over,
+      };
+    },
+  };
+  return { model, asked };
+}
+const both = (m: { claude?: PatternModel | null; gemini?: GeminiModel | null }, cfg?: Partial<AiConfig>) => {
+  const st = store(cfg);
+  return { s: AiPatternsService.withModels(m, st.prisma, st.settings), ...st };
+};
+const noCredit = () => ({ create: async () => { throw new Anthropic.BadRequestError(400, { type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low" } }, undefined, new Headers()); } }) as unknown as PatternModel;
+
+describe("AI pattern recipes with Gemini", () => {
+  it("Gemini alone: the same instructions and schema, its tokens and cost kept (thinking billed as output)", async () => {
+    const g = gem({ patterns: [recipe()] });
+    const { s, rows } = both({ claude: fake({}).model, gemini: g.model }, { order: "gemini" });
+    const r = await s.design("u1", { prompt: "คลื่นทะเล", body: "#0054a6" });
+    expect(r.patterns).toHaveLength(1);
+    const b = g.asked[0].body;
+    expect(g.asked[0].model).toBe("gemini-3.8-flash");
+    expect(b.systemInstruction.parts[0].text).toBe(PATTERN_SYSTEM);
+    expect(b.generationConfig.responseFormat.text).toEqual({ mimeType: "APPLICATION_JSON", schema: REPLY_JSON_SCHEMA });
+    expect(b.contents[0].parts[0].text).toMatch(/คลื่นทะเล[\s\S]*body #0054a6/);
+    // the prompt count includes the cached part: 200 new + 2800 cached in, 900 + 1100 thinking out
+    expect(rows).toEqual([expect.objectContaining({ ok: true, model: "gemini-3.8-flash", inputTokens: 200, cacheRead: 2800, outputTokens: 2000 })]);
+    expect(rows[0].costUsd).toBeCloseTo((200 * 0.75 + 2000 * 3.75 + 2800 * 0.075) / 1e6, 10);
+  });
+
+  it("Claude first: with no credit there, Gemini answers and both calls are kept", async () => {
+    const g = gem({ patterns: [recipe(), recipe({ name: "สอง" })] });
+    const { s, rows } = both({ claude: noCredit(), gemini: g.model });
+    const r = await s.design("u1", { prompt: "สายฟ้า" });
+    expect(r.patterns).toHaveLength(2);
+    expect(rows.map(x => [x.model, x.ok, x.costUsd > 0])).toEqual([["claude-opus-5-5", false, false], ["gemini-3.8-flash", true, true]]);
+    expect(rows[0].error).toMatch(/credit balance/);
+    expect((await s.quota("u1")).remaining).toBe(DEFAULT_AI.dailyPerUser - 1); // one design, not two
+  });
+
+  it("Gemini first falls back to Claude; a Gemini safety block is a refusal and asks no one else", async () => {
+    const down: GeminiModel = { generate: async () => { throw new GeminiError(503, "503 UNAVAILABLE overloaded"); } };
+    const c = fake({ patterns: [recipe()] });
+    const a = both({ claude: c.model, gemini: down }, { order: "gemini>claude" });
+    await a.s.design("u1", { prompt: "คลื่น" });
+    expect(a.rows.map(x => [x.model, x.ok])).toEqual([["gemini-3.8-flash", false], ["claude-opus-5-5", true]]);
+
+    const c2 = fake({ patterns: [recipe()] });
+    const blocked = gem("", { candidates: [{ finishReason: "PROHIBITED_CONTENT" }] });
+    const b = both({ claude: c2.model, gemini: blocked.model }, { order: "gemini>claude" });
+    await expect(b.s.design("u1", { prompt: "โลโก้" })).rejects.toThrow(/ให้ไม่ได้/);
+    expect(c2.asked).toHaveLength(0);
+    expect(b.rows[0]).toMatchObject({ ok: false, error: "refusal (PROHIBITED_CONTENT)" });
+
+    const cut = both({ gemini: gem("{\"patterns\": [", { candidates: [{ content: { parts: [{ text: "{\"patterns\": [" }] }, finishReason: "MAX_TOKENS" }] }).model }, { order: "gemini" });
+    await expect(cut.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ไม่สมบูรณ์/);
+    expect(cut.rows[0].error).toBe("no usable pattern (MAX_TOKENS)");
+  });
+
+  it("all busy says try again soon; an order whose AIs have no key is off", async () => {
+    const busy: GeminiModel = { generate: async () => { throw new GeminiError(429, "429 RESOURCE_EXHAUSTED"); } };
+    const rate = { create: async () => { throw new Anthropic.RateLimitError(429, { type: "error" }, "429 rate", new Headers()); } } as unknown as PatternModel;
+    const a = both({ claude: rate, gemini: busy });
+    await expect(a.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ยุ่งอยู่/);
+    expect(a.rows).toHaveLength(2);
+    const b = both({ claude: noCredit(), gemini: busy });
+    await expect(b.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ใช้ไม่ได้ชั่วคราว/);
+
+    const only = both({ claude: fake({}).model }, { order: "gemini" });
+    expect(await only.s.quota("u1")).toMatchObject({ enabled: false, closed: "off" });
+    await expect(only.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ปิดให้บริการ/);
+    const rep = await only.s.report();
+    expect(rep.keySet).toBe(false);
+    expect(rep.providers.map(p => [p.id, p.keySet])).toEqual([["claude", true], ["gemini", false]]);
+  });
+
+  it("Gemini's price: a dated version costs as its model; an unknown one as the default", () => {
+    expect(geminiSpent("gemini-3.5-flash-lite-001", { promptTokenCount: 1_000_000 }).costUsd).toBeCloseTo(0.3);
+    expect(geminiSpent("gemini-9-future", { candidatesTokenCount: 1_000_000 }).costUsd).toBeCloseTo(3.75);
   });
 });

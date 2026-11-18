@@ -1,5 +1,5 @@
 /* Pattern recipes drawn as vector shapes (the advanced designer's "✨ ให้ AI ออกแบบลาย").
-   A recipe is a background and up to four layers of motifs; Claude writes them
+   A recipe is a background and up to four layers of motifs; Claude or Gemini writes them
    (apps/api/src/ai/pattern-spec.ts, the same motif names). Drawn as SVG in mm over
    a piece's frame, then placed on the piece as shapes: they print sharp, in the
    CMYK of their colours. Random motifs follow the layer's seed, so a recipe

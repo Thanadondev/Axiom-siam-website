@@ -4,16 +4,27 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 /**
- * Admin → ✨ AI: the advanced designer's AI patterns. What they cost (Claude
- * bills per use, in US dollars), who uses them, and the switches: on/off, a
- * customer's designs a day, and a cap on what the whole site spends a day.
+ * Admin → ✨ AI: the advanced designer's AI patterns. What they cost (Claude and
+ * Gemini bill per use, in US dollars), who uses them, and the switches: on/off,
+ * which AI answers, a customer's designs a day, and a cap on what the whole
+ * site spends a day.
  */
 
-type Cfg = { enabled: boolean; dailyPerUser: number; dailyBudgetThb: number; thbPerUsd: number };
+type Order = "claude>gemini" | "gemini>claude" | "claude" | "gemini";
+type Cfg = { enabled: boolean; order: Order; dailyPerUser: number; dailyBudgetThb: number; thbPerUsd: number };
+const ORDERS: { id: Order; label: string }[] = [
+  { id: "claude>gemini", label: "Claude ก่อน · ถ้าใช้ไม่ได้ใช้ Gemini" },
+  { id: "gemini>claude", label: "Gemini ก่อน · ถ้าใช้ไม่ได้ใช้ Claude" },
+  { id: "claude", label: "Claude อย่างเดียว" },
+  { id: "gemini", label: "Gemini อย่างเดียว" },
+];
+/** which AI a call went to, from the model it names */
+const aiName = (model: string | null) => (!model ? "—" : model.startsWith("gemini") ? "Gemini" : model.startsWith("claude") ? "Claude" : model);
 type Report = {
   config: Cfg;
   keySet: boolean;
   model: string;
+  providers: { id: "claude" | "gemini"; model: string; keySet: boolean; env: string }[];
   today: { calls: number; ok: number; users: number; costUsd: number; overBudget: boolean };
   month: { calls: number; costUsd: number };
   days: { date: string; calls: number; ok: number; costUsd: number }[];
@@ -69,12 +80,21 @@ export default function AiAdmin({ token }: { token: string }) {
       <div className="acard">
         <h2 className="ah2">✨ AI ออกแบบลาย</h2>
         <p className="asub">
-          ลูกค้าพิมพ์ลายที่อยากได้ในหน้าออกแบบขั้นสูง แล้วให้ Claude ({r.model}) เสนอลายให้ 3 แบบ คิดเงินตามการใช้จริง
+          ลูกค้าพิมพ์ลายที่อยากได้ในหน้าออกแบบขั้นสูง แล้วให้ AI เสนอลายให้ 3 แบบ คิดเงินตามการใช้จริง
           {" · "}
           สถานะ:{" "}
           <b style={{ color: live ? "var(--okc, #16a34a)" : "var(--err, #dc2626)" }}>
-            {!r.keySet ? "ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ในเซิร์ฟเวอร์" : !cfg.enabled ? "ปิดอยู่" : r.today.overBudget ? "ใช้ครบงบวันนี้แล้ว (เปิดใหม่พรุ่งนี้)" : "เปิดให้ลูกค้าใช้"}
+            {!r.keySet ? "AI ที่เลือกไว้ยังไม่มีคีย์ในเซิร์ฟเวอร์" : !cfg.enabled ? "ปิดอยู่" : r.today.overBudget ? "ใช้ครบงบวันนี้แล้ว (เปิดใหม่พรุ่งนี้)" : "เปิดให้ลูกค้าใช้"}
           </b>
+        </p>
+        <p className="asub" style={{ marginTop: 4 }}>
+          {r.providers.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && " · "}
+              {aiName(p.model)} <span className="dim">({p.model})</span>:{" "}
+              {p.keySet ? <span style={{ color: "var(--okc, #16a34a)" }}>มีคีย์</span> : <span style={{ color: "var(--err, #dc2626)" }}>ยังไม่ได้ตั้ง {p.env}</span>}
+            </span>
+          ))}
         </p>
         <div className="kpigrid">
           <Kpi label="ค่าใช้จ่ายวันนี้" value={thb(r.today.costUsd)} sub={`${usd(r.today.costUsd)}${cfg.dailyBudgetThb > 0 ? ` · งบ ฿${cfg.dailyBudgetThb.toLocaleString("th-TH")}/วัน (${Math.min(100, Math.round((spentThb / cfg.dailyBudgetThb) * 100))}%)` : " · ไม่จำกัดงบ"}`} accent danger={r.today.overBudget} />
@@ -104,6 +124,13 @@ export default function AiAdmin({ token }: { token: string }) {
           <input type="checkbox" checked={cfg.enabled} onChange={e => set("enabled", e.target.checked)} />
           เปิดให้ลูกค้าใช้ AI ออกแบบลาย
         </label>
+        <div style={{ marginTop: 14, maxWidth: 420 }}>
+          <label className="flabel" style={{ margin: "0 0 6px" }}>AI ที่ใช้ออกแบบ</label>
+          <select className="ainput" value={cfg.order} onChange={e => set("order", e.target.value as Order)}>
+            {ORDERS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          <p className="dim" style={{ marginTop: 4 }}>ตัวสำรองถูกเรียกเฉพาะตอนตัวแรกใช้ไม่ได้ (เครดิตหมด คีย์ผิด ระบบล่ม ยุ่ง) · ถ้า AI ปฏิเสธคำขอจะไม่ส่งต่อ</p>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14, marginTop: 14 }}>
           <div>
             <label className="flabel" style={{ margin: "0 0 6px" }}>ลูกค้า 1 คนใช้ได้ (ครั้ง/วัน)</label>
@@ -118,7 +145,7 @@ export default function AiAdmin({ token }: { token: string }) {
           <div>
             <label className="flabel" style={{ margin: "0 0 6px" }}>อัตราแลกเปลี่ยน (บาท/USD)</label>
             <input className="ainput" type="number" min={1} step="0.01" value={cfg.thbPerUsd} onChange={e => set("thbPerUsd", Number(e.target.value))} />
-            <p className="dim" style={{ marginTop: 4 }}>Claude คิดเงินเป็นดอลลาร์ ใช้แปลงเพื่อแสดงผลและเทียบงบ</p>
+            <p className="dim" style={{ marginTop: 4 }}>Claude และ Gemini คิดเงินเป็นดอลลาร์ ใช้แปลงเพื่อแสดงผลและเทียบงบ</p>
           </div>
         </div>
         <button className="abtn solid" style={{ marginTop: 16 }} disabled={busy} onClick={save}>บันทึก</button>
@@ -151,13 +178,14 @@ export default function AiAdmin({ token }: { token: string }) {
         {r.recent.length === 0 ? <p className="asub">ยังไม่มี</p> : (
           <div className="tablewrap">
             <table className="atable">
-              <thead><tr><th>เวลา</th><th>ลูกค้า</th><th>คำขอ</th><th>ผล</th><th>โทเคน (เข้า/แคช/ออก)</th><th>ค่าใช้จ่าย</th><th>เวลา</th></tr></thead>
+              <thead><tr><th>เวลา</th><th>ลูกค้า</th><th>คำขอ</th><th>AI</th><th>ผล</th><th>โทเคน (เข้า/แคช/ออก)</th><th>ค่าใช้จ่าย</th><th>เวลา</th></tr></thead>
               <tbody>
                 {r.recent.map(x => (
                   <tr key={x.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{dt(x.createdAt)}</td>
                     <td>{x.user?.fullName ?? x.user?.email ?? "—"}</td>
                     <td style={{ maxWidth: 260 }}>{x.prompt}</td>
+                    <td title={x.model ?? ""}>{aiName(x.model)}</td>
                     <td>{x.ok ? <span style={{ color: "var(--okc, #16a34a)" }}>✓ {x.patterns} ลาย</span> : <span style={{ color: "var(--err, #dc2626)" }} title={x.error ?? ""}>✗ {x.error === "refusal" ? "ปฏิเสธ" : "ไม่สำเร็จ"}</span>}</td>
                     <td className="dim" style={{ whiteSpace: "nowrap" }}>{x.inputTokens.toLocaleString()} / {x.cacheRead.toLocaleString()} / {x.outputTokens.toLocaleString()}</td>
                     <td>{thb(x.costUsd)}</td>
