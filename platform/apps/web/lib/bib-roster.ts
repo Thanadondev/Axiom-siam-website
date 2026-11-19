@@ -14,7 +14,7 @@ export const BIB_SIZE_LABEL: Record<BibSize, string> = {
 };
 
 export interface BibRow { name: string; number: string; size: BibSize }
-export interface RosterRead { rows: BibRow[]; errors: { line: number; text: string; why: "size" | "number" | "name" }[] }
+export interface RosterRead { rows: BibRow[]; errors: { line: number; text: string; why: "size" | "number" | "name"; /** a name's length as counted (Thai vowels and tone marks count) */ len?: number }[] }
 
 export const NAME_MAX = 20;
 
@@ -53,12 +53,13 @@ export function readRoster(text: string): RosterRead {
       const z: BibSize | null = size ? null : readSize(c);
       if (z) { size = z; continue; }
       const n = c.replace(/^(no\.?|#)/i, "");
-      if (!number && /^\d{1,3}$/.test(n)) { number = String(Number(n)); continue; }
+      // "05" in a team's list is 5; "00" is its own number, not 0
+      if (!number && /^\d{1,3}$/.test(n)) { number = /^0+$/.test(n) ? n : String(Number(n)); continue; }
       rest.push(c);
     }
     const name = rest.join(" ").trim();
     const why = !size ? "size" : name.length > NAME_MAX ? "name" : rest.some(r => /^\d{4,}$/.test(r)) ? "number" : null;
-    if (why || !size) { errors.push({ line: i + 1, text: raw.trim(), why: why ?? "size" }); return; }
+    if (why || !size) { errors.push({ line: i + 1, text: raw.trim(), why: why ?? "size", ...(why === "name" ? { len: name.length } : {}) }); return; }
     rows.push({ name, number, size });
   });
   return { rows, errors };

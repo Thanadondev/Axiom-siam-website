@@ -341,7 +341,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                   {roster.errors.slice(0, 8).map(e => (
                     <li key={e.line}>
                       {L(`บรรทัด ${e.line}`, `line ${e.line}`, `${e.line}行目`)} “{e.text}” — {e.why === "size" ? L("ไม่มีไซส์ที่เราผลิต", "no size we make", "対応サイズがありません")
-                        : e.why === "name" ? L(`ชื่อยาวเกิน ${NAME_MAX} ตัวอักษร`, `name over ${NAME_MAX} characters`, `名前が${NAME_MAX}文字を超えています`)
+                        : e.why === "name" ? L(`ชื่อยาว ${e.len} ตัวอักษร เกิน ${NAME_MAX} (นับสระและวรรณยุกต์ด้วย)`, `name is ${e.len} characters, over ${NAME_MAX}`, `名前が${e.len}文字で、${NAME_MAX}文字を超えています`)
                         : L("เบอร์เกิน 3 หลัก", "number over 3 digits", "番号が3桁を超えています")}
                     </li>
                   ))}
