@@ -147,6 +147,11 @@ describe("advanced designer print data", () => {
     expect(meta).toMatchObject({ template: "CB-005", source: "advanced designer", images: 1 });
     expect(meta.notes.join(" ")).toMatch(/Drawn on M/);
     expect(job.counts).toEqual({ M: 2, XL: 1 });
+    // no job label on the page (order no, team, name, 1/2): the cut line's grey fills only the 2 pieces' size marks
+    const pdf = await PDFDocument.load(files[`${job.name}/M/01 No.10 SOMCHAI_ol.pdf`]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content.match(/\n0 0 0 0\.5 k\n/g)?.length).toBe(2);
   });
 
   it("tells the print manager what a web bib's design.json does: the product, each side's trim colours, the fabric", async () => {

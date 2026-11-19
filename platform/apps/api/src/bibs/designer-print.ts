@@ -489,11 +489,9 @@ export async function buildDesignerJob(input: unknown, rows: DesignerRow[], meta
       let file = safeName([nn, r.number && `No.${r.number}`, r.name].filter(Boolean).join(" "), 80);
       while (used.has(file)) file += "_";
       used.add(file);
-      const tag = [meta.ref, d.team, r.number && `No.${r.number}`, r.name, SIZE_NAME[size], `${i + 1}/${rs.length}`].filter(Boolean).join("   ");
       const { page, pieces } = layoutFor(size, sides);
       const shapes: Shape[] = [];
-      const t = textShape(tag, "label", { h: 4.5 }, { x: 10, top: 2.5 }, 1);
-      if (t) shapes.push({ kind: "path", segs: t.segs, fill: CUT_COLOR });
+      // no job label on the page (order no, team, name, n/N): the print manager put it into the print file
       for (const { side, part, piece } of pieces) {
         shapes.push(...designerPiece(d, pics, size, side, part, piece, r.player, { cutLine: true, sizeMark: SIZE_NAME[size] })
           .map(sh => moveScaled(sh, piece.x, piece.y, 1)));

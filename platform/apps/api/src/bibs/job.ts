@@ -1,11 +1,11 @@
 import { zipSync } from "fflate";
 import { jobFolderName, safeName } from "../orders/nas-export";
 import { BibDesignSchema, type BibDesign, type RosterRow } from "./design";
-import { drawPiece, moveShapes, pngSize, CUT_COLOR, type Art, type Shape } from "./draw";
+import { drawPiece, moveShapes, pngSize, type Art, type Shape } from "./draw";
 import { orderSheetJpeg, orderSheetSvg, type SheetMeta } from "./order-sheet";
 import { printPdf } from "./print-pdf";
 import { BIB_SIZES, layoutFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Side } from "./template";
-import { parseFont, textShape, type FontRef } from "./text";
+import { parseFont, type FontRef } from "./text";
 import { xlsx } from "./xlsx";
 import { fitPng, PRINT_LOGO_PX } from "./raster";
 import { AXIOM_MARK_PNG } from "./axiom-mark";
@@ -61,12 +61,11 @@ const artFor = (d: BibDesign, r: RosterRow, logo?: Art["logo"], font?: FontRef):
 });
 
 /** one bib's print file */
-async function bibFile(d: BibDesign, size: BibSize, r: RosterRow, tag: string, logo: Art["logo"], font: FontRef | undefined, title: string) {
+async function bibFile(d: BibDesign, size: BibSize, r: RosterRow, logo: Art["logo"], font: FontRef | undefined, title: string) {
   const sides: Side[] = d.product === "bib_r" ? ["A", "B"] : ["A"];
   const { page, pieces } = layoutFor(size, sides);
   const shapes: Shape[] = [];
-  const t = textShape(tag, "label", { h: 4.5 }, { x: 10, top: 2.5 }, 1);
-  if (t) shapes.push({ kind: "path", segs: t.segs, fill: CUT_COLOR });
+  // no job label (order no, team, name, n/N) on the page: it ended up beside a piece in the print file
   for (const { side, part, piece } of pieces) {
     const look = d.sides[side === "A" ? 0 : 1];
     shapes.push(...moveShapes(drawPiece(piece, part, look, artFor(d, r, logo, font), { ribs: ribsFor(size, part), cutLine: true, sizeMark: SIZE_NAME[size] }), piece.x, piece.y));
@@ -104,8 +103,7 @@ export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: 
       let file = safeName([nn, r.number && `No.${r.number}`, r.name].filter(Boolean).join(" "), 80);
       while (used.has(file)) file += "_";
       used.add(file);
-      const tag = [meta.ref, d.team, r.number && `No.${r.number}`, r.name, SIZE_NAME[size], `${i + 1}/${rows.length}`].filter(Boolean).join("   ");
-      const out = await bibFile(d, size, r, tag, logo, tf.font, `${name} ${SIZE_NAME[size]} ${file}`);
+      const out = await bibFile(d, size, r, logo, tf.font, `${name} ${SIZE_NAME[size]} ${file}`);
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
       await yieldToOthers();

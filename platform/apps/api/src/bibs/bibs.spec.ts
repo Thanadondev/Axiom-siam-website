@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
 import { textShape } from "./text";
@@ -178,7 +178,22 @@ describe("design", () => {
   });
 });
 
+/** a PDF's page content, decoded */
+async function pageContent(bytes: Uint8Array) {
+  const pdf = await PDFDocument.load(bytes);
+  return pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+    .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+}
+
 describe("the job package", () => {
+  it("no job label on the page (order no, team, name, 1/6): only each piece's size mark is in the cut line's grey", async () => {
+    const job = await buildBibJob(design(), { ref: "AX-261116-0T82", date: new Date(2026, 10, 16) });
+    const files = unzipSync(job.zip);
+    const content = await pageContent(files[`${job.name}/M/02 No.48 TAICHI_ol.pdf`]);
+    // the grey (K50) as a fill: the size mark in each of the 4 pieces, nothing else (the label made it 5)
+    expect(content.match(/\n0 0 0 0\.5 k\n/g)?.length).toBe(4);
+  });
+
   it("one CMYK print file per bib, order sheet per size, name list, design", async () => {
     const job = await buildBibJob(design(), { ref: "AX-261111-T1", date: new Date(2026, 10, 11) });
     expect(job.name).toBe("AX-261111-T1 R-bib (M XXL) SAGINUMA FC");
