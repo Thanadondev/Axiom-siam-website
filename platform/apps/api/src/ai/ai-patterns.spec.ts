@@ -142,6 +142,33 @@ describe("AI pattern recipes", () => {
     expect(PatternRequestSchema.safeParse({ prompt: "ลายคลื่น", body: "#1d4ed8", count: 3 }).success).toBe(true);
   });
 
+  it("a reference picture: words optional, only real JPG/PNG/WebP, at most about 1.5 MB", () => {
+    const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Array(40).fill(0)]).toString("base64");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(40).fill(0)]).toString("base64");
+    const webp = Buffer.concat([Buffer.from("RIFF\0\0\0\0WEBPVP8 "), Buffer.alloc(40)]).toString("base64");
+    const ok = (b: unknown) => PatternRequestSchema.safeParse(b).success;
+    expect(ok({ image: { mime: "image/jpeg", data: jpg } })).toBe(true); // a picture alone is enough
+    expect(ok({ prompt: "แบบนี้แต่สีแดง", image: { mime: "image/png", data: png } })).toBe(true);
+    expect(ok({ image: { mime: "image/webp", data: webp } })).toBe(true);
+    expect(ok({})).toBe(false); // neither
+    expect(ok({ image: { mime: "image/png", data: jpg } })).toBe(false); // says PNG, is a JPEG
+    expect(ok({ image: { mime: "image/gif", data: jpg } })).toBe(false);
+    expect(ok({ image: { mime: "image/jpeg", data: jpg + "<script>" } })).toBe(false);
+    expect(ok({ image: { mime: "image/jpeg", data: jpg + "A".repeat(2_000_000) } })).toBe(false);
+  });
+
+  it("the picture reaches Claude as an image before the words; the admin sees it came with one", async () => {
+    const { model, asked } = fake({ patterns: [recipe()] });
+    const { s, rows } = service(model);
+    await s.design("u1", { prompt: "", image: { mime: "image/jpeg", data: "/9j/AAAA" } });
+    const c = asked[0].messages[0].content;
+    expect(c[0]).toEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "/9j/AAAA" } });
+    expect(c[1].text).toMatch(/no words: follow the reference picture[\s\S]*Reference picture \(attached\)/);
+    expect(rows[0].prompt).toBe("[รูปตัวอย่าง]");
+    expect(JSON.stringify(rows)).not.toContain("/9j/AAAA"); // the picture itself is not kept
+    expect(PATTERN_SYSTEM).toMatch(/reference picture[\s\S]*logo, crest, text/);
+  });
+
   it("the designer draws every motif Claude is told about", () => {
     const js = readFileSync(join(__dirname, "../../../web/public/designer/ai-patterns.js"), "utf8");
     for (const m of MOTIFS) {
@@ -257,6 +284,30 @@ describe("AI pattern recipes with Gemini", () => {
     expect(c.asked).toHaveLength(1);
     expect(AiPatternsService.modelsOf(" gemini-3.5-flash-lite , gemini-3.6-flash ")).toEqual(["gemini-3.5-flash-lite", "gemini-3.6-flash"]);
     expect(AiPatternsService.modelsOf("")).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+  });
+
+  it("the picture reaches Gemini as inline data before the words", async () => {
+    const g = gem({ patterns: [recipe()] });
+    const { s, rows } = both({ gemini: g.model }, { order: "gemini" });
+    await s.design("u1", { prompt: "แบบนี้ สีน้ำเงิน", image: { mime: "image/png", data: "iVBORw0K" } });
+    const parts = g.asked[0].body.contents[0].parts;
+    expect(parts[0]).toEqual({ inlineData: { mimeType: "image/png", data: "iVBORw0K" } });
+    expect(parts[1].text).toMatch(/แบบนี้ สีน้ำเงิน\nReference picture/);
+    expect(rows[0].prompt).toBe("[รูปตัวอย่าง] แบบนี้ สีน้ำเงิน");
+  });
+
+  it("no further AI is asked once a design has taken too long (the designer stops waiting)", async () => {
+    const tried: string[] = [];
+    const slow: GeminiModel = { generate: async m => { tried.push(m); await new Promise(r => setTimeout(r, 15)); throw new GeminiError(0, "connection: timeout"); } };
+    const c = fake({ patterns: [recipe()] });
+    const a = both({ claude: c.model, gemini: slow }, { order: "gemini>claude" });
+    const keep = AiPatternsService.STOP_TRYING_MS;
+    AiPatternsService.STOP_TRYING_MS = 5;
+    try { await expect(a.s.design("u1", { prompt: "คลื่น" })).rejects.toThrow(/ใช้ไม่ได้ชั่วคราว/); }
+    finally { AiPatternsService.STOP_TRYING_MS = keep; }
+    expect(tried).toEqual(["gemini-3.6-flash"]);
+    expect(c.asked).toHaveLength(0);
+    expect((await a.s.quota("u1")).remaining).toBe(DEFAULT_AI.dailyPerUser); // nothing came back: not counted
   });
 
   it("Gemini's price: a dated version costs as its model; an unknown one as the default", () => {

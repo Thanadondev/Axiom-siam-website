@@ -300,6 +300,13 @@ $("#right").innerHTML = `
         <div style="font-weight:700;font-size:12.5px;margin-bottom:6px">✨ ให้ AI ออกแบบลาย</div>
         <textarea id="aiPrompt" rows="2" maxlength="300" placeholder="บอกลายที่อยากได้ เช่น สายฟ้าเหลือง-ดำ ดุๆ แบบทีมบาส" style="width:100%;box-sizing:border-box;resize:vertical;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:7px 8px;color:var(--txt);font-size:12px;font-family:inherit;line-height:1.5"></textarea>
         <div id="aiChips" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0"></div>
+        <div id="aiRef" class="airef" title="วางรูป (Ctrl+V) หรือลากรูปมาวางในกล่องนี้ก็ได้">
+          <button class="mini" id="aiRefBtn" style="flex:none">📷 แนบรูปลายที่ชอบ</button>
+          <input type="file" id="aiRefFile" accept="image/jpeg,image/png,image/webp" hidden>
+          <img id="aiRefImg" alt="รูปตัวอย่าง" style="display:none">
+          <span id="aiRefNote" style="flex:1;font-size:10.5px;color:var(--muted);line-height:1.4">AI ออกแบบตามแนวรูป (ไม่ต้องพิมพ์ก็ได้)</span>
+          <button class="mini" id="aiRefDel" title="เอารูปออก" style="display:none;flex:none;min-width:0;padding:4px 8px">✕</button>
+        </div>
         <div class="btnrow">
           <button class="mini" id="aiGo" style="flex:2;font-weight:700;background:var(--accent);color:var(--oninv);border-color:transparent">✨ ออกแบบ</button>
           <button class="mini" id="aiDemo" title="ลองสูตรลายตัวอย่าง (ไม่ใช้ AI)">🎲 ตัวอย่าง</button>
@@ -1938,17 +1945,72 @@ function aiReply(m) {
   aiShow(m.patterns || [], m.remaining !== undefined ? `เลือกลายที่ชอบ · วันนี้ใช้ได้อีก ${m.remaining} ครั้ง` : "");
   if (m.remaining === 0) { $("#aiGo").disabled = true; $("#aiGo").style.opacity = ".5"; }
 }
+/* a picture of a pattern the customer likes: shrunk here (1024 px, JPEG) so it goes quickly,
+   sent with the words to the AI, which designs in its style. The site keeps none of it. */
+let aiRef = null; // { mime, data (base64) }
+/** the server asks no new AI after 2 minutes and each call stops at 90 s (ai-patterns.service.ts) */
+const AI_WAIT_MS = 240000;
+const AI_REF_PX = 1024;
+async function aiRefLoad(file) {
+  const note = $("#aiRefNote");
+  if (!file || !/^image\//.test(file.type)) { note.textContent = "ใช้ไฟล์รูป JPG, PNG หรือ WebP"; return; }
+  if (file.size > 25e6) { note.textContent = "รูปใหญ่เกิน 25 MB"; return; }
+  let img;
+  try { img = await createImageBitmap(file); }
+  catch { note.textContent = "เปิดรูปนี้ไม่ได้ ลองใช้ JPG หรือ PNG"; return; }
+  const k = Math.min(1, AI_REF_PX / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+  const x = c.getContext("2d");
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, c.width, c.height); // a see-through PNG on white, not black
+  x.drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  const url = c.toDataURL("image/jpeg", 0.85);
+  aiRef = { mime: "image/jpeg", data: url.slice(url.indexOf(",") + 1) };
+  const th = $("#aiRefImg"); th.src = url; th.style.display = "";
+  $("#aiRefDel").style.display = ""; $("#aiRefBtn").textContent = "📷 เปลี่ยนรูป";
+  note.textContent = "AI จะออกแบบตามแนวรูปนี้ · พิมพ์เพิ่มได้ เช่น \"แบบนี้แต่สีแดง\"";
+}
+function aiRefClear() {
+  aiRef = null;
+  const th = $("#aiRefImg"); th.removeAttribute("src"); th.style.display = "none";
+  $("#aiRefDel").style.display = "none"; $("#aiRefBtn").textContent = "📷 แนบรูปลายที่ชอบ";
+  $("#aiRefNote").textContent = "AI ออกแบบตามแนวรูป (ไม่ต้องพิมพ์ก็ได้)";
+  $("#aiRefFile").value = "";
+}
+$("#aiRefBtn").onclick = () => $("#aiRefFile").click();
+$("#aiRefFile").onchange = e => { const f = e.target.files && e.target.files[0]; if (f) aiRefLoad(f); };
+$("#aiRefDel").onclick = aiRefClear;
+// a picture pasted into the words box, or dropped on the AI box
+$("#aiPrompt").addEventListener("paste", e => {
+  const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(f => /^image\//.test(f.type));
+  if (f) { e.preventDefault(); aiRefLoad(f); }
+});
+(() => {
+  const box = document.querySelector(".aibox"), ref = $("#aiRef");
+  const hasFile = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
+  box.addEventListener("dragover", e => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); ref.classList.add("drop"); });
+  box.addEventListener("dragleave", () => ref.classList.remove("drop"));
+  box.addEventListener("drop", e => {
+    if (!hasFile(e)) return;
+    e.preventDefault(); e.stopPropagation(); ref.classList.remove("drop");
+    const f = [...e.dataTransfer.files].find(f => /^image\//.test(f.type)); if (f) aiRefLoad(f);
+  });
+})();
 $("#aiGo").onclick = () => {
   const prompt = ($("#aiPrompt").value || "").trim();
-  if (prompt.length < 2) { $("#aiMsg").textContent = "พิมพ์ลายที่อยากได้ก่อน หรือคลิกตัวอย่างด้านบน"; return; }
+  if (prompt.length < 2 && !aiRef) { $("#aiMsg").textContent = "พิมพ์ลายที่อยากได้ แนบรูปลายที่ชอบ หรือคลิกตัวอย่างด้านบน"; return; }
   if (!inFrame() || !isLoggedIn) { $("#aiMsg").textContent = "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย · ลองปุ่ม 🎲 ตัวอย่าง ได้เลย"; return; }
   const own = curStyle === 2 && bodySide === "B" && sideB ? sideB.color : bodyColor;
   aiWaiting = { id: "ai" + (++aiSeq) };
-  $("#aiGo").disabled = true; $("#aiGo").textContent = "กำลังคิด…"; $("#aiMsg").textContent = "AI กำลังออกแบบ 3 แบบ (ประมาณ 10–30 วินาที)";
-  window.parent.postMessage({ type: "axiom-ai-pattern", id: aiWaiting.id, prompt, body: colorHex(own) || undefined, trim: colorHex(trimColor) || undefined, count: 3 }, "*");
-  // no answer at all: say so rather than spin forever
-  const mine = aiWaiting.id;
-  setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) aiReply({ id: mine, ok: false, error: "AI ไม่ตอบกลับ ลองอีกครั้ง" }); }, 90000);
+  $("#aiGo").disabled = true; $("#aiGo").textContent = "กำลังคิด…"; $("#aiMsg").textContent = `AI กำลังออกแบบ 3 แบบ${aiRef ? "ตามแนวรูป" : ""} (ประมาณ 10–30 วินาที)`;
+  window.parent.postMessage({ type: "axiom-ai-pattern", id: aiWaiting.id, prompt, body: colorHex(own) || undefined, trim: colorHex(trimColor) || undefined, count: 3, image: aiRef || undefined }, "*");
+  // a busy AI can take minutes (the server asks the next one when one is stuck): keep the
+  // customer told, and only give up after the server itself would have
+  const mine = aiWaiting.id, still = (t, at) => setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) $("#aiMsg").textContent = t; }, at);
+  still("AI ยังออกแบบอยู่ ช่วงนี้ตอบช้ากว่าปกติ รอได้อีกสักครู่…", 35000);
+  still("ยังรออยู่… ถ้า AI ตัวแรกไม่ตอบ ระบบจะให้ตัวสำรองออกแบบแทน (ไม่นับครั้งที่ไม่สำเร็จ)", 95000);
+  setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) aiReply({ id: mine, ok: false, error: "AI ไม่ตอบกลับ ลองอีกครั้ง" }); }, AI_WAIT_MS);
 };
 $("#aiDemo").onclick = () => {
   const ex = AI.EXAMPLES.slice(), out = [];

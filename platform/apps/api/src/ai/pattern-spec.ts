@@ -123,6 +123,7 @@ Design rules:
 - Team numbers and names are printed over the pattern: keep the area readable - strong motifs at lower opacity or faded, high contrast against the background.
 - Use the customer's colours. When they name none, use the garment's body and trim colours given. Prefer colours from the factory's DTP chart below; they print exactly.
 - Never draw logos, brand marks, club crests, text or letters, or copy a known team's kit.
+- A customer may attach a reference picture of a pattern they like. Take its style from the motifs above: the motif kinds, their size and direction, how busy it is, the fades, and its colours (the nearest chart colours). Words they give come first where the two differ. Leave out anything in it that is a logo, crest, text, number or person; if the picture is mostly a known team's kit or a brand's, take only its general colours and mood.
 - 1-3 layers is usually best; restraint looks professional.
 
 The factory's DTP chart (#rrggbb): ${chart.join(" ")}`;

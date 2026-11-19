@@ -100,7 +100,7 @@ function DesignerBridge() {
         try {
           const res = await apiFetch<{ patterns: unknown[]; remaining: number }>("/ai/patterns", {
             method: "POST", token,
-            body: JSON.stringify({ prompt: m.prompt, body: m.body, trim: m.trim, count: m.count }),
+            body: JSON.stringify({ prompt: m.prompt, body: m.body, trim: m.trim, count: m.count, image: m.image }),
           });
           reply({ type: "axiom-ai-pattern-result", id: m.id, ok: true, patterns: res.patterns, remaining: res.remaining });
         } catch (e: any) {

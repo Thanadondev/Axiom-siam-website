@@ -10,7 +10,13 @@ export interface PatternRequest {
   body?: string;
   trim?: string;
   count?: number;
+  /** a picture of a pattern the customer likes (base64), checked by the controller */
+  image?: RefImage;
 }
+export interface RefImage { mime: "image/jpeg" | "image/png" | "image/webp"; data: string }
+
+/** what the AI is asked: the words, and the picture when there is one */
+interface Ask { text: string; image?: RefImage }
 
 export type Provider = "claude" | "gemini";
 export const providersOf = (order: AiOrder) => order.split(">") as Provider[];
@@ -126,6 +132,8 @@ export class AiPatternsService {
   private readonly gemini: GeminiModel | null;
   /** GEMINI_MODEL: one model, or several separated by commas tried in turn */
   readonly geminiModels = AiPatternsService.modelsOf(process.env.GEMINI_MODEL);
+  /** no new AI is asked once a design has taken this long (each Gemini call stops at 90 s) */
+  static STOP_TRYING_MS = 120_000;
   static modelsOf(env?: string) {
     const list = (env ?? "").split(",").map(m => m.trim()).filter(Boolean);
     return list.length ? list : GEMINI_MODELS_DEFAULT;
@@ -192,7 +200,7 @@ export class AiPatternsService {
     }
   }
 
-  private async askClaude(ask: string): Promise<Answer> {
+  private async askClaude(ask: Ask): Promise<Answer> {
     let res: Anthropic.Beta.BetaMessage;
     try {
       res = await this.model!.create({
@@ -203,7 +211,12 @@ export class AiPatternsService {
         fallbacks: "default",
         output_config: { effort: "medium", format: { type: "json_schema", schema: REPLY_JSON_SCHEMA } },
         system: [{ type: "text", text: PATTERN_SYSTEM, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: ask }],
+        messages: [{
+          role: "user",
+          content: ask.image
+            ? [{ type: "image", source: { type: "base64", media_type: ask.image.mime, data: ask.image.data } }, { type: "text", text: ask.text }]
+            : ask.text,
+        }],
       });
     } catch (e) {
       if (e instanceof Anthropic.AuthenticationError) this.log.error("ANTHROPIC_API_KEY ใช้ไม่ได้");
@@ -215,12 +228,13 @@ export class AiPatternsService {
     return { model: res.model ?? AI_MODEL, text, stop, why: String(res.stop_reason), spent: claudeSpent(res.usage as Usage) };
   }
 
-  private async askGemini(ask: string, model: string): Promise<Answer> {
+  private async askGemini(ask: Ask, model: string): Promise<Answer> {
     let res: GeminiReply;
+    const parts = [...(ask.image ? [{ inlineData: { mimeType: ask.image.mime, data: ask.image.data } }] : []), { text: ask.text }];
     try {
       res = await this.gemini!.generate(model, {
         systemInstruction: { parts: [{ text: PATTERN_SYSTEM }] },
-        contents: [{ role: "user", parts: [{ text: ask }] }],
+        contents: [{ role: "user", parts }],
         generationConfig: {
           maxOutputTokens: 16000,
           thinkingConfig: { thinkingLevel: "MEDIUM" },
@@ -258,13 +272,26 @@ export class AiPatternsService {
 
     const count = Math.min(4, Math.max(1, req.count ?? 3));
     const garment = [req.body ? `body ${req.body}` : "", req.trim ? `trim ${req.trim}` : ""].filter(Boolean).join(", ");
-    const ask = `Customer's request: ${req.prompt.trim()}\nGarment colours: ${garment || "not chosen yet"}\nGive ${count} different recipes.`;
-    const base = { userId, prompt: req.prompt.trim() };
+    const words = (req.prompt ?? "").trim();
+    const ask: Ask = {
+      text: [
+        `Customer's request: ${words || "(no words: follow the reference picture)"}`,
+        req.image ? "Reference picture (attached): a pattern the customer likes. Design in its style: the same kind of motifs, layout, colours and mood, as close as the motifs allow." : "",
+        `Garment colours: ${garment || "not chosen yet"}`,
+        `Give ${count} different recipes.`,
+      ].filter(Boolean).join("\n"),
+      image: req.image,
+    };
+    // the admin's table shows which designs came with a picture (the picture itself is not kept)
+    const base = { userId, prompt: req.image ? `[รูปตัวอย่าง] ${words}`.trim() : words };
 
     // the first AI in the admin's order (for Gemini, each of its models in turn); the next only when it can't answer at all
     const tries = order.flatMap<{ p: Provider; m: string }>(p => (p === "claude" ? [{ p, m: AI_MODEL }] : this.geminiModels.map(m => ({ p, m }))));
     let ans: Answer | null = null, ms = 0, allBusy = true;
+    const started = Date.now();
     for (const { p, m } of tries) {
+      // after two minutes no further AI is asked: the designer waits four at most (editor.js AI_WAIT_MS)
+      if (Date.now() - started > AiPatternsService.STOP_TRYING_MS) break;
       const t0 = Date.now();
       try {
         ans = await (p === "claude" ? this.askClaude(ask) : this.askGemini(ask, m));
