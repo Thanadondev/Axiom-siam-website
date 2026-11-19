@@ -154,6 +154,51 @@
       for (let y = b.y0, j = 0; y < b.y0 + b.D + r; y += r, j++) for (let x = b.x0 + (j % 2 ? r : 0); x < b.x0 + b.D + r; x += 2 * r)
         if (!add({ d: `M${r2(x - r)} ${r2(y)}A${r2(r)} ${r2(r)} 0 0 0 ${r2(x + r)} ${r2(y)}`, stroke: L.c(j), sw, open: true, at: [x, y] })) return;
     },
+    tiger(L, add, b) {
+      // tiger stripes: long bands with a saw-tooth edge that swell and taper to points, in loose columns
+      const per = 70 * L.scale * (1.7 - L.density), step = 32 * L.scale;
+      for (let x = b.x0, i = 0; x < b.x0 + b.D; x += per * (0.8 + 0.4 * L.r()), i++) {
+        let y = b.y0 - L.r() * 200 * L.scale;
+        while (y < b.y0 + b.D) {
+          const len = (240 + 320 * L.r()) * L.scale, wmax = (12 + 26 * L.density) * L.scale * (0.6 + 0.6 * L.r());
+          const n = Math.max(4, Math.round(len / step)), left = [], right = [], lean = (L.r() - 0.5) * 0.5;
+          let sx = x + (L.r() - 0.5) * per * 0.4;
+          for (let k = 0; k <= n; k++) {
+            const t = k / n, yy = y + t * len, w = wmax * Math.pow(Math.sin(Math.PI * t), 0.6), jag = k % 2 ? 1.12 : 0.9;
+            sx += lean * step + (L.r() - 0.5) * step * 0.25;
+            left.push([sx - w * jag, yy]); right.unshift([sx + w * (2.02 - jag), yy]);
+          }
+          if (!add({ d: poly(left.concat(right)), fill: L.c(i), at: [x, y + len / 2] })) return;
+          y += len + (30 + 90 * L.r()) * L.scale;
+        }
+      }
+    },
+    flames(L, add, b) {
+      // hot-rod flames: tongues rising from the bottom edge, curling at their tips
+      const bw = 70 * L.scale, gap = bw * 0.6, base = b.cy + b.H / 2 + 20;
+      for (let x = b.cx - b.W * 0.65, i = 0; x < b.cx + b.W * 0.65; x += gap, i++) {
+        const fx = x + (L.r() - 0.5) * bw * 0.3, h = (0.25 + 0.55 * L.density) * b.H * (0.5 + 0.7 * L.r());
+        const curl = (L.r() < 0.5 ? -1 : 1) * bw * (0.4 + 0.8 * L.r()), w = bw * (0.4 + 0.3 * L.r());
+        const P = (...xy) => xy.map(r2).join(" ");
+        const d = `M${P(fx - w, base)}C${P(fx - w, base - h * 0.5, fx - w * 0.2 + curl * 0.6, base - h * 0.8, fx + curl, base - h)}` +
+          `C${P(fx + curl * 0.3 + w * 0.2, base - h * 0.7, fx + w * 1.1, base - h * 0.35, fx + w, base)}Z`;
+        if (!add({ d, fill: L.c(i), at: [fx, base - h / 2] })) return;
+      }
+    },
+    brush(L, add, b) {
+      // dry-brush paint strokes: long bands with ragged edges, thinning out at the end (the grunge / esports look)
+      const n = Math.round(4 + 14 * L.density);
+      for (let i = 0; i < n; i++) {
+        const len = (250 + 350 * L.r()) * L.scale, w = (25 + 45 * L.r()) * L.scale;
+        const x = b.cx - b.W * 0.6 + L.r() * b.W * 1.2 - len / 2, y = b.cy - b.H * 0.5 + L.r() * b.H;
+        const seg = Math.max(8, Math.round(len / (8 * L.scale))), top = [], bot = [];
+        for (let k = 0; k <= seg; k++) {
+          const t = k / seg, xx = x + t * len, ww = w * (t < 0.08 ? 0.6 + 5 * t : 1 - 0.85 * Math.pow(t, 3));
+          top.push([xx, y - (ww / 2) * (0.75 + 0.5 * L.r())]); bot.unshift([xx, y + (ww / 2) * (0.75 + 0.5 * L.r())]);
+        }
+        if (!add({ d: poly(top.concat(bot)), fill: L.c(i), at: [x + len / 2, y], op: 0.75 + 0.25 * L.r() })) return;
+      }
+    },
   };
 
   /** how far toward the fade's side a point is, 0–1 (none: 1) */

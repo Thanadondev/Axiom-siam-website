@@ -10,6 +10,7 @@ import CHART from "../bibs/dtp-chart.json";
 export const MOTIFS = [
   "stripes", "pinstripes", "chevrons", "diamonds", "waves", "halftone", "shards", "camo", "digicamo",
   "speedlines", "lightning", "hexagons", "dots", "rings", "sash", "grid", "triangles", "scales", "prajamyam",
+  "tiger", "flames", "brush",
 ] as const;
 export const FADES = ["none", "up", "down", "left", "right", "center"] as const;
 export const BACKGROUNDS = ["solid", "linear", "radial"] as const;
@@ -114,6 +115,9 @@ A recipe is a background plus 0-4 layers drawn in order, each layer one motif:
 - triangles: a triangle tessellation, colors alternating.
 - scales: overlapping fish-scale arcs.
 - prajamyam: the Thai "ลายประจำยาม" - four pointed petals round a round heart, in a staggered grid (70 mm at scale 1); colors[0] petals, colors[1] heart. Use it for Thai or traditional requests (often gold on red, or gold on dark).
+- tiger: tiger stripes - long bands with a jagged saw-tooth edge that swell in the middle and taper to points, in loose columns (angle 0 = running up and down, 90 = across); density = how thick and close; colors cycle. Use it for tiger, wild-animal or "aggressive" looks.
+- flames: flame tongues rising from the bottom edge and curling at their tips, about a quarter to most of the piece tall by density (angle 180 = hanging from the top); colors cycle. A second flames layer in a lighter colour at a smaller scale looks hotter.
+- brush: rough dry-brush paint strokes (the grunge / esports look), scattered across the piece, tilted by angle; density = how many.
 Every layer: colors (1-4 "#rrggbb"), scale 0.3-3 (motif size), angle -180..180 degrees, density 0.1-1 (how much of the area it covers), opacity 0.1-1, fade (none/up/down/left/right/center: the layer fades out toward that side; for halftone the dots grow toward it), seed (any integer; changes the random placement).
 Background: type solid (colors[0]), linear (a gradient through its colors at angle; 90 = top to bottom) or radial (from the centre out).
 
