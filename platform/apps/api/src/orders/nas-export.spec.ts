@@ -42,7 +42,7 @@ describe("copying a paid order's zip into its job folder on the NAS", () => {
     },
     order: {
       findUnique: async ({ where }: any) => where.id !== order.id ? null : ({
-        orderNo: order.orderNo, status: order.status, user: order.user, items: order.items,
+        orderNo: order.orderNo, status: order.status, delivery: order.delivery ?? null, user: order.user, items: order.items,
         files: files.filter(f => f.orderId === order.id).map(f => ({ id: f.id, name: f.name, path: f.path, bytes: f.bytes, sha256: f.sha256, createdAt: f.createdAt, nasAt: f.nasAt, nasPath: f.nasPath })),
       }),
     },
@@ -90,6 +90,16 @@ describe("copying a paid order's zip into its job folder on the NAS", () => {
     // again (the button, or the sweep): nothing new
     expect(await nasSvc.exportOrder(order.id)).toMatchObject({ ok: true, copied: 0 });
     expect(readdirSync(dir)).toHaveLength(1);
+  });
+
+  it("an order to the agent in Japan gets a note beside its zip saying where it goes; others don't", async () => {
+    order.delivery = { mode: "agent", name: "Axiom Japan (Osaka)", phone: "+81 6 0000 0000", address: "1-2-3 Namba, Osaka" };
+    const { store } = await upload("HF-100 (N) 4379 J-Field Axis R bib (ML).zip");
+    await new NasExportService(prisma, store).exportOrder(order.id);
+    const dir = join(nas, "_webjobs", "AX-261110-6U5T R-bib (ML) J-Field Axis");
+    expect(readdirSync(dir).sort()).toEqual(["HF-100 (N) 4379 J-Field Axis R bib (ML).zip", "ส่งถึง - ตัวแทนญี่ปุ่น.txt"]);
+    const note = readFileSync(join(dir, "ส่งถึง - ตัวแทนญี่ปุ่น.txt"), "utf8");
+    expect(note.split("\r\n")).toEqual(["AX-261110-6U5T — ส่งรวมผ่านตัวแทนในญี่ปุ่น (ไม่ส่งถึงลูกค้าโดยตรง)", "日本の代理店へまとめて発送", "", "Axiom Japan (Osaka) · +81 6 0000 0000", "1-2-3 Namba, Osaka", ""]);
   });
 
   it("a job the website built names its folder itself (an advanced design: R-bib and the team from its print data)", async () => {

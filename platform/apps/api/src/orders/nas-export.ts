@@ -22,7 +22,24 @@ import { KITS_ON_BIB, kitOnBib } from "../bibs/kit";
  * A web-designed job built again after it went (POST /admin/orders/:id/bib-job) has
  * the same name: its zip replaces the one in the folder, and the print manager sees
  * the new zip and makes the print files again.
+ *
+ * An order that ships to the agent in Japan also gets a note beside its zip
+ * (AGENT_NOTE), so whoever packs it from the job folder sees where it goes.
  */
+
+/** the note in an agent order's job folder; the print manager reads only the zips */
+export const AGENT_NOTE = "ส่งถึง - ตัวแทนญี่ปุ่น.txt";
+
+export function agentNote(orderNo: string, d: { name?: string; phone?: string; address?: string }) {
+  return [
+    `${orderNo} — ส่งรวมผ่านตัวแทนในญี่ปุ่น (ไม่ส่งถึงลูกค้าโดยตรง)`,
+    `日本の代理店へまとめて発送`,
+    "",
+    [d.name, d.phone].filter(Boolean).join(" · "),
+    d.address ?? "",
+    "",
+  ].join("\r\n"); // Windows line ends: it is opened in Notepad on the team's PCs
+}
 
 /** the file at `path` already holds these bytes (same size and SHA-256) */
 async function sameFile(path: string, f: { bytes: number; sha256: string | null }) {
@@ -104,7 +121,7 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     const o = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: {
-        orderNo: true, status: true,
+        orderNo: true, status: true, delivery: true,
         user: { select: { fullName: true, companyName: true } },
         items: { select: { size: true, qty: true, designSnapshot: true } },
         files: { select: { id: true, name: true, path: true, bytes: true, sha256: true, createdAt: true, nasAt: true, nasPath: true }, orderBy: { createdAt: "asc" } },
@@ -161,6 +178,11 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
         const nasAt = new Date(), nasPath = join(folder, name);
         await this.prisma.orderFile.update({ where: { id: f.id }, data: { nasPath, nasAt } });
         sent.push({ ...f, nasPath, nasAt });
+      }
+      const d = o.delivery as { mode?: string; name?: string; phone?: string; address?: string } | null;
+      if (d?.mode === "agent") {
+        const note = join(dir, AGENT_NOTE), text = agentNote(o.orderNo, d);
+        if ((await fs.readFile(note, "utf8").catch(() => "")) !== text) await fs.writeFile(note, text, "utf8");
       }
       this.log.log(`${o.orderNo} → ${folder} (${copied} file${copied === 1 ? "" : "s"})`);
       return { ok: true, folder, copied };
