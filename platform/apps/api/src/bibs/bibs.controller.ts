@@ -5,11 +5,17 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { Public, Roles } from "../auth/decorators";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit.guard";
 import { BibJobService } from "./bib-jobs.service";
+import { kitBibDesign, kitLogoUrl, kitOnBib } from "./kit";
+import { BIB_SIZES } from "./template";
 
 const SheetSchema = z.object({
-  design: z.unknown(),
+  design: z.unknown().optional(),
   logoUrl: z.string().max(200).optional(),
   size: z.string().max(8).optional(),
+  /** or a design from the 3D studio (/shop/bib, its flat view): drawn as its orders print */
+  kit: z.unknown().optional(),
+  /** its names and numbers; none = the one on the kit, size M */
+  rows: z.array(z.object({ name: z.string().max(20).default(""), number: z.string().max(3).default(""), size: z.enum(BIB_SIZES) })).max(500).optional(),
 });
 
 /** the bib designer's live order sheet (/order/bib), drawn from the same shapes as the print files */
@@ -24,7 +30,14 @@ export class BibsController {
   sheet(@Body() body: unknown) {
     const p = SheetSchema.safeParse(body);
     if (!p.success) throw new BadRequestException("ข้อมูลไม่ถูกต้อง");
-    return this.bibs.sheet(p.data.design, p.data.logoUrl, p.data.size);
+    const { kit, rows, size } = p.data;
+    if (kit !== undefined) {
+      if (!kitOnBib(kit)) throw new BadRequestException("เสื้อทรงนี้ยังไม่มีภาพแบบแบน");
+      const one = [{ name: (kit.name ?? "").trim().slice(0, 20), number: (kit.number ?? "").replace(/\D/g, "").slice(0, 3), size: "M" as const }];
+      const list = rows?.length ? rows.map(r => ({ ...r, number: r.number.replace(/\D/g, "") })) : one;
+      return this.bibs.sheet(kitBibDesign(kit, list), kitLogoUrl(kit), size);
+    }
+    return this.bibs.sheet(p.data.design, p.data.logoUrl, size);
   }
 }
 

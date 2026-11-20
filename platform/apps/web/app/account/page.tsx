@@ -26,7 +26,8 @@ interface Address {
   isDefault: boolean;
 }
 
-interface DesignItem { id: string; name: string; previewUrl?: string | null; mode: string; updatedAt: string; }
+/** kit: saved in the 3D studio (/shop/<kit>) — opens there; none: the advanced designer's (/design) */
+interface DesignItem { id: string; name: string; previewUrl?: string | null; mode: string; updatedAt: string; kit?: string | null; }
 
 const emptyAddr = {
   label: "", recipient: "", phone: "", line1: "", line2: "",
@@ -279,9 +280,9 @@ export default function AccountPage() {
                 </div>
                 <div style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</div>
-                  <div className="asub" style={{ fontSize: 11 }}>{d.mode === "reversible" ? "สองด้าน" : "ธรรมดา"} · {new Date(d.updatedAt).toLocaleDateString("th-TH")}</div>
+                  <div className="asub" style={{ fontSize: 11 }}>{d.kit ? "ออกแบบเสื้อ" : "ขั้นสูง"} · {d.mode === "reversible" ? "สองด้าน" : "ธรรมดา"} · {new Date(d.updatedAt).toLocaleDateString("th-TH")}</div>
                   <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                    <Link href={`/design?design=${d.id}`} className="linkbtn">เปิด</Link>
+                    <Link href={d.kit ? `/shop/${d.kit}?design=${d.id}` : `/design?design=${d.id}`} className="linkbtn">เปิด</Link>
                     <Link href={`/checkout?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>🧵 สั่งผลิต</Link>
                     <button onClick={() => publishDesign(d)} className="linkbtn" style={{ color: "var(--brand)" }}>ขายในตลาด</button>
                     <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>ลบ</button>

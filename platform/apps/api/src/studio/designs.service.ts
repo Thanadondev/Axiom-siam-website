@@ -19,12 +19,23 @@ export class DesignsService {
     });
   }
 
-  list(userId: string) {
-    return this.prisma.design.findMany({
+  /**
+   * The account's designs. `kit` says which editor made one: a design saved in
+   * the 3D studio (/shop/<kit>) carries its kit and opens there again; the
+   * advanced designer's (/design) has none. Read straight from the JSON so the
+   * list doesn't pull every full design (they can hold images).
+   */
+  async list(userId: string) {
+    const rows = await this.prisma.design.findMany({
       where: { userId, deletedAt: null },
       orderBy: { updatedAt: "desc" },
       select: { id: true, name: true, previewUrl: true, mode: true, updatedAt: true },
     });
+    if (!rows.length) return [];
+    const kits = await this.prisma.$queryRaw<{ id: string; kit: string | null }[]>`
+      SELECT id, state_json->>'kit' AS kit FROM designs WHERE user_id = ${userId} AND deleted_at IS NULL`;
+    const kitOf = new Map(kits.map(k => [k.id, k.kit]));
+    return rows.map(r => ({ ...r, kit: kitOf.get(r.id) ?? null }));
   }
 
   async get(userId: string, id: string) {

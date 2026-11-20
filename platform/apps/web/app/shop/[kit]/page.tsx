@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import LockerScene, { type LockerHandle, type LockerView } from "../../../components/LockerScene";
 import KitThumb from "../../../components/KitThumb";
-import SwatchPicker, { usePalette, nearestSwatch, swatchLabel, type Swatch } from "../../../components/SwatchPicker";
+import SwatchPicker, { usePalette, swatchLabel } from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
 import { variantQuery } from "../../../lib/garment-options";
@@ -18,7 +18,7 @@ import {
   defaultSideB, sideLook, kitSizes, unknownSizes,
   type Kit, type KitConfig, type KitSide, type PartId, type RosterRow, type Size,
 } from "../../../lib/kits";
-import { importLogo, importFont, listAssets, deleteAsset, LOGO_ACCEPT, FONT_ACCEPT, fontFamilyOf, registerFont, type KitAsset } from "../../../lib/kit-assets";
+import { importLogo, importFont, listAssets, deleteAsset, LOGO_ACCEPT, FONT_ACCEPT, fontFamilyOf, registerFont, type KitAsset, type DesignAssets } from "../../../lib/kit-assets";
 import { useKitAssets, uploadDesignAssets } from "../../../lib/use-kit-assets";
 import "../../app.css"; // UserMenu + SwatchPicker base styles
 import "../../home.css";
@@ -75,7 +75,6 @@ function Studio({ kit }: { kit: Kit }) {
   const [onMannequin, setOnMannequin] = useState(true);
   const [photo, setPhoto] = useState(false);
   const [flat, setFlat] = useState(false);
-  const [hexDraft, setHexDraft] = useState("");
   const [rosterText, setRosterText] = useState("");
   const [qty, setQty] = useState<Record<Size, number>>(() => ({ ...emptyQty(), M: 10, L: 5 }));
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -155,6 +154,27 @@ function Studio({ kit }: { kit: Kit }) {
     return () => clearTimeout(t);
   }, [cfg, rosterText, qty, loaded, kit.id]);
 
+  // a design saved to the account, opened from "my designs" (/shop/<kit>?design=<id>):
+  // it replaces this device's last setup once the sign-in is back, then the link drops the id
+  // so later edits aren't overwritten on a reload
+  const openedDesign = useRef(false);
+  useEffect(() => {
+    if (!loaded || !token || openedDesign.current) return;
+    const id = new URLSearchParams(window.location.search).get("design");
+    if (!id) return;
+    openedDesign.current = true;
+    apiFetch<{ name: string; stateJson: any }>(`/designs/${id}`, { token })
+      .then(d => {
+        const s = d.stateJson || {};
+        if (s.kit && s.kit !== kit.id) { router.replace(`/shop/${s.kit}?design=${id}`); return; }
+        setCfg(restoreConfig(kit, s));
+        if (Array.isArray(s.roster)) setRosterText(s.roster.map((r: any) => [r.playerName, r.number, r.size].map(v => v ?? "").join("\t")).join("\n"));
+        setMsg({ ok: true, text: `เปิดแบบ "${d.name}" แล้ว` });
+        router.replace(`/shop/${kit.id}`);
+      })
+      .catch(() => setMsg({ ok: false, text: "เปิดแบบนี้ไม่ได้ (ไม่พบ หรือไม่ใช่แบบของบัญชีนี้)" }));
+  }, [loaded, token, kit, router]);
+
   // the sizes this kit is made in: the bib also in XXL (3L)
   const sizes = useMemo(() => kitSizes(kit), [kit]);
   const roster = useMemo(() => parseRoster(rosterText, sizes), [rosterText, sizes]);
@@ -188,6 +208,47 @@ function Studio({ kit }: { kit: Kit }) {
     logo: resolved.logo, logoTint: resolved.logoTint, fontFamily: resolved.fontFamily,
   }), [act, cfg.trim, cfg.fabric, cfg.name, cfg.number, cfg.font, resolved.logo, resolved.logoTint, resolved.fontFamily]);
 
+  // ---------- the flat view ("แบบปกติ"): the order sheet the factory prints from — front and back
+  // laid flat on the bib's pattern, both sides of an R-bib — drawn by the API as the order will print
+  const hasFlat = kit.priceAs === "bib_n";
+  const [flatView, setFlatView] = useState(false);
+  const [sheet, setSheet] = useState<{ url: string; size: string; sizes: string[] } | null>(null);
+  const [sheetSize, setSheetSize] = useState("");
+  const [sheetErr, setSheetErr] = useState("");
+  const sheetUrl = useRef("");
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
+  // the team's logo/font live on this device until the design is saved: sent up once (per file) so the sheet shows them
+  const sentAssets = useRef<{ key: string; assets?: DesignAssets }>({ key: "" });
+  useEffect(() => {
+    if (!flatView || !hasFlat) return;
+    let gone = false;
+    const t = setTimeout(async () => {
+      try {
+        const key = `${cfg.logo}|${cfg.fontAsset ?? ""}`;
+        if (token && sentAssets.current.key !== key) sentAssets.current = { key, assets: await uploadDesignAssets(resolvedRef.current, token) };
+        const assets = token ? sentAssets.current.assets : undefined;
+        const rows = roster
+          .filter(r => (["S", "M", "L", "XL", "XXL"] as string[]).includes(r.size))
+          .map(r => ({ name: r.playerName, number: r.number, size: r.size }));
+        const body = await apiFetch<{ svg: string; size: string; sizes: string[] }>("/bibs/sheet", {
+          method: "POST",
+          body: JSON.stringify({ kit: { ...cfg, name: cfg.name.trim(), assets }, rows, size: sheetSize || undefined }),
+        });
+        if (gone) return;
+        const url = URL.createObjectURL(new Blob([body.svg], { type: "image/svg+xml" }));
+        if (sheetUrl.current) URL.revokeObjectURL(sheetUrl.current);
+        sheetUrl.current = url;
+        setSheet({ url, size: body.size, sizes: body.sizes });
+        setSheetErr("");
+      } catch {
+        if (!gone) setSheetErr("ตอนนี้แสดงแบบปกติไม่ได้ · ลองอีกครั้ง");
+      }
+    }, 400);
+    return () => { gone = true; clearTimeout(t); };
+  }, [flatView, hasFlat, cfg, roster, sheetSize, token]);
+  useEffect(() => () => { if (sheetUrl.current) URL.revokeObjectURL(sheetUrl.current); }, []);
+
   const part = parts[Math.min(partIdx, parts.length - 1)];
   const cur = act.colors[part.id];
   // the colour's name, and its number and CMYK on the factory's chart (DTP-28color-cs4.svg)
@@ -220,21 +281,9 @@ function Studio({ kit }: { kit: Kit }) {
       )}
     </div>
   ) : null;
-  const goPart = (i: number) => { const n = parts.length; setPartIdx(((i % n) + n) % n); setHexDraft(""); setSnapped(null); };
-
-  // a typed colour becomes the nearest one on the factory's chart (white: the fabric, unprinted)
-  const [snapped, setSnapped] = useState<{ typed: string; to: Swatch } | null>(null);
-  const onHex = (v: string) => {
-    setHexDraft(v);
-    setSnapped(null);
-    const h = (v.startsWith("#") ? v : "#" + v).trim().toLowerCase();
-    if (!/^#[0-9a-f]{6}$/.test(h)) return;
-    if (h === "#ffffff" || !palette.length) { setColor(part.id, h); return; }
-    const near = nearestSwatch(palette, h)!;
-    setColor(part.id, near.c);
-    if (near.c.toLowerCase() !== h) setSnapped({ typed: h, to: near });
-  };
-  const hexOffChart = cur !== "#ffffff" && palette.length > 0 && !onChart;
+  const goPart = (i: number) => { const n = parts.length; setPartIdx(((i % n) + n) % n); };
+  // white is the fabric, unprinted
+  const offChart = cur !== "#ffffff" && palette.length > 0 && !onChart;
 
   function preview(): string | undefined {
     try { return scene.current?.capture(900, 900) ?? undefined; } catch { return undefined; }
@@ -330,7 +379,15 @@ function Studio({ kit }: { kit: Kit }) {
             </div>
           )}
 
-          {!photo && (
+          {flatView && (
+            <div className="ax-flatview" role="img" aria-label="แบบปกติ: ด้านหน้าและด้านหลังแบบแบน">
+              {sheet ? <img src={sheet.url} alt="" /> : !sheetErr && <span className="ax-mono">กำลังวาด…</span>}
+              {sheetErr && <p className="ax-err" style={{ margin: 0 }}>{sheetErr}</p>}
+              {!token && cfg.logo.startsWith("logo-") && <p className="ax-mono" style={{ margin: 0 }}>เข้าสู่ระบบเพื่อดูโลโก้ทีมในแบบปกติ</p>}
+            </div>
+          )}
+
+          {!photo && !flatView && (
             <>
               <div className="ax-sover ax-stitle">
                 <span style={{ fontSize: 15, color: "#e3e1dc" }}>{kit.name} · {kit.code}{cfg.reversible ? ` · R-bib ด้าน ${side}` : ""}</span>
@@ -347,7 +404,19 @@ function Studio({ kit }: { kit: Kit }) {
 
           <div className="ax-sover ax-scontrols">
             <div className="group">
-              {!photo && !flat && (
+              {hasFlat && !photo && (
+                <>
+                  <div className="ax-seg" role="group" aria-label="มุมมอง">
+                    <button type="button" className="ax-sq" aria-pressed={!flatView} onClick={() => setFlatView(false)} disabled={flat}>3D</button>
+                    <button type="button" className="ax-sq" aria-pressed={flatView} onClick={() => setFlatView(true)}>แบบปกติ</button>
+                  </div>
+                  {flatView && sheet && sheet.sizes.length > 1 && sheet.sizes.map(z => (
+                    <button key={z} type="button" className="ax-sq" aria-pressed={sheet.size === z} onClick={() => setSheetSize(z)}>{z}</button>
+                  ))}
+                  {!flatView && !flat && <span className="ax-vsep" aria-hidden="true" />}
+                </>
+              )}
+              {!photo && !flat && !flatView && (
                 <>
                   {(["front", "side", "back"] as LockerView[]).map(v => (
                     <button key={v} type="button" className="ax-sq" aria-pressed={view === v} onClick={() => setView(v)}>
@@ -361,13 +430,13 @@ function Studio({ kit }: { kit: Kit }) {
                   <span className="ax-vsep" aria-hidden="true" />
                 </>
               )}
-              {!flat && <button type="button" className="ax-sq" aria-pressed={photo} onClick={() => setPhoto(p => !p)}>
+              {!flat && !flatView && <button type="button" className="ax-sq" aria-pressed={photo} onClick={() => setPhoto(p => !p)}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
                 {photo ? "ออกจากโหมดถ่ายภาพ" : "โหมดถ่ายภาพ"}
               </button>}
               {photo && <button type="button" className="ax-sq hot" onClick={savePhoto}>บันทึกภาพ PNG</button>}
             </div>
-            {!flat && (
+            {!flat && !flatView && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--ax-mute)" }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
                 ลากเพื่อหมุน · เลื่อนเพื่อซูม
@@ -400,23 +469,16 @@ function Studio({ kit }: { kit: Kit }) {
                 <div>
                   <div className="ax-swatches" role="group" aria-label={`สีของ${part.label}`}>
                     {QUICK_SWATCHES.map(s => (
-                      <button key={s.hex} type="button" className="ax-sw" aria-label={s.name} aria-pressed={cur === s.hex} style={{ background: s.hex }} onClick={() => { setColor(part.id, s.hex); setHexDraft(""); setSnapped(null); }} />
+                      <button key={s.hex} type="button" className="ax-sw" aria-label={s.name} aria-pressed={cur === s.hex} style={{ background: s.hex }} onClick={() => { setColor(part.id, s.hex); }} />
                     ))}
                   </div>
                   <p style={{ margin: "12px 0 0", fontSize: 16 }}>{swatchName}</p>
                 </div>
                 <div className="ax-pal">
-                  <SwatchPicker label="สีทั้งหมดในชาร์ตโรงงาน" value={cur} onChange={h => { setColor(part.id, h); setHexDraft(""); setSnapped(null); }} />
+                  <SwatchPicker label="สีทั้งหมดในชาร์ตโรงงาน" value={cur} onChange={h => { setColor(part.id, h); }} />
                 </div>
-                <div>
-                  <label className="ax-label" htmlFor="hex">กำหนดสีเอง (HEX)</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--ax-line-2)", padding: "0 12px" }}>
-                    <input id="hex" className="ax-field" style={{ border: 0, padding: 0, fontFamily: "var(--ax-mono)" }} value={hexDraft || cur.toUpperCase()} maxLength={7} onChange={e => onHex(e.target.value)} />
-                    <span aria-hidden="true" style={{ width: 28, height: 28, flex: "none", border: "1px solid #4a4d52", background: cur }} />
-                  </div>
-                  {snapped && <p className="ax-psub" style={{ marginTop: 8, fontSize: 13 }}>{snapped.typed.toUpperCase()} ไม่อยู่ในชาร์ตโรงงาน · ใช้สีที่ใกล้ที่สุด {swatchLabel(snapped.to)}</p>}
-                  {hexOffChart && !snapped && <p className="ax-err" style={{ marginTop: 8 }}>สีนี้ไม่อยู่ในชาร์ตโรงงาน · เลือกสีจากชาร์ต หรือพิมพ์ HEX ใหม่เพื่อใช้สีที่ใกล้ที่สุด</p>}
-                </div>
+                {/* colours come from the factory's chart only (no typed HEX); a design saved before with an off-chart colour says so */}
+                {offChart && <p className="ax-err" style={{ margin: 0 }}>สีนี้ไม่อยู่ในชาร์ตโรงงาน · เลือกสีจากชาร์ต</p>}
                 {/* a number the colour of the body or the stripes it crosses can't be read */}
                 {["body", "stripe", "number"].includes(part.id) && (() => {
                   const clash = inkClashes({ body: act.colors.body, pattern: act.pattern, patternColor: act.colors.stripe, ink: act.colors.number });
