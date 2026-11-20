@@ -13,6 +13,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="th">
       <head>
+        {/* a page of this site is never shown inside a frame of this site: the advanced designer
+            (/design) holds its editor in an iframe, and a link out of it once opened the home page,
+            then the 3D studio, inside that frame with the address bar still on /design */}
+        <script dangerouslySetInnerHTML={{ __html: "try{if(window.top!==window.self&&window.top.location.origin===location.origin)window.top.location.replace(location.href)}catch(e){}" }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
