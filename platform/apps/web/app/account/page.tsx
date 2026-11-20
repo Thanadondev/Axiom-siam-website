@@ -471,8 +471,8 @@ export default function AccountPage() {
 
 </>)}
           {tab === "security" && (<>
-            <SecurityCard />
-            <TwoFactorCard />
+            <SecurityCard lang={lang} />
+            <TwoFactorCard lang={lang} />
           </>)}
         </div>
       </div>

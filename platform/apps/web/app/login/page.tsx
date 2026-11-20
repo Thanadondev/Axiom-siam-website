@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import AppShell from "../../components/AppShell";
-import AuthAlternatives from "../../components/AuthAlternatives";
 import { nextPath } from "../../lib/next-path";
 import { tri, useLang } from "../../lib/i18n";
 
@@ -83,8 +82,6 @@ export default function LoginPage() {
         <button className="abtn solid block" style={{ marginTop: 22 }} disabled={loading}>
           {loading ? L("กำลังเข้าสู่ระบบ...", "Signing in…", "ログイン中…") : needs2fa ? L("ยืนยันรหัส", "Confirm code", "コードを確認") : L("เข้าสู่ระบบ", "Sign in", "ログイン")}
         </button>
-
-        {!needs2fa && <AuthAlternatives lang={lang} />}
 
         <p className="asub center" style={{ marginTop: 18 }}>
           {L("ยังไม่มีบัญชี?", "No account yet?", "アカウントをお持ちでない方は")}{" "}

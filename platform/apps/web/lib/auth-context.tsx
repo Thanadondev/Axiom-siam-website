@@ -22,6 +22,8 @@ export interface RegisterData {
   fullName: string;
   phone?: string;
   companyName?: string;
+  /** the language they signed up in: their emails come in it */
+  locale?: "th" | "en" | "ja";
 }
 
 interface AuthState {

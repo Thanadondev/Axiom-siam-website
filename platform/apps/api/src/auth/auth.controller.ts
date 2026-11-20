@@ -13,11 +13,9 @@ import {
   AddressUpdateSchema,
   TotpCodeSchema,
   TotpDisableSchema,
-  GoogleSignInSchema,
   SetPasswordSchema,
   type TotpCodeDto,
   type TotpDisableDto,
-  type GoogleSignInDto,
   type SetPasswordDto,
   type RegisterDto,
   type LoginDto,
@@ -71,23 +69,6 @@ export class AuthController {
     return { accessToken, user };
   }
 
-  // ---------- Google sign-in ----------
-  @Public()
-  @Get("providers")
-  providers() {
-    // the frontend hides buttons for providers that aren't configured
-    return { google: !!process.env.GOOGLE_CLIENT_ID, googleClientId: process.env.GOOGLE_CLIENT_ID ?? null };
-  }
-
-  @Public()
-  @RateLimit({ limit: 20, windowMs: 5 * 60_000 })
-  @Post("google")
-  async google(@Body(new ZodValidationPipe(GoogleSignInSchema)) dto: GoogleSignInDto, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken, user } = await this.auth.googleSignIn(dto.credential);
-    res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts);
-    return { accessToken, user };
-  }
-
   @Public()
   @Post("refresh")
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
@@ -132,7 +113,7 @@ export class AuthController {
     return this.auth.totpDisable(user.id, dto.password, dto.code);
   }
 
-  // set (Google-only accounts) or change the password
+  // set the first password (an account made without one) or change it
   @UseGuards(JwtAuthGuard)
   @RateLimit({ limit: 10, windowMs: 15 * 60_000 })
   @Post("password")
@@ -144,7 +125,7 @@ export class AuthController {
   @RateLimit({ limit: 5, windowMs: 15 * 60_000 }) // stops reset-email bombing
   @Post("request-reset")
   requestReset(@Body(new ZodValidationPipe(RequestResetSchema)) dto: RequestResetDto) {
-    return this.auth.requestReset(dto.email);
+    return this.auth.requestReset(dto.email, dto.locale);
   }
 
   @Public()

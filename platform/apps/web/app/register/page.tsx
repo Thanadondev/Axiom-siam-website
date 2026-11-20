@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import AppShell from "../../components/AppShell";
-import AuthAlternatives from "../../components/AuthAlternatives";
 import { nextPath } from "../../lib/next-path";
 import { tri, useLang } from "../../lib/i18n";
 
@@ -17,6 +16,8 @@ export default function RegisterPage() {
   const L = tri(lang);
   const th = lang === "th";
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", companyName: "", password: "" });
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,15 +28,19 @@ export default function RegisterPage() {
     e.preventDefault();
     setErr("");
     setMsg("");
+    if (form.password !== confirm) {
+      setErr(L("รหัสผ่านทั้งสองช่องไม่ตรงกัน", "The two passwords don't match", "パスワードが一致しません"));
+      return;
+    }
     setLoading(true);
     try {
-      const r = await register(form);
+      const r = await register({ ...form, locale: lang });
       setMsg(th ? `${r.message} — กำลังเข้าสู่ระบบ...` : L("", "Account created — signing you in…", "アカウントを作成しました。ログインしています…"));
       try {
         await login(form.email, form.password);
         router.push(nextPath());
       } catch {
-        setMsg(th ? `${r.message} — ตรวจอีเมลเพื่อยืนยัน (dev: ดูลิงก์ที่ console ของ API)` : L("", "Account created — please check your email to confirm it", "アカウントを作成しました。確認メールをご確認ください"));
+        setMsg(th ? `${r.message} — ตรวจอีเมลเพื่อยืนยัน${process.env.NODE_ENV === "production" ? "" : " (dev: ดูลิงก์ที่ console ของ API)"}` : L("", "Account created — please check your email to confirm it", "アカウントを作成しました。確認メールをご確認ください"));
       }
     } catch (e: any) {
       // the API answers in Thai: in other languages, say it by what kind of failure it was
@@ -75,7 +80,15 @@ export default function RegisterPage() {
         </div>
 
         <label className="flabel" htmlFor="rg-pw">{L("รหัสผ่าน (อย่างน้อย 8 ตัว) *", "Password (at least 8 characters) *", "パスワード（8文字以上）*")}</label>
-        <input id="rg-pw" className="ainput" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={set("password")} />
+        <input id="rg-pw" className="ainput" type={showPw ? "text" : "password"} required minLength={8} autoComplete="new-password" value={form.password} onChange={set("password")} />
+
+        <label className="flabel" htmlFor="rg-pw2">{L("ยืนยันรหัสผ่าน *", "Confirm password *", "パスワード（確認）*")}</label>
+        <input id="rg-pw2" className="ainput" type={showPw ? "text" : "password"} required minLength={8} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, color: "var(--muted)", cursor: "pointer" }}>
+          <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} />
+          {L("แสดงรหัสผ่าน", "Show password", "パスワードを表示")}
+        </label>
 
         {err && <div className="err">{err}</div>}
         {msg && <div className="ok">{msg}</div>}
@@ -83,8 +96,6 @@ export default function RegisterPage() {
         <button className="abtn solid block" style={{ marginTop: 22 }} disabled={loading}>
           {loading ? L("กำลังสมัคร...", "Creating your account…", "登録中…") : L("สมัครสมาชิก", "Sign up", "登録する")}
         </button>
-
-        <AuthAlternatives lang={lang} />
 
         <p className="asub center" style={{ marginTop: 18 }}>
           {L("มีบัญชีแล้ว?", "Already have an account?", "アカウントをお持ちの方は")}{" "}

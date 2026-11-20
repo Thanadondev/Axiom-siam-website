@@ -35,9 +35,7 @@ export class AuthService {
 
   // ---------- register ----------
   async register(dto: RegisterDto) {
-    // Emails are case-insensitive in practice, and Google hands us a lowercase
-    // one. Storing "Bob@x.com" here would create a second account the Google
-    // path can never find — same person, two rows, admin on the wrong one.
+    // emails are case-insensitive in practice: "Bob@x.com" and "bob@x.com" are one account
     const email = dto.email.trim().toLowerCase();
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -52,19 +50,20 @@ export class AuthService {
         phone: dto.phone,
         companyName: dto.companyName,
         role: "customer",
+        ...(dto.locale ? { locale: dto.locale } : {}),
       },
     });
 
-    await this.createTokenAndSendVerify(user.id, user.email);
+    await this.createTokenAndSendVerify(user.id, user.email, user.locale);
     return { message: "สมัครสำเร็จ กรุณายืนยันอีเมล", userId: user.id };
   }
 
-  private async createTokenAndSendVerify(userId: string, email: string) {
+  private async createTokenAndSendVerify(userId: string, email: string, lang?: string) {
     const raw = randomToken();
     await this.prisma.authToken.create({
       data: { userId, type: "email_verify", token: sha256(raw), expiresAt: hours(24) },
     });
-    await this.mail.sendVerifyEmail(email, raw);
+    await this.mail.sendVerifyEmail(email, raw, lang);
   }
 
   async verifyEmail(token: string) {
@@ -79,43 +78,9 @@ export class AuthService {
     return { message: "ยืนยันอีเมลสำเร็จ" };
   }
 
-  // ---------- Google sign-in ----------
-
-  /** verifies a Google ID token (credential from Google Identity Services) and
-   *  signs the user in, creating the account on first use. */
-  async googleSignIn(credential: string) {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId) throw new BadRequestException("ยังไม่ได้ตั้งค่า Google Sign-In");
-
-    // Google's tokeninfo endpoint verifies the signature + expiry for us
-    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
-    if (!res.ok) throw new UnauthorizedException("โทเคน Google ไม่ถูกต้อง");
-    const p = await res.json() as { aud?: string; email?: string; email_verified?: string | boolean; name?: string; sub?: string };
-
-    if (p.aud !== clientId) throw new UnauthorizedException("โทเคน Google ไม่ได้ออกให้แอปนี้");
-    if (!p.email || (p.email_verified !== true && p.email_verified !== "true"))
-      throw new UnauthorizedException("อีเมล Google ยังไม่ได้ยืนยัน");
-
-    const email = p.email.toLowerCase();
-    let user = await this.prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      // first Google sign-in → create a passwordless account, email pre-verified
-      user = await this.prisma.user.create({
-        data: { email, fullName: p.name || null, role: "customer", isVerified: true },
-      });
-    } else {
-      if (user.suspendedAt) throw new UnauthorizedException("บัญชีนี้ถูกระงับ — ติดต่อทีมงาน");
-      if (!user.isVerified) await this.prisma.user.update({ where: { id: user.id }, data: { isVerified: true } });
-    }
-
-    const tokens = await this.issueTokens(user.id, user.role);
-    return { ...tokens, user: this.publicUser({ ...user, isVerified: true }) };
-  }
-
   // ---------- login ----------
   async login(dto: LoginDto) {
-    // must match how register/googleSignIn store it, or the row is never found
+    // must match how register stores it, or the row is never found
     const user = await this.prisma.user.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
     if (!user || !user.passwordHash) throw new UnauthorizedException("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
 
@@ -180,8 +145,8 @@ export class AuthService {
     });
     if (!user?.totpEnabled || !user.totpSecret) throw new BadRequestException("ยังไม่ได้เปิด 2FA");
 
-    // password-based accounts must re-enter their password; Google-only accounts
-    // have none, so a valid 2FA/recovery code is proof enough
+    // an account with a password re-enters it; one without (made before sign-up was
+    // by email and password only) has a valid 2FA/recovery code as its proof
     const passwordMatches = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : true;
     const codeValid = verifyTotp(user.totpSecret, code) || consumeRecoveryCode(code, user.recoveryCodes ?? []) !== null;
     const gate = canDisableTotp(!!user.passwordHash, passwordMatches, codeValid);
@@ -264,7 +229,7 @@ export class AuthService {
   }
 
   // ---------- password reset ----------
-  async requestReset(rawEmail: string) {
+  async requestReset(rawEmail: string, pageLang?: "th" | "en" | "ja") {
     // same normalisation as register/login, or a reset silently does nothing
     const email = rawEmail.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
@@ -273,7 +238,8 @@ export class AuthService {
       await this.prisma.authToken.create({
         data: { userId: user.id, type: "password_reset", token: sha256(raw), expiresAt: hours(1) },
       });
-      await this.mail.sendResetEmail(email, raw);
+      // the language of the page they asked from, else the account's own
+      await this.mail.sendResetEmail(email, raw, pageLang ?? user.locale);
     }
     // do not reveal whether the email exists
     return { message: "หากอีเมลมีอยู่ในระบบ เราได้ส่งลิงก์รีเซ็ตให้แล้ว" };
@@ -389,10 +355,9 @@ export class AuthService {
     };
   }
 
-  // ---------- password: set (Google-only users) / change ----------
+  // ---------- password: set / change ----------
 
-  /** Set a password when the account has none (created via Google), or change
-   *  it when one exists. `current` is required only when a password is set. */
+  /** Set a password when the account has none, or change it when one exists. `current` is required only when a password is set. */
   async setPassword(userId: string, newPassword: string, current?: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
     if (!user) throw new NotFoundException("ไม่พบผู้ใช้");
