@@ -23,9 +23,9 @@ type Spot = {
 };
 
 /**
- * Positions come from the Blender factory (AXIOM-WEB\3D Factory\garment_web.blend,
+ * Positions come from the Blender factory (AXIOM-WEB\3D Factory\garment_web_v2.blend,
  * camera VIEW_overview at 40 mm, shift x 0.07, 2560x1440 cropped to rows 115-1196):
- * each station's machines projected into the render (the sewing lines placed by eye),
+ * each station's machines projected into the render (render_v2.py),
  * labels staggered so neighbours don't overlap. Picture: public/factory/factory-*.webp.
  * Zoomed in, the overview gives way to the station's own camera (VIEW_<station>,
  * same 2560x1081 frame): public/factory/<id>-*.webp.
@@ -35,32 +35,32 @@ const SPOTS: Spot[] = [
     about: ["ออกแบบเอี๊ยมบนเว็บ เลือกสี ลาย ใส่ชื่อและเบอร์ทั้งทีม แล้วสั่งพิมพ์ได้เลย",
       "Design your team's bibs online: colours, pattern, every name and number, then order.",
       "ウェブでビブをデザイン。色・柄・チーム全員の名前と番号を入れてそのまま注文。"],
-    dot: [8.0, 74.1], tag: [8.0, 62.0], box: [3.4, 68.4, 12.4, 80.0] },
+    dot: [8.6, 76.5], tag: [8.6, 62.0], box: [2.5, 72.3, 14.6, 80.6] },
   { id: "heatpress", href: "/order/upload", cardRight: true, title: ["ส่งไฟล์เอง", "Send your own file", "データ入稿"], place: ["เครื่องรีดร้อน", "Heat press", "ヒートプレス"],
     about: ["มีไฟล์งานอยู่แล้ว อัปโหลด zip ของทีม แล้วเราผลิตให้",
       "Already have the artwork? Upload your team's zip and we make it.",
       "データをお持ちなら、チームの zip をアップロードするだけ。"],
-    dot: [21.7, 73.4], tag: [21.7, 48.0], box: [17.4, 68.0, 25.8, 78.8] },
+    dot: [21.8, 73.5], tag: [21.8, 50.0], box: [17.1, 67.9, 26.5, 79.3] },
   { id: "laser", href: "/design", title: ["ออกแบบขั้นสูง", "Advanced designer", "詳細デザイン"], place: ["ตัดเลเซอร์", "Laser cutting", "レーザーカット"],
     about: ["ออกแบบอิสระบนแพทเทิร์นจริง ใส่ลาย รูป และตัวหนังสือได้ทุกตำแหน่ง",
       "Design freely on the real pattern: artwork, photos and text anywhere.",
       "実際の型紙に自由にデザイン。柄・写真・文字をどこにでも。"],
-    dot: [34.8, 66.6], tag: [34.8, 60.0], box: [28.8, 55.2, 40.5, 78.7] },
+    dot: [34.2, 72.3], tag: [34.2, 60.0], box: [31.0, 65.8, 37.3, 78.8] },
   { id: "sewing", href: "/templates", title: ["ร้านแม่แบบ", "Template shop", "テンプレート"], place: ["ไลน์เย็บ", "Sewing line", "縫製ライン"],
     about: ["แบบสำเร็จรูปจากนักออกแบบ เลือกแบบที่ชอบแล้วใส่ชื่อทีมได้เลย",
       "Ready-made designs from designers: pick one and add your team.",
       "デザイナーのテンプレートから選んで、チーム名を入れるだけ。"],
-    dot: [56.0, 64.0], tag: [56.0, 47.0], box: [49.5, 53.0, 62.5, 78.0] },
+    dot: [55.3, 67.4], tag: [55.3, 50.0], box: [49.1, 58.5, 61.9, 77.0] },
   { id: "shipping", href: "/tracking", right: true, title: ["ติดตามงาน", "Track order", "注文追跡"], place: ["แพ็กและส่ง", "Packing & shipping", "梱包・出荷"],
     about: ["ใส่เลขออเดอร์ ดูว่างานอยู่ขั้นไหนในไลน์ผลิต จนถึงวันส่ง",
       "Enter your order number to see where it is on the line, right up to shipping.",
       "注文番号で、製造ラインのどこにあるか出荷まで確認できます。"],
-    dot: [89.9, 64.3], tag: [89.9, 52.0], box: [82.0, 56.7, 98.0, 72.0] },
+    dot: [89.9, 64.3], tag: [89.9, 52.0], box: [81.5, 56.0, 98.7, 72.6] },
   { id: "office", title: ["ติดต่อเรา", "Contact us", "お問い合わせ"], place: ["สำนักงาน", "Office", "オフィス"],
     about: ["ทีมกราฟิกและฝ่ายขายอยู่ที่นี่ ถามเรื่องงาน ราคา หรือส่งแบบมาให้ดูได้",
       "Our graphics and sales team sit here: ask about a job, prices, or send us a design.",
       "グラフィックと営業チームはここ。ご相談・お見積り・デザインの確認はお気軽に。"],
-    dot: [17.4, 38.7], tag: [17.4, 27.0], box: [8.0, 30.1, 26.1, 47.7] },
+    dot: [17.6, 39.8], tag: [17.6, 27.0], box: [8.1, 32.2, 26.5, 47.7] },
 ];
 
 const ZOOM_MS = 750;   // the overview flies to the station (matches .fx-cam transition)
