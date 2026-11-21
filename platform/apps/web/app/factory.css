@@ -27,6 +27,10 @@
 /* the station's own render, over the zoomed overview */
 .fx-near { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; pointer-events: none; transition: opacity .45s ease; user-select: none; cursor: zoom-out; }
 .fx-near.on { opacity: 1; pointer-events: auto; }
+/* moving pictures: the overview loop under the labels, the flight over everything */
+.fx-loop { object-fit: cover; }
+.fx-fly { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; opacity: 0; pointer-events: none; transition: opacity .35s ease; }
+.fx-fly.on { opacity: 1; pointer-events: auto; transition: none; cursor: zoom-out; }
 
 /* the station's outline while its button is hovered / focused */
 .fx-box { position: absolute; border: 2px solid var(--ax-accent); border-radius: 12px; background: rgba(242, 101, 34, .12); box-shadow: 0 0 0 4000px rgba(13, 14, 16, .28); pointer-events: none; transition: all .2s; }
@@ -88,5 +92,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .fx-dot::after { animation: none; }
-  .fx-pill, .fx-box, .fx-cam, .fx-near, .fx-panel, .fx-spots { transition: none; }
+  .fx-pill, .fx-box, .fx-cam, .fx-near, .fx-panel, .fx-spots, .fx-fly { transition: none; }
 }

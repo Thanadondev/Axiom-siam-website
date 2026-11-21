@@ -42,6 +42,8 @@ Thumbs.db
 # ---------- large media (exceed GitHub's 100MB limit — back up elsewhere) ----------
 platform/video/
 *.mp4
+# the home page's factory clips are small (about 2-3 MB each) and the page needs them
+!platform/apps/web/public/factory/*.mp4
 *.mov
 *.avi
 
