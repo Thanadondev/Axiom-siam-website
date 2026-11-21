@@ -11,13 +11,15 @@ const CONTACT_LINE = "@axiomsiam";
 type T3 = [string, string, string];
 type Spot = {
   id: string;
-  href?: string;            // no href = opens the contact card
+  href?: string;            // no href = the office: the card shows how to reach us
   title: T3;                // what the button does
   place: T3;                // the station it sits on
+  about: T3;                // one line on the zoomed-in card
   dot: [number, number];    // % of the picture: the machine
   tag: [number, number];    // % of the picture: where the label hangs (its bottom edge)
   right?: boolean;          // label leans left (near the right edge)
-  box: [number, number, number, number]; // % x0 y0 x1 y1: outline on hover
+  cardRight?: boolean;      // zoomed in, the card goes on the right (the machine is on the left of the close-up)
+  box: [number, number, number, number]; // % x0 y0 x1 y1: outline on hover, and where the zoom goes
 };
 
 /**
@@ -25,100 +27,190 @@ type Spot = {
  * camera VIEW_overview at 40 mm, shift x 0.07, 2560x1440 cropped to rows 115-1196):
  * each station's machines projected into the render (the sewing lines placed by eye),
  * labels staggered so neighbours don't overlap. Picture: public/factory/factory-*.webp.
+ * Zoomed in, the overview gives way to the station's own camera (VIEW_<station>,
+ * same 2560x1081 frame): public/factory/<id>-*.webp.
  */
 const SPOTS: Spot[] = [
-  { id: "printing", href: "/order/bib", title: ["ออกแบบเอี๊ยม", "Design a bib", "ビブをデザイン"], place: ["เครื่องพิมพ์", "Printing", "プリント"],
+  { id: "printing", href: "/order/bib", cardRight: true, title: ["ออกแบบเอี๊ยม", "Design a bib", "ビブをデザイン"], place: ["เครื่องพิมพ์", "Printing", "プリント"],
+    about: ["ออกแบบเอี๊ยมบนเว็บ เลือกสี ลาย ใส่ชื่อและเบอร์ทั้งทีม แล้วสั่งพิมพ์ได้เลย",
+      "Design your team's bibs online: colours, pattern, every name and number, then order.",
+      "ウェブでビブをデザイン。色・柄・チーム全員の名前と番号を入れてそのまま注文。"],
     dot: [8.0, 74.1], tag: [8.0, 62.0], box: [3.4, 68.4, 12.4, 80.0] },
-  { id: "heatpress", href: "/order/upload", title: ["ส่งไฟล์เอง", "Send your own file", "データ入稿"], place: ["เครื่องรีดร้อน", "Heat press", "ヒートプレス"],
+  { id: "heatpress", href: "/order/upload", cardRight: true, title: ["ส่งไฟล์เอง", "Send your own file", "データ入稿"], place: ["เครื่องรีดร้อน", "Heat press", "ヒートプレス"],
+    about: ["มีไฟล์งานอยู่แล้ว อัปโหลด zip ของทีม แล้วเราผลิตให้",
+      "Already have the artwork? Upload your team's zip and we make it.",
+      "データをお持ちなら、チームの zip をアップロードするだけ。"],
     dot: [21.7, 73.4], tag: [21.7, 48.0], box: [17.4, 68.0, 25.8, 78.8] },
   { id: "laser", href: "/design", title: ["ออกแบบขั้นสูง", "Advanced designer", "詳細デザイン"], place: ["ตัดเลเซอร์", "Laser cutting", "レーザーカット"],
+    about: ["ออกแบบอิสระบนแพทเทิร์นจริง ใส่ลาย รูป และตัวหนังสือได้ทุกตำแหน่ง",
+      "Design freely on the real pattern: artwork, photos and text anywhere.",
+      "実際の型紙に自由にデザイン。柄・写真・文字をどこにでも。"],
     dot: [34.8, 66.6], tag: [34.8, 60.0], box: [28.8, 55.2, 40.5, 78.7] },
   { id: "sewing", href: "/templates", title: ["ร้านแม่แบบ", "Template shop", "テンプレート"], place: ["ไลน์เย็บ", "Sewing line", "縫製ライン"],
+    about: ["แบบสำเร็จรูปจากนักออกแบบ เลือกแบบที่ชอบแล้วใส่ชื่อทีมได้เลย",
+      "Ready-made designs from designers: pick one and add your team.",
+      "デザイナーのテンプレートから選んで、チーム名を入れるだけ。"],
     dot: [56.0, 64.0], tag: [56.0, 47.0], box: [49.5, 53.0, 62.5, 78.0] },
   { id: "shipping", href: "/tracking", right: true, title: ["ติดตามงาน", "Track order", "注文追跡"], place: ["แพ็กและส่ง", "Packing & shipping", "梱包・出荷"],
+    about: ["ใส่เลขออเดอร์ ดูว่างานอยู่ขั้นไหนในไลน์ผลิต จนถึงวันส่ง",
+      "Enter your order number to see where it is on the line, right up to shipping.",
+      "注文番号で、製造ラインのどこにあるか出荷まで確認できます。"],
     dot: [89.9, 64.3], tag: [89.9, 52.0], box: [82.0, 56.7, 98.0, 72.0] },
   { id: "office", title: ["ติดต่อเรา", "Contact us", "お問い合わせ"], place: ["สำนักงาน", "Office", "オフィス"],
+    about: ["ทีมกราฟิกและฝ่ายขายอยู่ที่นี่ ถามเรื่องงาน ราคา หรือส่งแบบมาให้ดูได้",
+      "Our graphics and sales team sit here: ask about a job, prices, or send us a design.",
+      "グラフィックと営業チームはここ。ご相談・お見積り・デザインの確認はお気軽に。"],
     dot: [17.4, 38.7], tag: [17.4, 27.0], box: [8.0, 30.1, 26.1, 47.7] },
 ];
+
+const ZOOM_MS = 750;   // the overview flies to the station (matches .fx-cam transition)
+
+/** scale and shift that bring a station's box to the middle of the frame */
+function camFor(s: Spot) {
+  const [x0, y0, x1, y1] = s.box;
+  const k = Math.min(3.2, 100 / ((x1 - x0) * 1.9), 100 / ((y1 - y0) * 1.9));
+  // keep the picture filling the frame: the view's middle can't come closer than 50/k to an edge
+  const m = 50 / k, clamp = (v: number) => Math.min(100 - m, Math.max(m, v));
+  const cx = clamp((x0 + x1) / 2), cy = clamp((y0 + y1) / 2);
+  return `scale(${k.toFixed(3)}) translate(${(50 - cx).toFixed(2)}%, ${(50 - cy).toFixed(2)}%)`;
+}
 
 export default function FactoryHome({ lang }: { lang: Lang }) {
   const L = tri(lang);
   const t = (x: T3) => L(x[0], x[1], x[2]);
   const [hot, setHot] = useState<string | null>(null);
-  const [contact, setContact] = useState(false);
+  const [zoom, setZoom] = useState<Spot | null>(null);   // the station being looked at
+  const [near, setNear] = useState(false);               // the close-up is showing
   const scroller = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const opener = useRef<HTMLElement | null>(null);
 
-  // phones: the picture is wider than the screen — start in the middle of the floor
-  useEffect(() => {
+  // phones: the picture is wider than the screen — keep it on the middle of the floor
+  const centre = () => {
     const el = scroller.current;
     if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
-  }, []);
+  };
+  useEffect(centre, []);
+
+  const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function open(s: Spot, from: HTMLElement | null) {
+    clearTimeout(timer.current);
+    opener.current = from;
+    setHot(null);
+    setNear(false);
+    setZoom(s);
+    centre();
+    timer.current = setTimeout(() => setNear(true), reduced() ? 0 : ZOOM_MS - 150);
+  }
+  function back() {
+    clearTimeout(timer.current);
+    setNear(false);
+    timer.current = setTimeout(() => {
+      setZoom(null);
+      opener.current?.focus();
+    }, reduced() ? 0 : 300);
+  }
+
+  useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
-    if (!contact) return;
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setContact(false); };
+    if (!zoom) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") back(); };
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
-  }, [contact]);
+  }, [zoom]);
+  useEffect(() => { if (near) panel.current?.querySelector<HTMLElement>("a, button")?.focus({ preventScroll: true }); }, [near]);
 
-  const box = hot ? SPOTS.find(s => s.id === hot)?.box : null;
+  const box = hot && !zoom ? SPOTS.find(s => s.id === hot)?.box : null;
 
   return (
-    <section className="fx" aria-label={L("โรงงาน Axiom Siam", "The Axiom Siam factory", "Axiom Siam 工場")}>
+    <section className={"fx" + (zoom ? " zoomed" : "")} aria-label={L("โรงงาน Axiom Siam", "The Axiom Siam factory", "Axiom Siam 工場")}>
       <p className="fx-hint">{L("แตะที่เครื่องจักรในโรงงานเพื่อเริ่ม", "Tap a machine in the factory to begin", "工場の機械をタップしてスタート")}</p>
 
-      <div className="fx-scroll" ref={scroller}>
-        <div className="fx-scene">
-          <img
-            className="fx-img"
-            src="/factory/factory-1600.webp"
-            srcSet="/factory/factory-1600.webp 1600w, /factory/factory-2560.webp 2560w"
-            sizes="(max-width: 760px) 900px, 100vw"
-            alt={L("โรงงานผลิตเสื้อกีฬา Axiom Siam มุมสูง: เครื่องพิมพ์ รีดร้อน ตัดเลเซอร์ ไลน์เย็บ แพ็กและส่ง",
-              "Axiom Siam's sportswear factory from above: printing, heat press, laser cutting, sewing lines, packing and shipping",
-              "Axiom Siam のスポーツウェア工場の全景：プリント、ヒートプレス、レーザーカット、縫製、梱包・出荷")}
-            draggable={false}
-          />
-          {box && <span className="fx-box" style={{ left: `${box[0]}%`, top: `${box[1]}%`, width: `${box[2] - box[0]}%`, height: `${box[3] - box[1]}%` }} aria-hidden />}
-
-          {SPOTS.map(s => {
-            const soon = s.href ? isSoon(s.href) : false;
-            const inner = (
-              <>
-                <span className="fx-line" style={{ height: `${s.dot[1] - s.tag[1]}cqh` }} aria-hidden />
-                <span className="fx-pill">
-                  <small>{t(s.place)}</small>
-                  <b>{t(s.title)}{soon && <em className="ax-soon">Coming soon</em>}</b>
-                </span>
-              </>
-            );
-            const common = {
-              className: "fx-spot" + (s.right ? " right" : "") + (hot === s.id ? " on" : ""),
-              style: { left: `${s.tag[0]}%`, top: `${s.tag[1]}%` },
-              onMouseEnter: () => setHot(s.id), onMouseLeave: () => setHot(null),
-              onFocus: () => setHot(s.id), onBlur: () => setHot(null),
-            };
-            return s.href
-              ? <Link key={s.id} href={s.href} {...common}>{inner}</Link>
-              : <button key={s.id} type="button" {...common} aria-expanded={contact} onClick={() => setContact(v => !v)}>{inner}</button>;
-          })}
-          {SPOTS.map(s => <span key={s.id + "-dot"} className={"fx-dot" + (hot === s.id ? " on" : "")} style={{ left: `${s.dot[0]}%`, top: `${s.dot[1]}%` }} aria-hidden />)}
-
-          {contact && (
-            <div className="fx-card" role="dialog" aria-label={L("ติดต่อเรา", "Contact us", "お問い合わせ")}>
-              <button type="button" className="fx-x" onClick={() => setContact(false)} aria-label={L("ปิด", "Close", "閉じる")}>×</button>
-              <b>{L("ติดต่อ Axiom Siam", "Contact Axiom Siam", "Axiom Siam へのお問い合わせ")}</b>
-              <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-              <span>LINE: {CONTACT_LINE}</span>
+      <div className="fx-frame">
+        <div className="fx-scroll" ref={scroller}>
+          <div className="fx-scene">
+            {/* the overview: everything in here moves together when zooming */}
+            <div className="fx-cam" style={{ transform: zoom ? camFor(zoom) : undefined }}>
+              <img
+                className="fx-img"
+                src="/factory/factory-1600.webp"
+                srcSet="/factory/factory-1600.webp 1600w, /factory/factory-2560.webp 2560w"
+                sizes="(max-width: 760px) 900px, 100vw"
+                alt={L("โรงงานผลิตเสื้อกีฬา Axiom Siam มุมสูง: เครื่องพิมพ์ รีดร้อน ตัดเลเซอร์ ไลน์เย็บ แพ็กและส่ง",
+                  "Axiom Siam's sportswear factory from above: printing, heat press, laser cutting, sewing lines, packing and shipping",
+                  "Axiom Siam のスポーツウェア工場の全景：プリント、ヒートプレス、レーザーカット、縫製、梱包・出荷")}
+                draggable={false}
+              />
+              {box && <span className="fx-box" style={{ left: `${box[0]}%`, top: `${box[1]}%`, width: `${box[2] - box[0]}%`, height: `${box[3] - box[1]}%` }} aria-hidden />}
+              {SPOTS.map(s => <span key={s.id + "-dot"} className={"fx-dot" + (hot === s.id ? " on" : "")} style={{ left: `${s.dot[0]}%`, top: `${s.dot[1]}%` }} aria-hidden />)}
             </div>
-          )}
+
+            {/* labels sit outside the camera so they stay sharp; they fade while zoomed */}
+            <div className="fx-spots" aria-hidden={!!zoom}>
+              {SPOTS.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={"fx-spot" + (s.right ? " right" : "") + (hot === s.id ? " on" : "")}
+                  style={{ left: `${s.tag[0]}%`, top: `${s.tag[1]}%` }}
+                  tabIndex={zoom ? -1 : 0}
+                  onMouseEnter={() => setHot(s.id)} onMouseLeave={() => setHot(null)}
+                  onFocus={() => setHot(s.id)} onBlur={() => setHot(null)}
+                  onClick={e => open(s, e.currentTarget)}
+                >
+                  <span className="fx-line" style={{ height: `${s.dot[1] - s.tag[1]}cqh` }} aria-hidden />
+                  <span className="fx-pill">
+                    <small>{t(s.place)}</small>
+                    <b>{t(s.title)}{s.href && isSoon(s.href) && <em className="ax-soon">Coming soon</em>}</b>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* the station's own close-up, faded in once the zoom has arrived */}
+            {SPOTS.map(s => (
+              <img
+                key={s.id + "-near"}
+                className={"fx-near" + (near && zoom?.id === s.id ? " on" : "")}
+                src={`/factory/${s.id}-1600.webp`}
+                srcSet={`/factory/${s.id}-1600.webp 1600w, /factory/${s.id}-2560.webp 2560w`}
+                sizes="(max-width: 760px) 900px, 100vw"
+                alt=""
+                loading={zoom?.id === s.id ? "eager" : "lazy"}
+                draggable={false}
+                onClick={back}
+              />
+            ))}
+          </div>
         </div>
+
+        {zoom && (
+          <div ref={panel} className={"fx-panel" + (zoom.cardRight ? " right" : "") + (near ? " on" : "")} role="dialog" aria-label={t(zoom.place)}>
+            <small>{t(zoom.place)}</small>
+            <b>{t(zoom.title)}{zoom.href && isSoon(zoom.href) && <em className="ax-soon">Coming soon</em>}</b>
+            <p>{t(zoom.about)}</p>
+            {zoom.href
+              ? <Link href={zoom.href} className="ax-btn solid">{L("ไปต่อ", "Go", "進む")} →</Link>
+              : (
+                <div className="fx-contact">
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="ax-btn solid">{CONTACT_EMAIL}</a>
+                  <span>LINE: {CONTACT_LINE}</span>
+                </div>
+              )}
+            <button type="button" className="fx-back" onClick={back}>← {L("กลับไปดูทั้งโรงงาน", "Back to the factory", "工場全体に戻る")}</button>
+          </div>
+        )}
       </div>
 
-      {/* the same buttons as a list, for phones and screen readers that skip the picture */}
+      {/* the same stations as a list, for phones and screen readers that skip the picture */}
       <nav className="fx-list" aria-label={L("ไปที่", "Go to", "移動")}>
-        {SPOTS.map(s => s.href
-          ? <Link key={s.id} href={s.href}><small>{t(s.place)}</small>{t(s.title)}{isSoon(s.href) && <em className="ax-soon">Coming soon</em>}</Link>
-          : <button key={s.id} type="button" onClick={() => setContact(v => !v)}><small>{t(s.place)}</small>{t(s.title)}</button>)}
+        {SPOTS.map(s => (
+          <button key={s.id} type="button" onClick={e => open(s, e.currentTarget)}>
+            <small>{t(s.place)}</small>{t(s.title)}{s.href && isSoon(s.href) && <em className="ax-soon">Coming soon</em>}
+          </button>
+        ))}
       </nav>
     </section>
   );

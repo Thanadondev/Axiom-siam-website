@@ -1,4 +1,5 @@
-/* Home (/): the factory picture with a button on each station (components/FactoryHome.tsx). */
+/* Home (/): the factory picture with a button on each station; a click flies to that station
+   and shows its close-up and a card (components/FactoryHome.tsx). */
 
 .ax-factory { display: flex; flex-direction: column; }
 .ax-factory main { flex: 1; display: flex; min-width: 0; }
@@ -9,6 +10,7 @@
   position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: clamp(12px, 2vw, 24px) 0 clamp(16px, 3vw, 32px); }
 .fx-hint { margin: 0 auto 12px; width: var(--fxw); font-family: var(--ax-mono); font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ax-mute); }
 
+.fx-frame { position: relative; }
 .fx-scroll { width: 100%; max-width: 100vw; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
 .fx-scene {
   position: relative; width: var(--fxw); min-width: 900px; margin: 0 auto;
@@ -16,6 +18,15 @@
   box-shadow: 0 30px 80px rgba(0, 0, 0, .55); background: #cfd8e3;
 }
 .fx-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; }
+
+/* the overview "camera": scaled + shifted toward a station on click */
+.fx-cam { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform .75s cubic-bezier(.65, 0, .25, 1); will-change: transform; }
+.fx-spots { position: absolute; inset: 0; transition: opacity .25s; }
+.fx.zoomed .fx-spots { opacity: 0; pointer-events: none; }
+.fx.zoomed .fx-dot { opacity: 0; }
+/* the station's own render, over the zoomed overview */
+.fx-near { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; pointer-events: none; transition: opacity .45s ease; user-select: none; cursor: zoom-out; }
+.fx-near.on { opacity: 1; pointer-events: auto; }
 
 /* the station's outline while its button is hovered / focused */
 .fx-box { position: absolute; border: 2px solid var(--ax-accent); border-radius: 12px; background: rgba(242, 101, 34, .12); box-shadow: 0 0 0 4000px rgba(13, 14, 16, .28); pointer-events: none; transition: all .2s; }
@@ -45,19 +56,28 @@
 .fx-spot:hover .fx-pill small, .fx-spot.on .fx-pill small { color: rgba(13, 14, 16, .7); }
 .fx-spot:hover .ax-soon, .fx-spot.on .ax-soon { opacity: .8; }
 
-/* contact card from the office */
-.fx-card { position: absolute; left: 4%; top: 6%; z-index: 4; display: flex; flex-direction: column; gap: 6px; min-width: 240px; padding: 16px 40px 16px 18px; border-radius: 14px; background: var(--ax-panel); border: 1px solid var(--ax-line-2); box-shadow: 0 20px 50px rgba(0, 0, 0, .5); }
-.fx-card b { font-size: 16px; }
-.fx-card a { color: var(--ax-accent); }
-.fx-card span { color: var(--ax-ink-2); }
-.fx-x { position: absolute; top: 8px; right: 10px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; color: var(--ax-mute); font-size: 20px; line-height: 1; }
-.fx-x:hover { color: var(--ax-ink); background: var(--ax-panel-2); }
+/* card for the station being looked at: over the picture's lower left */
+.fx-panel {
+  position: absolute; left: calc((100% - var(--fxw)) / 2 + 24px); bottom: 24px; z-index: 5; width: min(380px, calc(var(--fxw) - 48px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 20px 16px; border-radius: 16px;
+  background: rgba(13, 14, 16, .9); border: 1px solid var(--ax-line-2); backdrop-filter: blur(8px); box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  opacity: 0; transform: translateY(12px); transition: opacity .35s, transform .35s;
+}
+.fx-panel.right { left: auto; right: calc((100% - var(--fxw)) / 2 + 24px); }
+.fx-panel.on { opacity: 1; transform: none; }
+.fx-panel small { font-family: var(--ax-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ax-accent); }
+.fx-panel b { font-size: clamp(20px, 2vw, 26px); font-weight: 800; line-height: 1.2; }
+.fx-panel p { margin: 0 0 6px; color: var(--ax-ink-2); font-size: 14.5px; line-height: 1.6; }
+.fx-contact { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; color: var(--ax-ink-2); }
+.fx-back { margin-top: 4px; padding: 6px 0; border: 0; background: none; color: var(--ax-mute); font-size: 14px; }
+.fx-back:hover { color: var(--ax-ink); }
 
 /* list of the same buttons: phones only (the picture scrolls sideways there) */
 .fx-list { display: none; }
 @media (max-width: 760px) {
   .fx-hint { width: auto; padding: 0 16px; }
   .fx-scene { border-radius: 0; }
+  .fx-panel { position: static; width: auto; margin: 12px 16px 0; }
   .fx-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px; }
   .fx-list a, .fx-list button {
     display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 12px; text-align: left; text-decoration: none;
@@ -68,5 +88,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .fx-dot::after { animation: none; }
-  .fx-pill, .fx-box { transition: none; }
+  .fx-pill, .fx-box, .fx-cam, .fx-near, .fx-panel, .fx-spots { transition: none; }
 }
