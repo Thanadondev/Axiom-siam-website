@@ -5,7 +5,7 @@ import Link from "next/link";
 import { loadThreeWithGltf, loadThreePost, hasWebGL, prefersReducedMotion } from "../lib/three-cdn";
 import { loadJersey, type Jersey } from "../lib/jersey3d";
 import { KITS, defaultConfig } from "../lib/kits";
-import { Words } from "./ScrollStory";
+import { Words } from "./StoryBits";
 import { STEPS } from "../lib/production-steps";
 import { tri, locale, type Lang } from "../lib/i18n";
 import { PIECES, SHEET_W, SHEET_H, M_PER_PX, drawSheet, paintPiece, tracePiece, cutPath, pathAt, type Piece, type PrintColors } from "../lib/process-pattern";

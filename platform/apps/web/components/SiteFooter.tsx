@@ -5,7 +5,7 @@ import { tri, type Lang } from "../lib/i18n";
 const CONTACT_EMAIL = "techkairos241@gmail.com";
 const CONTACT_LINE = "@axiomsiam";
 
-/** the footer of the dark storefront pages (/, /tracking) */
+/** the footer of the dark storefront pages (/tracking); its contact column is #contact */
 export default function SiteFooter({ lang }: { lang: Lang }) {
   const L = tri(lang);
   return (
@@ -28,7 +28,7 @@ export default function SiteFooter({ lang }: { lang: Lang }) {
           <Link href="/templates">{L("ตลาดลาย", "Templates", "テンプレート")}<SoonTag href="/templates" /></Link>
           <Link href="/account">{L("ติดตามออเดอร์", "Track an order", "注文履歴")}</Link>
         </div>
-        <div>
+        <div id="contact">
           <h4>{L("ติดต่อ", "Contact", "お問い合わせ")}</h4>
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           <span style={{ display: "block", marginBottom: 6 }}>LINE: {CONTACT_LINE}</span>

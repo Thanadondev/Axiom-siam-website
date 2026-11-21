@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import StoreHeader from "../../components/StoreHeader";
-import { RingCursor, Words } from "../../components/ScrollStory";
+import { RingCursor, Words } from "../../components/StoryBits";
 import ProcessStory, { shortDay, walkTo, type TrackView } from "../../components/ProcessStory";
 import SiteFooter from "../../components/SiteFooter";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
@@ -135,7 +135,7 @@ export default function TrackingPage() {
                   <button type="button" className="copy" onClick={() => copyParcel(parcel)}>{copied ? L("คัดลอกแล้ว", "Copied", "コピーしました") : L("คัดลอก", "Copy", "コピー")}</button>
                 </span>
               ) : (
-                <span className="parcel">{L("เลขพัสดุ: ", "Tracking no.: ", "追跡番号: ")}<a href="/#contact">{L("สอบถามทีมงาน", "ask our team", "お問い合わせください")}</a></span>
+                <span className="parcel">{L("เลขพัสดุ: ", "Tracking no.: ", "追跡番号: ")}<a href="#contact">{L("สอบถามทีมงาน", "ask our team", "お問い合わせください")}</a></span>
               ))}
               {ship !== "waiting" && t.shipment?.shippedAt && <span>{L("ส่งเมื่อ", "Sent", "発送日")} {shortDay(t.shipment.shippedAt, lang)}</span>}
               {ship === "arrived" && t.shipment?.deliveredAt && <span>{L("ได้รับเมื่อ", "Arrived", "お届け日")} {shortDay(t.shipment.deliveredAt, lang)}</span>}
@@ -188,7 +188,7 @@ export default function TrackingPage() {
           { href: "/", label: L("หน้าแรก", "Home", "ホーム") },
           { href: "/shop", label: L("คอลเลกชัน", "Collection", "コレクション") },
           { href: "/tracking", label: L("ติดตามงาน", "Track order", "注文追跡") },
-          { href: "/#contact", label: L("ติดต่อ", "Contact", "お問い合わせ") },
+          { href: "#contact", label: L("ติดต่อ", "Contact", "お問い合わせ") },
         ]}
       />
       <main>

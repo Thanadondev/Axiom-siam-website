@@ -1,8 +1,8 @@
 /**
  * Loads Three.js r128 (+ optional OrbitControls) from the CDN once per page.
  *
- * The rest of the app already pulls r128 as a UMD script (ScrollStory,
- * JerseyHero, Portfolio3D), so this keeps to the same build instead of adding
+ * The rest of the app already pulls r128 as a UMD script (JerseyHero,
+ * Portfolio3D), so this keeps to the same build instead of adding
  * an npm dependency. Every caller shares one promise, and scripts that another
  * component already injected are reused rather than loaded twice.
  */
