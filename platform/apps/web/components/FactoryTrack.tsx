@@ -3,30 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { STEPS, SHIP_STEP } from "../lib/production-steps";
 import { tri, type Lang } from "../lib/i18n";
+import { TRACK_MAP } from "../lib/track-map";
 
 /**
- * Where each of the ten steps happens on the factory picture (public/factory/factory-*.webp),
- * in % of the picture, projected from the Blender camera VIEW_overview like FactoryHome's SPOTS.
- * `near` is the station whose flight (fly-<id>.mp4) and close-up (<id>-*.webp) show that step best.
+ * The /tracking picture is the factory with the line built into it in 3D (public/factory/tracking-*.webp,
+ * AXIOM-WEB\3D Factory\web_render\track_route.py + render_track.py): a lit walkway from the printers to
+ * the truck, an arc from the design room to the printers, and a numbered sign at each of the ten steps.
+ * TRACK_MAP (lib/track-map.ts, written from render_track.py's track_map.json) says where the signs and
+ * the route land in the picture, in %. `near` is the station whose flight (fly-<id>.mp4) and close-up
+ * (<id>-*.webp) show that step best.
  */
-export const STOPS: { at: [number, number]; near: string }[] = [
-  { at: [17.6, 39.8], near: "office" },     // 1 artwork: the design room
-  { at: [8.6, 76.5], near: "printing" },    // 2 printing
-  { at: [21.8, 73.5], near: "heatpress" },  // 3 heat transfer
-  { at: [34.2, 72.3], near: "laser" },      // 4 laser cutting
-  { at: [45.7, 69.0], near: "sewing" },     // 5 QC tables before the sewing line
-  { at: [55.3, 67.4], near: "sewing" },     // 6 sewing
-  { at: [65.7, 69.7], near: "sewing" },     // 7 QC before packing (dress forms)
-  { at: [70.2, 68.8], near: "sewing" },     // 8 size-label presses
-  { at: [77.8, 66.8], near: "shipping" },   // 9 press & pack
-  { at: [89.9, 64.3], near: "shipping" },   // 10 the trucks
-];
+const NEAR = ["office", "printing", "heatpress", "laser", "sewing", "sewing", "sewing", "sewing", "shipping", "shipping"];
+export const STOPS = TRACK_MAP.signs.map((at, i) => ({ at: at as [number, number], near: NEAR[i] }));
 
 const FLY_WAIT_MS = 2500;
 
 /**
- * The factory from above with the line drawn through it: the ten stops in order, the part the
- * order has passed in solid accent, a pin on the step it is at. `step` 0 = not started,
+ * The factory from above with the line in it: the part the order has passed drawn over the route
+ * in accent, a ✓ on the signs it has passed, a pin on the step it is at. `step` 0 = not started,
  * 1–10 = at that step (10 = shipped); null = no order looked up (just the line, numbered).
  * `hot` is the stop the list next to it is pointing at.
  */
@@ -77,8 +71,8 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
   }
 
   const at = step ?? 0;
-  const pts = STOPS.map(s => `${s.at[0]},${s.at[1]}`);
-  const done = at >= 1 ? pts.slice(0, at).join(" ") : "";
+  const upto = at >= 2 ? TRACK_MAP.at[Math.min(at, SHIP_STEP) - 1] : -1;
+  const done = upto > 0 ? TRACK_MAP.route.slice(0, upto + 1).map(p => `${p[0]},${p[1]}`).join(" ") : "";
   const cur = at >= 1 ? STOPS[at - 1] : null;
   const name = (n: number) => L(STEPS[n - 1].th, STEPS[n - 1].en, STEPS[n - 1].ja);
 
@@ -86,16 +80,15 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
     <div className={"tk-map" + (near ? " near" : "")}>
       <div className="tk-scroll" ref={scroller}>
         <div className="tk-scene">
-          <img className="tk-img" src="/factory/factory-1600.webp"
-            srcSet="/factory/factory-1600.webp 1600w, /factory/factory-2560.webp 2560w" sizes="(max-width: 760px) 900px, 66vw"
+          <img className="tk-img" src="/factory/tracking-1600.webp"
+            srcSet="/factory/tracking-1600.webp 1600w, /factory/tracking-2560.webp 2560w" sizes="(max-width: 760px) 900px, 66vw"
             alt={L("ไลน์ผลิตของโรงงาน Axiom Siam มุมสูง", "The Axiom Siam production line from above", "Axiom Siam 工場の生産ライン全景")} draggable={false} />
-          {motion && <video className="tk-img" src="/factory/loop.mp4" poster="/factory/factory-1600.webp" autoPlay muted loop playsInline aria-hidden="true" />}
-
-          {/* the line: all ten stops dashed, the part already done solid */}
-          <svg className="tk-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <polyline className="all" points={pts.join(" ")} />
-            {done && at >= 2 && <polyline className="done" points={done} />}
-          </svg>
+          {/* the part of the route the order has passed */}
+          {done && (
+            <svg className="tk-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polyline className="done" points={done} />
+            </svg>
+          )}
 
           {STOPS.map((s, i) => {
             const n = i + 1;
@@ -106,7 +99,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
                 onMouseEnter={() => onHot(n)} onMouseLeave={() => onHot(null)} onFocus={() => onHot(n)} onBlur={() => onHot(null)}
                 onClick={() => look(s.near)}
                 aria-label={`${n} · ${name(n)} — ${L("ดูใกล้ๆ", "look closer", "近くで見る")}`}>
-                <span aria-hidden="true">{state === "done" ? "✓" : n}</span>
+                {state === "done" && <span className="tk-tick" aria-hidden="true">✓</span>}
                 <i className="tk-tip" aria-hidden="true">{String(n).padStart(2, "0")} · {name(n)}</i>
               </button>
             );

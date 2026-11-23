@@ -18,19 +18,20 @@
 
 .tk-route { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .tk-route polyline { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
-.tk-route .all { stroke: rgba(255, 255, 255, .9); stroke-width: 3; stroke-dasharray: 2 9; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); }
-.tk-route .done { stroke: var(--ax-accent); stroke-width: 5; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); }
+.tk-route .done { stroke: var(--ax-accent); stroke-width: 6; opacity: .9; filter: drop-shadow(0 0 6px rgba(242, 101, 34, .8)); }
 
+/* the numbered signs are in the picture; these are their hit areas (and a ✓ once passed) */
 .tk-stop {
-  position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; padding: 0; border-radius: 50%; z-index: 2;
-  display: grid; place-items: center; font: 700 12px/1 var(--ax-mono); cursor: zoom-in;
-  background: rgba(13, 14, 16, .88); color: #fff; border: 2px solid rgba(255, 255, 255, .9); box-shadow: 0 3px 10px rgba(0, 0, 0, .4);
-  transition: transform .15s, background .15s;
+  position: absolute; width: 3.2%; aspect-ratio: 1; translate: -50% -50%; padding: 0; border-radius: 50%; z-index: 2;
+  background: transparent; border: 2px solid transparent; cursor: zoom-in; transition: border-color .15s, box-shadow .15s;
 }
-.tk-stop[data-state="done"] { background: var(--ax-accent); border-color: #fff; color: var(--ax-accent-ink); }
-.tk-stop[data-state="todo"] { background: rgba(13, 14, 16, .6); color: rgba(255, 255, 255, .75); border-color: rgba(255, 255, 255, .55); }
-.tk-stop[data-state="now"] { opacity: 0; }   /* the pin stands there instead */
-.tk-stop:hover, .tk-stop:focus-visible, .tk-stop.hot { transform: scale(1.18); z-index: 4; }
+.tk-stop:hover, .tk-stop:focus-visible, .tk-stop.hot { border-color: #fff; box-shadow: 0 0 0 4px rgba(242, 101, 34, .55); z-index: 4; }
+.tk-stop[data-state="now"] { cursor: zoom-in; }
+.tk-tick {
+  position: absolute; right: -6px; top: -6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  font: 800 12px/1 var(--ax-mono); color: var(--ax-accent-ink); background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.tk-stop[data-state="todo"]::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; background: rgba(13, 14, 16, .35); }
 .tk-tip {
   position: absolute; bottom: calc(100% + 8px); left: 50%; translate: -50% 0; padding: 5px 9px; border-radius: 8px; white-space: nowrap;
   font: 600 12px/1.2 var(--ax-sans, inherit); font-style: normal; color: #fff; background: rgba(13, 14, 16, .92); pointer-events: none;
@@ -40,17 +41,12 @@
 
 /* the pin on the order's step: a pulsing dot with its label above */
 .tk-pin { position: absolute; z-index: 3; pointer-events: none; }
-.tk-pin::before {
-  content: ""; position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
-  background: var(--ax-accent); border: 3px solid #fff; box-shadow: 0 3px 12px rgba(0, 0, 0, .45);
-}
-.tk-pin::after {
-  content: ""; position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
-  border: 3px solid var(--ax-accent); animation: tk-ping 1.8s ease-out infinite;
-}
-@keyframes tk-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(3.2); opacity: 0; } }
+.tk-pin { width: 3.6%; aspect-ratio: 1; translate: -50% -50%; }
+.tk-pin::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--ax-accent), 0 4px 14px rgba(0, 0, 0, .5); }
+.tk-pin::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--ax-accent); animation: tk-ping 1.8s ease-out infinite; }
+@keyframes tk-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(2.2); opacity: 0; } }
 .tk-pill {
-  position: absolute; bottom: 22px; left: 0; translate: -50% 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 14px 9px;
+  position: absolute; bottom: calc(100% + 12px); left: 50%; translate: -50% 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 14px 9px;
   border-radius: 12px; white-space: nowrap; background: var(--ax-accent); color: var(--ax-accent-ink); box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
 }
 .tk-pill::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -7px; border: 7px solid transparent; border-top-color: var(--ax-accent); }
