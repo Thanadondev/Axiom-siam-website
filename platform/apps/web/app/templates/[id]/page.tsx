@@ -20,11 +20,6 @@ interface Detail extends TemplateCardData {
   owned: boolean;
 }
 
-const NAV = [
-  { href: "/shop", label: "ออกแบบเสื้อ" },
-  { href: "/templates", label: "ตลาดลาย" },
-  { href: "/design", label: "ออกแบบขั้นสูง" },
-];
 const REASONS = [
   { id: "copyright", label: "ละเมิดลิขสิทธิ์ (ภาพ/ลาย)" },
   { id: "trademark", label: "ละเมิดเครื่องหมายการค้า/โลโก้" },
@@ -87,7 +82,7 @@ export default function TemplateDetail() {
   if (missing) {
     return (
       <div className="ax">
-        <StoreHeader nav={NAV} />
+        <StoreHeader />
         <div className="ax-mk-empty" style={{ minHeight: "60vh" }}>
           <h1 className="ax-display">ไม่พบลายนี้</h1>
           <p>ลายอาจถูกปิดขายหรือถูกลบไปแล้ว</p>
@@ -103,7 +98,7 @@ export default function TemplateDetail() {
 
   return (
     <div className="ax">
-      <StoreHeader nav={NAV} />
+      <StoreHeader />
       <main className="ax-wrap">
         <nav className="ax-mk-crumbs" aria-label="ตำแหน่ง">
           <Link href="/templates">ตลาดลาย</Link>

@@ -212,7 +212,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   }
 
   const shell = (children: React.ReactNode, size: "narrow" | "wide") => (
-    <AppShell narrow={size === "narrow"} wide={size === "wide"} lang={lang} onLang={setLang}>{children}</AppShell>
+    <AppShell narrow={size === "narrow"} wide={size === "wide"} station="heatpress" lang={lang} onLang={setLang}>{children}</AppShell>
   );
 
   if (loading) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>, "narrow");
@@ -479,7 +479,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 export default function OrderUploadPage() {
   const [lang, setLang] = useLang();
   return (
-    <Suspense fallback={<AppShell narrow><div className="acard"><p className="asub">…</p></div></AppShell>}>
+    <Suspense fallback={<AppShell narrow station="heatpress"><div className="acard"><p className="asub">…</p></div></AppShell>}>
       <UploadOrder lang={lang} setLang={setLang} />
     </Suspense>
   );

@@ -15,12 +15,6 @@ interface Profile {
   createdAt: string; items: TemplateCardData[]; stats: { templates: number; totalSales: number };
 }
 
-const NAV = [
-  { href: "/shop", label: "ออกแบบเสื้อ" },
-  { href: "/templates", label: "ตลาดลาย" },
-  { href: "/design", label: "ออกแบบขั้นสูง" },
-];
-
 /** a designer's shop: who they are, then every template they have on sale */
 export default function DesignerProfile() {
   const id = String(useParams().id);
@@ -38,7 +32,7 @@ export default function DesignerProfile() {
   if (err) {
     return (
       <div className="ax">
-        <StoreHeader nav={NAV} />
+        <StoreHeader />
         <div className="ax-mk-empty" style={{ minHeight: "60vh" }}>
           <h1 className="ax-display">ไม่พบดีไซเนอร์</h1>
           <p>{err}</p>
@@ -53,7 +47,7 @@ export default function DesignerProfile() {
 
   return (
     <div className="ax">
-      <StoreHeader nav={NAV} />
+      <StoreHeader />
       <main className="ax-wrap">
         <nav className="ax-mk-crumbs" aria-label="ตำแหน่ง">
           <Link href="/templates">ตลาดลาย</Link><span aria-hidden="true">/</span><span>ดีไซเนอร์</span>

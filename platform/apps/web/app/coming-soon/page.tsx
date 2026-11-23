@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import { tri, useLang } from "../../lib/i18n";
+import { SITE_NAV } from "../../lib/stations";
 
 /**
  * Shown at the address of every page that isn't open yet (middleware.ts,
@@ -11,8 +13,11 @@ import { tri, useLang } from "../../lib/i18n";
 export default function ComingSoonPage() {
   const [lang, setLang] = useLang();
   const L = tri(lang);
+  // middleware rewrites the closed page here at its own address: show the station it belongs to
+  const path = usePathname() ?? "";
+  const at = SITE_NAV.find(s => path === s.href || path.startsWith(s.href + "/"));
   return (
-    <AppShell narrow lang={lang} onLang={setLang}>
+    <AppShell narrow station={at?.id} lang={lang} onLang={setLang}>
       <div className="acard" style={{ textAlign: "center", padding: "48px 24px" }}>
         <div className="eyebrow">Coming soon</div>
         <h1 className="ax-display" style={{ fontSize: "clamp(40px, 9vw, 72px)", margin: "8px 0 12px" }}>Coming <em>soon</em></h1>

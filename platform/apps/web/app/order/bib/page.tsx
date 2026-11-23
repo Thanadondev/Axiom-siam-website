@@ -196,7 +196,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   }
 
   const shell = (children: React.ReactNode, narrow = false) => (
-    <AppShell narrow={narrow} wide={!narrow} lang={lang} onLang={setLang}>{children}</AppShell>
+    <AppShell narrow={narrow} wide={!narrow} station="printing" lang={lang} onLang={setLang}>{children}</AppShell>
   );
   if (loading) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>, true);
   if (!user)
@@ -489,7 +489,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 export default function OrderBibPage() {
   const [lang, setLang] = useLang();
   return (
-    <Suspense fallback={<AppShell narrow><div className="acard"><p className="asub">…</p></div></AppShell>}>
+    <Suspense fallback={<AppShell narrow station="printing"><div className="acard"><p className="asub">…</p></div></AppShell>}>
       <BibDesigner lang={lang} setLang={setLang} />
     </Suspense>
   );

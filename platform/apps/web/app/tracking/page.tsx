@@ -104,12 +104,6 @@ export default function TrackingPage() {
       <StoreHeader
         lang={lang}
         onLang={setLang}
-        nav={[
-          { href: "/", label: L("หน้าแรก", "Home", "ホーム") },
-          { href: "/shop", label: L("คอลเลกชัน", "Collection", "コレクション") },
-          { href: "/tracking", label: L("ติดตามงาน", "Track order", "注文追跡") },
-          { href: "#contact", label: L("ติดต่อ", "Contact", "お問い合わせ") },
-        ]}
       />
       <main className="tk">
         <div className="tk-top">

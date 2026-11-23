@@ -12,7 +12,7 @@ export default function Home() {
   const [lang, setLang] = useLang();
   return (
     <div className="ax ax-factory" lang={lang}>
-      <StoreHeader lang={lang} onLang={setLang} cta={false} />
+      <StoreHeader lang={lang} onLang={setLang} cta={false} plain />
       <main>
         <FactoryHome lang={lang} />
       </main>

@@ -4,17 +4,13 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { tri, type Lang } from "../lib/i18n";
 import { isSoon } from "../lib/launch";
+import { STATIONS, type Station, type T3 } from "../lib/stations";
 
 const CONTACT_EMAIL = "techkairos241@gmail.com";
 const CONTACT_LINE = "@axiomsiam";
 
-type T3 = [string, string, string];
-type Spot = {
-  id: string;
-  href?: string;            // no href = the office: the card shows how to reach us
-  title: T3;                // what the button does
-  place: T3;                // the station it sits on
-  about: T3;                // one line on the zoomed-in card
+/** where each station sits on the picture; the words come from lib/stations.ts */
+type Spot = Station & {
   dot: [number, number];    // % of the picture: the machine
   tag: [number, number];    // % of the picture: where the label hangs (its bottom edge)
   right?: boolean;          // label leans left (near the right edge)
@@ -32,38 +28,15 @@ type Spot = {
  * (VIEW_<station>); its last frame is public/factory/<id>-*.webp. Without video (reduced motion,
  * or a flight that doesn't start) the still overview zooms in CSS and the close-up fades in.
  */
-const SPOTS: Spot[] = [
-  { id: "printing", href: "/order/bib", cardRight: true, title: ["ออกแบบเอี๊ยม", "Design a bib", "ビブをデザイン"], place: ["เครื่องพิมพ์", "Printing", "プリント"],
-    about: ["ออกแบบเอี๊ยมบนเว็บ เลือกสี ลาย ใส่ชื่อและเบอร์ทั้งทีม แล้วสั่งพิมพ์ได้เลย",
-      "Design your team's bibs online: colours, pattern, every name and number, then order.",
-      "ウェブでビブをデザイン。色・柄・チーム全員の名前と番号を入れてそのまま注文。"],
-    dot: [8.6, 76.5], tag: [8.6, 62.0], box: [2.5, 72.3, 14.6, 80.6] },
-  { id: "heatpress", href: "/order/upload", cardRight: true, title: ["ส่งไฟล์เอง", "Send your own file", "データ入稿"], place: ["เครื่องรีดร้อน", "Heat press", "ヒートプレス"],
-    about: ["มีไฟล์งานอยู่แล้ว อัปโหลด zip ของทีม แล้วเราผลิตให้",
-      "Already have the artwork? Upload your team's zip and we make it.",
-      "データをお持ちなら、チームの zip をアップロードするだけ。"],
-    dot: [21.8, 73.5], tag: [21.8, 50.0], box: [17.1, 67.9, 26.5, 79.3] },
-  { id: "laser", href: "/design", title: ["ออกแบบขั้นสูง", "Advanced designer", "詳細デザイン"], place: ["ตัดเลเซอร์", "Laser cutting", "レーザーカット"],
-    about: ["ออกแบบอิสระบนแพทเทิร์นจริง ใส่ลาย รูป และตัวหนังสือได้ทุกตำแหน่ง",
-      "Design freely on the real pattern: artwork, photos and text anywhere.",
-      "実際の型紙に自由にデザイン。柄・写真・文字をどこにでも。"],
-    dot: [34.2, 72.3], tag: [34.2, 60.0], box: [31.0, 65.8, 37.3, 78.8] },
-  { id: "sewing", href: "/templates", title: ["ร้านแม่แบบ", "Template shop", "テンプレート"], place: ["ไลน์เย็บ", "Sewing line", "縫製ライン"],
-    about: ["แบบสำเร็จรูปจากนักออกแบบ เลือกแบบที่ชอบแล้วใส่ชื่อทีมได้เลย",
-      "Ready-made designs from designers: pick one and add your team.",
-      "デザイナーのテンプレートから選んで、チーム名を入れるだけ。"],
-    dot: [55.3, 67.4], tag: [55.3, 50.0], box: [49.1, 58.5, 61.9, 77.0] },
-  { id: "shipping", href: "/tracking", right: true, title: ["ติดตามงาน", "Track order", "注文追跡"], place: ["แพ็กและส่ง", "Packing & shipping", "梱包・出荷"],
-    about: ["ใส่เลขออเดอร์ ดูว่างานอยู่ขั้นไหนในไลน์ผลิต จนถึงวันส่ง",
-      "Enter your order number to see where it is on the line, right up to shipping.",
-      "注文番号で、製造ラインのどこにあるか出荷まで確認できます。"],
-    dot: [89.9, 64.3], tag: [89.9, 52.0], box: [81.5, 56.0, 98.7, 72.6] },
-  { id: "office", title: ["ติดต่อเรา", "Contact us", "お問い合わせ"], place: ["สำนักงาน", "Office", "オフィス"],
-    about: ["ทีมกราฟิกและฝ่ายขายอยู่ที่นี่ ถามเรื่องงาน ราคา หรือส่งแบบมาให้ดูได้",
-      "Our graphics and sales team sit here: ask about a job, prices, or send us a design.",
-      "グラフィックと営業チームはここ。ご相談・お見積り・デザインの確認はお気軽に。"],
-    dot: [17.6, 39.8], tag: [17.6, 27.0], box: [8.1, 32.2, 26.5, 47.7] },
-];
+const AT: Record<Station["id"], Omit<Spot, keyof Station>> = {
+  printing: { cardRight: true, dot: [8.6, 76.5], tag: [8.6, 62.0], box: [2.5, 72.3, 14.6, 80.6] },
+  heatpress: { cardRight: true, dot: [21.8, 73.5], tag: [21.8, 50.0], box: [17.1, 67.9, 26.5, 79.3] },
+  laser: { dot: [34.2, 72.3], tag: [34.2, 60.0], box: [31.0, 65.8, 37.3, 78.8] },
+  sewing: { dot: [55.3, 67.4], tag: [55.3, 50.0], box: [49.1, 58.5, 61.9, 77.0] },
+  shipping: { right: true, dot: [89.9, 64.3], tag: [89.9, 52.0], box: [81.5, 56.0, 98.7, 72.6] },
+  office: { dot: [17.6, 39.8], tag: [17.6, 27.0], box: [8.1, 32.2, 26.5, 47.7] },
+};
+const SPOTS: Spot[] = STATIONS.map(s => ({ ...s, ...AT[s.id] }));
 
 const ZOOM_MS = 750;   // fallback zoom of the still picture (matches .fx-cam transition)
 const FLY_WAIT_MS = 2500;   // a flight that hasn't started by then gives way to the fallback zoom
