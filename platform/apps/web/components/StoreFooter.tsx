@@ -1,11 +1,15 @@
 import Link from "next/link";
 import SoonTag from "./SoonTag";
 import { tri, type Lang } from "../lib/i18n";
+import { SITE_NAV } from "../lib/stations";
 
 const CONTACT_EMAIL = "techkairos241@gmail.com";
 const CONTACT_LINE = "@axiomsiam";
 
-/** Footer for the dark storefront pages outside the landing page (in the page's language, Thai by default). */
+/**
+ * The footer of every page but the home page (in the page's language, Thai by default): the same
+ * stations as the header menu, your orders, and how to reach us (#contact).
+ */
 export default function StoreFooter({ lang = "th" }: { lang?: Lang }) {
   const L = tri(lang);
   return (
@@ -22,12 +26,10 @@ export default function StoreFooter({ lang = "th" }: { lang?: Lang }) {
         </div>
         <div>
           <h4>{L("เมนู", "Menu", "メニュー")}</h4>
-          <Link href="/shop">{L("ออกแบบเสื้อ", "Design", "デザイン")}</Link>
-          <Link href="/design">{L("ออกแบบขั้นสูง", "Advanced designer", "上級デザイナー")}<SoonTag href="/design" /></Link>
-          <Link href="/templates">{L("ตลาดลาย", "Designs market", "デザインマーケット")}<SoonTag href="/templates" /></Link>
-          <Link href="/account">{L("ติดตามออเดอร์", "My orders", "注文状況")}</Link>
+          {SITE_NAV.map(s => <Link key={s.href} href={s.href}>{L(...s.title)}<SoonTag href={s.href} /></Link>)}
+          <Link href="/account">{L("ออเดอร์ของฉัน", "My orders", "注文履歴")}</Link>
         </div>
-        <div>
+        <div id="contact">
           <h4>{L("ติดต่อ", "Contact", "お問い合わせ")}</h4>
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           <span style={{ display: "block", marginBottom: 6 }}>LINE: {CONTACT_LINE}</span>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import StoreHeader from "../../components/StoreHeader";
-import SiteFooter from "../../components/SiteFooter";
+import StoreFooter from "../../components/StoreFooter";
 import FactoryTrack from "../../components/FactoryTrack";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 import { apiFetch } from "../../lib/api";
@@ -227,7 +227,7 @@ export default function TrackingPage() {
           </aside>
         </div>
       </main>
-      <SiteFooter lang={lang} />
+      <StoreFooter lang={lang} />
     </div>
   );
 }

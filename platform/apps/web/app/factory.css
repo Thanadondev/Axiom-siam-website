@@ -79,6 +79,7 @@
 /* list of the same buttons: phones only (the picture scrolls sideways there) */
 .fx-list { display: none; }
 @media (max-width: 760px) {
+  .fx { justify-content: flex-start; }   /* phones: the picture right under the header, not floating mid-screen */
   .fx-hint { width: auto; padding: 0 16px; }
   .fx-scene { border-radius: 0; }
   .fx-panel { position: static; width: auto; margin: 12px 16px 0; }

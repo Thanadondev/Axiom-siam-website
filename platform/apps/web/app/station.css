@@ -28,8 +28,11 @@
   background: linear-gradient(0deg, rgba(13, 14, 16, .95) 0%, rgba(13, 14, 16, .55) 42%, rgba(13, 14, 16, .1) 75%); }
 
 @media (max-width: 900px) {
-  .st-auth .copy { margin-left: 0; height: auto; padding: 24px 20px; justify-content: flex-end; }
-  .ax-auth-art.st-auth { min-height: 260px; }
+  .ax-auth-art.st-auth .copy { margin-left: 0; height: auto; padding: 24px 20px; justify-content: flex-end; }
+  .ax-auth:has(.st-auth) { min-height: 0; }   /* phones: a short picture, then the form right away */
+  .ax-auth-art.st-auth { min-height: 240px; }
+  /* the words sit on the picture here: darken all of it, not just the bottom */
+  .st-auth .st-auth-pic::after { background: linear-gradient(0deg, rgba(13, 14, 16, .95) 0%, rgba(13, 14, 16, .72) 55%, rgba(13, 14, 16, .4) 100%); }
 }
 @media (max-width: 760px) {
   .st-hero { width: 100%; border-radius: 0; margin-top: 0; height: 190px; }
