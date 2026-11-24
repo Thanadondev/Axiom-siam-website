@@ -119,7 +119,7 @@
 }
 @media (max-width: 760px) {
   .tk { width: 100%; padding-top: 16px; }
-  .tk-top, .tk-err, .tk-card, .tk-mapbar { margin-left: 16px; margin-right: 16px; }
+  .tk-top, .tk-err, .tk-card, .tk-mapbar, .tk-about { margin-left: 16px; margin-right: 16px; }
   .tk-scroll { border-radius: 0; }
   .tk-form { width: 100%; }
 }

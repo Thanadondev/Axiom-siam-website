@@ -92,7 +92,8 @@
 .ax-foot { border-top: 1px solid var(--ax-line); margin-top: 96px; }
 .ax-foot .ax-wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 28px; padding-top: 40px; padding-bottom: 40px; font-size: 14px; color: var(--ax-mute); }
 .ax-foot h4 { margin: 0 0 10px; font-size: 13px; color: var(--ax-ink); font-weight: 700; }
-.ax-foot a { display: block; color: var(--ax-mute); text-decoration: none; margin-bottom: 6px; }
+.ax-foot a { display: block; color: var(--ax-mute); text-decoration: none; margin-bottom: 6px; overflow-wrap: anywhere; }
+.ax-foot .ax-wrap > div { min-width: 0; }
 .ax-foot a:hover { color: var(--ax-ink); }
 
 @media (max-width: 760px) {
