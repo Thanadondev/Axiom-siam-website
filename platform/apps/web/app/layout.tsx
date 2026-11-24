@@ -2,11 +2,20 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AuthProvider } from "../lib/auth-context";
 
+const DESCRIPTION = "Axiom Siam Co.,Ltd. โรงงานผลิตเสื้อผ้ากีฬาครบวงจร รับผลิต OEM/ODM คุณภาพส่งออก — ออกแบบเสื้อและเอี๊ยมของทีมบนเว็บ สั่งผลิต และติดตามงานได้ถึงในโรงงาน";
+
 export const metadata: Metadata = {
-  title: "Axiom Siam Co.,Ltd. — โรงงานผลิตเสื้อผ้ากีฬา OEM/ODM ส่งออกทั่วโลก",
-  description:
-    "Axiom Siam Co.,Ltd. โรงงานผลิตเสื้อผ้ากีฬาครบวงจร รับผลิต OEM/ODM คุณภาพส่งออก — ออกแบบเสื้อของคุณเองแบบ 3D พร้อมขอใบเสนอราคา",
+  // share pictures and links are made absolute against this (NEXT_PUBLIC_SITE_URL on other hosts)
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://axiomsiam.com"),
+  title: { default: "Axiom Siam Co.,Ltd. — โรงงานผลิตเสื้อผ้ากีฬา OEM/ODM ส่งออกทั่วโลก", template: "%s — Axiom Siam" },
+  description: DESCRIPTION,
   icons: { icon: "/models/axiom-icon.png" },
+  openGraph: {
+    type: "website", siteName: "Axiom Siam", locale: "th_TH",
+    title: "Axiom Siam — โรงงานผลิตเสื้อผ้ากีฬา", description: DESCRIPTION,
+    images: [{ url: "/og/factory.jpg", width: 1200, height: 630, alt: "โรงงาน Axiom Siam มุมสูง" }],
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

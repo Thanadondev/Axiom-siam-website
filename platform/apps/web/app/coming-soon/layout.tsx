@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Coming soon — Axiom Siam",
+  title: "Coming soon",
   robots: { index: false, follow: true },
 };
 
