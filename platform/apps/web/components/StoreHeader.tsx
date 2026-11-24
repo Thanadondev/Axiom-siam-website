@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import UserMenu from "./UserMenu";
@@ -31,6 +32,12 @@ export default function StoreHeader({
   const path = usePathname() ?? "";
   const items = plain ? [] : nav ?? SITE_NAV.map(s => ({ href: s.href, label: L(...s.title) }));
   const here = (href: string) => !href.startsWith("#") && (path === href || path.startsWith(href + "/"));
+  // phones: the menu is a row that scrolls sideways; bring the page you're on into it
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current, a = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (nav && a && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = a.offsetLeft - nav.offsetLeft - (nav.clientWidth - a.offsetWidth) / 2;
+  }, [path]);
   return (
     <header className="ax-head">
       <div className="ax-wrap">
@@ -39,7 +46,7 @@ export default function StoreHeader({
           <b>AXIOM<i>.</i></b>
         </Link>
         {items.length > 0 && (
-          <nav className="ax-nav" aria-label={L("เมนูหลัก", "Main menu", "メインメニュー")}>
+          <nav ref={navRef} className="ax-nav" aria-label={L("เมนูหลัก", "Main menu", "メインメニュー")}>
             {items.map(n => n.href.startsWith("#")
               ? <a key={n.href} href={n.href}>{n.label}</a>
               : <Link key={n.href} href={n.href} aria-current={here(n.href) ? "page" : undefined}>{n.label}<SoonTag href={n.href} /></Link>)}
