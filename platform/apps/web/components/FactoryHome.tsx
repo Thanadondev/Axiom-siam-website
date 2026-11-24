@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { tri, type Lang } from "../lib/i18n";
+import { videoOk } from "../lib/motion";
 import { isSoon } from "../lib/launch";
 import { STATIONS, type Station, type T3 } from "../lib/stations";
 
@@ -75,7 +76,7 @@ export default function FactoryHome({ lang }: { lang: Lang }) {
   useEffect(centre, []);
 
   const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  useEffect(() => setMotion(!reduced()), []);
+  useEffect(() => setMotion(videoOk()), []);
 
   /** start loading a station's flight (on hover / focus, so the click plays at once) */
   const warm = (id: string) => {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { STEPS, SHIP_STEP } from "../lib/production-steps";
 import { tri, type Lang } from "../lib/i18n";
+import { videoOk } from "../lib/motion";
 import { TRACK_MAP } from "../lib/track-map";
 
 /**
@@ -39,7 +40,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
   const scroller = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
-  useEffect(() => setMotion(!window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
+  useEffect(() => setMotion(videoOk()), []);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   // phones: the picture scrolls sideways — bring the order's stop (or the middle) into view

@@ -5,6 +5,7 @@ import StoreHeader from "./StoreHeader";
 import StoreFooter from "./StoreFooter";
 import StationHero from "./StationHero";
 import { tri, type Lang } from "../lib/i18n";
+import { videoOk } from "../lib/motion";
 import type { Station } from "../lib/stations";
 import "../app/app.css";
 import "../app/home.css";
@@ -51,7 +52,8 @@ export default function AppShell({
 function AuthStage({ lang }: { lang?: Lang }) {
   const L = tri(lang ?? "th");
   const [motion, setMotion] = useState(false);
-  useEffect(() => setMotion(!window.matchMedia("(prefers-reduced-motion: reduce)").matches), []);
+  // the moving factory only where the picture is big (phones show a short strip of it)
+  useEffect(() => setMotion(videoOk() && !window.matchMedia("(max-width: 900px)").matches), []);
   return (
     <aside className="ax-auth-art st-auth" aria-label="Axiom Siam">
       {/* the same factory as the home page, at work */}
