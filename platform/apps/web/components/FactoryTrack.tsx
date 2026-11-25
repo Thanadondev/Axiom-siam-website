@@ -11,11 +11,11 @@ import { TRACK_MAP } from "../lib/track-map";
  * AXIOM-WEB\3D Factory\web_render\track_route.py + render_track.py): a lit walkway from the printers to
  * the truck, an arc from the design room to the printers, and a numbered sign at each of the ten steps.
  * TRACK_MAP (lib/track-map.ts, written from render_track.py's track_map.json) says where the signs and
- * the route land in the picture, in %. `near` is the station whose flight (fly-<id>.mp4) and close-up
- * (<id>-*.webp) show that step best.
+ * the route land in the picture, in %. Each step has its own flight from this picture down to it,
+ * fly-step-<n>.mp4, whose last frame is step-<n>-1600.webp (shown instead without video): web_render
+ * track_views.py (the ten cameras) + run_track_anim.sh.
  */
-const NEAR = ["office", "printing", "heatpress", "laser", "sewing", "sewing", "sewing", "sewing", "shipping", "shipping"];
-export const STOPS = TRACK_MAP.signs.map((at, i) => ({ at: at as [number, number], near: NEAR[i] }));
+export const STOPS = TRACK_MAP.signs.map(at => ({ at: at as [number, number] }));
 
 const FLY_WAIT_MS = 2500;
 
@@ -33,7 +33,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
 }) {
   const L = tri(lang);
   const [motion, setMotion] = useState(false);
-  const [near, setNear] = useState<string | null>(null);   // the station being looked at up close
+  const [near, setNear] = useState<number | null>(null);   // the step being looked at up close
   const [still, setStill] = useState(false);              // showing the close-up picture (no video)
   const [flying, setFlying] = useState(false);
   const fly = useRef<HTMLVideoElement>(null);
@@ -54,12 +54,12 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
   // a new lookup goes back to the whole factory
   useEffect(() => { back(); }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function look(id: string) {
+  function look(n: number) {
     clearTimeout(timer.current);
-    setNear(id); setStill(false); setFlying(false);
+    setNear(n); setStill(false); setFlying(false);
     const v = fly.current;
     if (!motion || !v) { setStill(true); return; }
-    v.src = `/factory/fly-${id}.mp4`;
+    v.src = `/factory/fly-step-${n}.mp4`;
     let started = false;
     v.onplaying = () => { started = true; setFlying(true); };
     v.play().catch(() => { if (!started) setStill(true); });
@@ -98,7 +98,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
               <button key={n} type="button" className={"tk-stop" + (hot === n ? " hot" : "")} data-state={state}
                 style={{ left: `${s.at[0]}%`, top: `${s.at[1]}%` }}
                 onMouseEnter={() => onHot(n)} onMouseLeave={() => onHot(null)} onFocus={() => onHot(n)} onBlur={() => onHot(null)}
-                onClick={() => look(s.near)}
+                onClick={() => look(n)}
                 aria-label={`${n} · ${name(n)} — ${L("ดูใกล้ๆ", "look closer", "近くで見る")}`}>
                 {state === "done" && <span className="tk-tick" aria-hidden="true">✓</span>}
                 <i className="tk-tip" aria-hidden="true">{String(n).padStart(2, "0")} · {name(n)}</i>
@@ -117,8 +117,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
 
           {/* up close: the camera flies down to the station (or its picture, without video) */}
           <video ref={fly} className={"tk-fly" + (flying ? " on" : "")} muted playsInline preload="none" aria-hidden="true" onClick={back} />
-          {near && <img className={"tk-near" + (still ? " on" : "")} src={`/factory/${near}-1600.webp`}
-            srcSet={`/factory/${near}-1600.webp 1600w, /factory/${near}-2560.webp 2560w`} sizes="(max-width: 760px) 900px, 66vw"
+          {near && <img className={"tk-near" + (still ? " on" : "")} src={`/factory/step-${near}-1600.webp`}
             alt="" onClick={back} draggable={false} />}
         </div>
       </div>
@@ -126,7 +125,7 @@ export default function FactoryTrack({ lang, step, hot, onHot }: {
         {near
           ? <button type="button" className="tk-back" onClick={back}>← {L("กลับไปดูทั้งโรงงาน", "Back to the whole factory", "工場全体に戻る")}</button>
           : cur
-            ? <button type="button" className="tk-back" onClick={() => look(cur.near)}>{L("ดูใกล้ๆ ตรงที่งานอยู่", "Look closer where it is", "近くで見る")} →</button>
+            ? <button type="button" className="tk-back" onClick={() => look(at)}>{L("ดูใกล้ๆ ตรงที่งานอยู่", "Look closer where it is", "近くで見る")} →</button>
             : <span>{L("แตะเลขบนภาพเพื่อดูแต่ละจุดใกล้ๆ", "Tap a number to look closer", "番号をタップして近くで見る")}</span>}
       </div>
     </div>
