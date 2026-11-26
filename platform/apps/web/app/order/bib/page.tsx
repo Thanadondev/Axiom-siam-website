@@ -65,6 +65,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [team, setTeam] = useState("");
   const [font, setFont] = useState<FontId>("block");
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
+  // the chest logo on the left or right as you look at the front; the front number takes the other side
+  const [logoLeft, setLogoLeft] = useState(false);
   const [sides, setSides] = useState<[Side, Side]>([SIDE_A, SIDE_B]);
   const [logo, setLogo] = useState<{ url: string; name: string; data: string; w: number; h: number; svg: boolean } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -93,11 +95,11 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const used = product === "bib_r" ? sides : [sides[0]];
 
   const design = useMemo(() => ({
-    product, team: team.trim(), font, show,
+    product, team: team.trim(), font, show, logoLeft,
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, show, used, roster]);
+  }), [product, team, font, show, logoLeft, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -305,6 +307,17 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
               );
             })()}
             {logoErr && <p className="ou-warn">⚠ {logoErr}</p>}
+            {show.frontLogo && (
+              <>
+                <span className="flabel">{L("ตำแหน่งโลโก้ (มองจากด้านหน้า)", "Logo position (looking at the front)", "ロゴの位置（正面から見て）")}</span>
+                <div className="bd-seg" role="radiogroup" aria-label={L("ตำแหน่งโลโก้", "Logo position", "ロゴの位置")}>
+                  {([[true, L("ซ้าย", "Left", "左")], [false, L("ขวา", "Right", "右")]] as const).map(([left, label]) => (
+                    <button key={label} type="button" role="radio" aria-checked={logoLeft === left} onClick={() => setLogoLeft(left)}>{label}</button>
+                  ))}
+                </div>
+                {show.frontNumber && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
+              </>
+            )}
           </div>
 
           {used.map((s, i) => (
