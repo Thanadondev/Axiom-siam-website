@@ -74,6 +74,8 @@ export interface Art {
   logo?: { png: Uint8Array; w: number; h: number; tint?: boolean; scale?: number };
   /** the logo on the viewer's left and the number on the right (the kit studio's front) */
   logoLeft?: boolean;
+  /** the front number in the middle of the chest; the logo keeps its side and the number keeps clear of it */
+  numberCenter?: boolean;
   show: { frontNumber: boolean; frontLogo: boolean; frontTeam: boolean; backName: boolean; backNumber: boolean };
 }
 
@@ -214,15 +216,44 @@ export function edgeX(cut: Seg[], y0: number, y1: number, side: "left" | "right"
  * made smaller. Before, a two-digit number in the classic or Thai font ran into
  * the cut line.
  */
-export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15 };
+export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15, logo: 12 };
+
+/** where the chest logo prints on the front piece (mm), or null when there is none */
+export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; h: number } | null {
+  if (!art.show.frontLogo || !art.logo) return null;
+  const k = p.w / BASE_WIDTH, L = frontLayout(!!art.logoLeft), g = art.logo.scale ?? 1;
+  let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
+  if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
+  // a smaller logo keeps its centre where the full-size one would be
+  const y = L.logo.top * p.h + ((1 - g) * L.logo.h * k) / 2;
+  return { x: L.logo.cx * p.w - w / 2, y, w, h };
+}
 
 export function frontNumber(p: Piece, art: Art): TextShape | null {
   const k = p.w / BASE_WIDTH;
   const L = frontLayout(!!art.logoLeft);
+  const mid = p.w / 2;
+  if (art.numberCenter) {
+    // in the middle of the chest: as wide as the armholes and the logo leave room for, either side of the centre line
+    const at = { cx: mid, top: L.number.top * p.h };
+    let t = textShape(art.number, art.font, { h: L.number.h * k }, at);
+    if (!t) return null;
+    const cut = parsePath(p.cut);
+    let lo = edgeX(cut, t.box.y, t.box.y + t.box.h, "left", mid) + FRONT_NUMBER_CLEAR.edge * k;
+    let hi = edgeX(cut, t.box.y, t.box.y + t.box.h, "right", mid) - FRONT_NUMBER_CLEAR.edge * k;
+    const lb = logoBox(p, art);
+    if (lb) {
+      if (lb.x + lb.w / 2 > mid) hi = Math.min(hi, lb.x - FRONT_NUMBER_CLEAR.logo * k);
+      else lo = Math.max(lo, lb.x + lb.w + FRONT_NUMBER_CLEAR.logo * k);
+    }
+    const room = 2 * Math.min(mid - lo, hi - mid);
+    if (Number.isFinite(room) && t.box.w > room) t = textShape(art.number, art.font, { h: L.number.h * k, maxW: room }, at)!;
+    return t;
+  }
   const at = { cx: L.number.cx * p.w, top: L.number.top * p.h };
   let t = textShape(art.number, art.font, { h: L.number.h * k }, at);
   if (!t) return null;
-  const mid = p.w / 2, onLeft = L.number.cx < 0.5;
+  const onLeft = L.number.cx < 0.5;
   const e = edgeX(parsePath(p.cut), t.box.y, t.box.y + t.box.h, onLeft ? "left" : "right", mid);
   if (!Number.isFinite(e)) return t;
   const lo = onLeft ? e + FRONT_NUMBER_CLEAR.edge * k : mid + FRONT_NUMBER_CLEAR.centre * k;
@@ -253,14 +284,8 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
       const t = frontNumber(p, art);
       if (t) out.push(...inked(t.segs, look, k));
     }
-    if (art.show.frontLogo && art.logo) {
-      const g = art.logo.scale ?? 1;
-      let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
-      if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
-      // a smaller logo keeps its centre where the full-size one would be
-      const top = L.logo.top * p.h + ((1 - g) * L.logo.h * k) / 2;
-      out.push({ kind: "image", png: art.logo.png, x: L.logo.cx * p.w - w / 2, y: top, w, h, ...(art.logo.tint ? { tint: look.ink } : {}) });
-    }
+    const lb = logoBox(p, art);
+    if (lb && art.logo) out.push({ kind: "image", png: art.logo.png, ...lb, ...(art.logo.tint ? { tint: look.ink } : {}) });
     if (art.show.frontTeam) {
       const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: L.team.cy * p.h });
       if (t) out.push(...inked(t.segs, look, k));

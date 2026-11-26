@@ -133,7 +133,7 @@ export class BibJobService {
     const full = await this.logo(logoUrl);
     const png = full ? fitPng(full, PREVIEW_LOGO_PX) : undefined;
     const logo = logoArt(d, png);
-    const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft }, z, counts, { ref: "PREVIEW", date: new Date() });
+    const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter }, z, counts, { ref: "PREVIEW", date: new Date() });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
   }
 

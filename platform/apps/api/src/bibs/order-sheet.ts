@@ -129,14 +129,16 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
       if (part === "front") {
         const F = frontLayout(!!art.logoLeft);
         // the note of whatever is on the viewer's left sits left of the piece, as on the team's sheets; the other's right
-        const note = (text: string, it: { cx: number; top: number }, reach: number) => {
+        const note = (text: string, it: { cx: number; top: number }, reach: number, left = it.cx < 0.5) => {
           const y = y0 + (it.top * p.h + 42 * k) * s;
-          const onLeft = it.cx < 0.5;
+          const onLeft = left;
           callout(out, text, { x: x0 + (it.cx * p.w + (onLeft ? -reach : reach) * k) * s, y }, { x: onLeft ? x0 - 24 : R, y });
         };
         // the number as drawn: a wide one sits further in and may be smaller (draw.ts frontNumber)
         const fn = art.show.frontNumber && art.number ? frontNumber(p, art) : null;
-        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: F.number.top }, art.logoLeft ? 45 : 30);
+        // a number in the middle points out on the side away from the logo
+        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: F.number.top },
+          art.numberCenter ? fn.box.w / 2 / k + 6 : art.logoLeft ? 45 : 30, art.numberCenter ? !art.logoLeft : undefined);
         if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
         if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + F.team.cy * p.h * s }, { x: R + 30, y: y0 + (F.team.cy * p.h + 50 * k) * s });
       } else {

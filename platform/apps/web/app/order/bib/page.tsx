@@ -67,6 +67,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
   // the chest logo on the left or right as you look at the front; the front number takes the other side
   const [logoLeft, setLogoLeft] = useState(false);
+  // the front number beside the logo, or in the middle of the chest
+  const [numberCenter, setNumberCenter] = useState(false);
   const [sides, setSides] = useState<[Side, Side]>([SIDE_A, SIDE_B]);
   const [logo, setLogo] = useState<{ url: string; name: string; data: string; w: number; h: number; svg: boolean } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -95,11 +97,11 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const used = product === "bib_r" ? sides : [sides[0]];
 
   const design = useMemo(() => ({
-    product, team: team.trim(), font, show, logoLeft,
+    product, team: team.trim(), font, show, logoLeft, numberCenter,
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, show, logoLeft, used, roster]);
+  }), [product, team, font, show, logoLeft, numberCenter, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -273,6 +275,16 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                 </label>
               ))}
             </div>
+            {show.frontNumber && (
+              <>
+                <span className="flabel">{L("ตำแหน่งเบอร์ด้านหน้า", "Front number position", "前面の番号の位置")}</span>
+                <div className="bd-seg" role="radiogroup" aria-label={L("ตำแหน่งเบอร์ด้านหน้า", "Front number position", "前面の番号の位置")}>
+                  {([[false, L("ด้านข้าง", "To one side", "片側")], [true, L("กลางตัว", "In the middle", "中央")]] as const).map(([mid, label]) => (
+                    <button key={label} type="button" role="radio" aria-checked={numberCenter === mid} onClick={() => setNumberCenter(mid)}>{label}</button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="acard">
@@ -315,7 +327,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                     <button key={label} type="button" role="radio" aria-checked={logoLeft === left} onClick={() => setLogoLeft(left)}>{label}</button>
                   ))}
                 </div>
-                {show.frontNumber && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
+                {show.frontNumber && !numberCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
               </>
             )}
           </div>

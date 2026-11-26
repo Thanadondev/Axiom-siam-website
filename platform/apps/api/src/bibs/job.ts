@@ -57,7 +57,7 @@ const bySize = (roster: RosterRow[]) => {
 };
 
 const artFor = (d: BibDesign, r: RosterRow, logo?: Art["logo"], font?: FontRef): Art => ({
-  font: font ?? d.font, team: d.team, name: r.name, number: r.number, logo, show: d.show, logoLeft: d.logoLeft,
+  font: font ?? d.font, team: d.team, name: r.name, number: r.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter,
 });
 
 /** one bib's print file */

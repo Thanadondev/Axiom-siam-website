@@ -53,6 +53,8 @@ export const BibDesignSchema = z.object({
   roster: z.array(RosterRowSchema).min(1).max(500),
   /** the chest logo on the wearer's right (the viewer's left) and the number opposite, as the kit studio places them */
   logoLeft: z.boolean().default(false),
+  /** the front number in the middle of the chest instead of beside the logo (the logo keeps its side) */
+  numberCenter: z.boolean().default(false),
   /** print the logo in one colour, the side's ink (the kit studio's "one colour" logo) */
   logoTint: z.boolean().default(false),
   /** with no team logo, the Axiom mark in its place (always one colour, a little smaller), as the kit studio shows it */
