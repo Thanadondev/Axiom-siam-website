@@ -30,7 +30,12 @@ function withShaper(f: opentype.Font, buf: Uint8Array): opentype.Font {
  * accented name still comes out.
  */
 
-export type FontId = "block" | "classic" | "thai";
+export const FONT_IDS = ["block", "classic", "thai", "college", "sport", "italic", "kanit"] as const;
+export type FontId = (typeof FONT_IDS)[number];
+/** what each is called on the order sheet's notes and for the graphics team */
+export const FONT_NAMES: Record<FontId, string> = {
+  block: "Anton", classic: "Sora", thai: "Noto Sans Thai", college: "Graduate", sport: "Teko", italic: "Racing Sans One", kanit: "Kanit",
+};
 /** one of ours, or the team's own font (the kit studio's upload) with one of ours for what it lacks */
 export type FontRef = FontId | "label" | { font: opentype.Font; fallback: FontId };
 
@@ -41,7 +46,7 @@ export function parseFont(buf: Uint8Array): opentype.Font | null {
     return f.charToGlyphIndex("0") > 0 || f.charToGlyphIndex("A") > 0 ? withShaper(f, buf) : null;
   } catch { return null; }
 }
-type Face = "anton" | "sora8" | "sora7" | "thai8" | "thai7" | "jp8" | "jp7";
+type Face = "anton" | "sora8" | "sora7" | "thai8" | "thai7" | "graduate" | "teko7" | "racing" | "kanit8" | "jp8" | "jp7";
 
 const FILES: Record<Exclude<Face, "jp8" | "jp7">, string[]> = {
   anton: ["@fontsource/anton/files/anton-latin-400-normal.woff", "@fontsource/anton/files/anton-latin-ext-400-normal.woff"],
@@ -49,6 +54,11 @@ const FILES: Record<Exclude<Face, "jp8" | "jp7">, string[]> = {
   sora7: ["@fontsource/sora/files/sora-latin-700-normal.woff", "@fontsource/sora/files/sora-latin-ext-700-normal.woff"],
   thai8: ["@fontsource/noto-sans-thai/files/noto-sans-thai-thai-800-normal.woff", "@fontsource/noto-sans-thai/files/noto-sans-thai-latin-800-normal.woff"],
   thai7: ["@fontsource/noto-sans-thai/files/noto-sans-thai-thai-700-normal.woff", "@fontsource/noto-sans-thai/files/noto-sans-thai-latin-700-normal.woff"],
+  // added 2026-11-26, all SIL Open Font License: a collegiate slab, a squared-off sports face, a sporty italic, a heavy Thai
+  graduate: ["@fontsource/graduate/files/graduate-latin-400-normal.woff"],
+  teko7: ["@fontsource/teko/files/teko-latin-700-normal.woff", "@fontsource/teko/files/teko-latin-ext-700-normal.woff"],
+  racing: ["@fontsource/racing-sans-one/files/racing-sans-one-latin-400-normal.woff", "@fontsource/racing-sans-one/files/racing-sans-one-latin-ext-400-normal.woff"],
+  kanit8: ["@fontsource/kanit/files/kanit-thai-800-normal.woff", "@fontsource/kanit/files/kanit-latin-800-normal.woff", "@fontsource/kanit/files/kanit-latin-ext-800-normal.woff"],
 };
 
 /**
@@ -59,6 +69,11 @@ const CHAINS: Record<FontId | "label", Face[]> = {
   block: ["anton", "thai8", "sora8", "jp8"],
   classic: ["sora8", "thai8", "jp8"],
   thai: ["thai8", "sora8", "jp8"],
+  // a Thai name in the new Latin faces comes out in Kanit, the heavier, sportier Thai
+  college: ["graduate", "kanit8", "sora8", "jp8"],
+  sport: ["teko7", "kanit8", "sora8", "jp8"],
+  italic: ["racing", "kanit8", "sora8", "jp8"],
+  kanit: ["kanit8", "sora8", "jp8"],
   label: ["sora7", "thai7", "jp7"],
 };
 

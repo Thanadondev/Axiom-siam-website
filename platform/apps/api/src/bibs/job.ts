@@ -5,7 +5,7 @@ import { drawPiece, moveShapes, pngSize, type Art, type Shape } from "./draw";
 import { orderSheetJpeg, orderSheetSvg, type SheetMeta } from "./order-sheet";
 import { printPdf } from "./print-pdf";
 import { BIB_SIZES, layoutFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Side } from "./template";
-import { parseFont, type FontRef } from "./text";
+import { FONT_NAMES, parseFont, type FontRef } from "./text";
 import { xlsx } from "./xlsx";
 import { fitPng, PRINT_LOGO_PX } from "./raster";
 import { AXIOM_MARK_PNG } from "./axiom-mark";
@@ -79,7 +79,7 @@ export function teamFont(d: BibDesign, data?: Uint8Array): { font?: FontRef; not
   const f = data ? parseFont(data) : null;
   if (f) return { font: { font: f, fallback: d.font } };
   const ext = d.fontUrl.split(".").pop()!.toUpperCase();
-  return { note: `Team font (${ext}) could not be read: names and numbers are set in ${d.font === "block" ? "Anton" : d.font === "classic" ? "Sora" : "Noto Sans Thai"} - set them in the team's font` };
+  return { note: `Team font (${ext}) could not be read: names and numbers are set in ${FONT_NAMES[d.font]} - set them in the team's font` };
 }
 
 export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array; fontData?: Uint8Array }): Promise<BuiltJob> {

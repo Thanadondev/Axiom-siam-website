@@ -308,7 +308,9 @@ a.noteitem:hover{background:var(--soft)}
 @media (max-width: 760px) { .od-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- /order/bib: designing bibs on the web ---------- */
-.bd-fonts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-fonts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-teamfont { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.bd-teamfont .sample { font-size: 24px; line-height: 1.1; padding: 6px 12px; border: 1.5px solid var(--brand); border-radius: 10px; }
 .bd-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 6px; font-size: 13.5px; }
 .bd-checks label, .bd-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .bd-toggle { margin: 14px 0 4px; font-size: 13.5px; }
@@ -336,6 +338,7 @@ a.noteitem:hover{background:var(--soft)}
 .bd-sheet[data-busy] { opacity: .6; }
 .bd-sheet img { display: block; width: 100%; height: auto; }
 @media (max-width: 640px) {
-  .bd-fonts, .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
+  .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
+  .bd-fonts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-logo { grid-template-columns: minmax(0, 1fr); }
 }

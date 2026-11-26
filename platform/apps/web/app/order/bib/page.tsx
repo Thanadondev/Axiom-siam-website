@@ -9,7 +9,7 @@ import { useAuth } from "../../../lib/auth-context";
 import { inkClashes } from "../../../lib/ink-contrast";
 import { apiFetch } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
-import { importPrintLogo, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
+import { importPrintLogo, importFont, fontFamilyOf, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
 import { logoDpi } from "../../../lib/bib-roster";
 import { readRoster, numberedLines, countBySize, BIB_SIZES, BIB_SIZE_LABEL, NAME_MAX, type BibSize } from "../../../lib/bib-roster";
 
@@ -36,11 +36,18 @@ interface Address { id: string; recipient: string; phone: string; line1: string;
 const PURPLE = "#662d91", YELLOW = "#fff200", NAVY = "#2e3192", BLACK = "#231f20", WHITE = "#ffffff", GREY = "#939598";
 const SIDE_A: Side = { body: PURPLE, pattern: "plain", patternColor: GREY, ink: YELLOW, outline: true, inkOutline: NAVY, ribs: true, rib: { neck: BLACK, arm: BLACK, hem: BLACK } };
 const SIDE_B: Side = { body: WHITE, pattern: "plain", patternColor: GREY, ink: PURPLE, outline: true, inkOutline: BLACK, ribs: false, rib: { neck: BLACK, arm: BLACK, hem: BLACK } };
+// the API's FONT_IDS (bibs/text.ts); all SIL Open Font License
 const FONTS = [
-  { id: "block", name: "Block", family: "Anton" },
-  { id: "classic", name: "Classic", family: "Sora" },
-  { id: "thai", name: "ไทย", family: "Noto Sans Thai" },
+  { id: "block", name: "Block", family: "Anton", sample: "10 ABC" },
+  { id: "classic", name: "Classic", family: "Sora", sample: "10 ABC" },
+  { id: "college", name: "College", family: "Graduate", sample: "10 ABC" },
+  { id: "sport", name: "Sport", family: "Teko", sample: "10 ABC" },
+  { id: "italic", name: "Italic", family: "Racing Sans One", sample: "10 ABC" },
+  { id: "thai", name: "ไทย", family: "Noto Sans Thai", sample: "10 ทีม" },
+  { id: "kanit", name: "ไทย Kanit", family: "Kanit", sample: "10 ทีม" },
 ] as const;
+/** opentype on the API reads TTF, OTF and WOFF; WOFF2 would quietly come out in our font */
+const TEAM_FONT_ACCEPT = ".ttf,.otf,.woff";
 type FontId = (typeof FONTS)[number]["id"];
 const SHOW = ["frontNumber", "frontLogo", "frontTeam", "backName", "backNumber"] as const;
 type Show = Record<(typeof SHOW)[number], boolean>;
@@ -64,6 +71,11 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [product, setProduct] = useState<Product>("bib_r");
   const [team, setTeam] = useState("");
   const [font, setFont] = useState<FontId>("block");
+  // the team's own font, uploaded: names and numbers are set in it, `font` fills in what it lacks (Thai, say)
+  const [teamFont, setTeamFont] = useState<{ url: string; name: string; family: string } | null>(null);
+  const [fontBusy, setFontBusy] = useState(false);
+  const [fontErr, setFontErr] = useState("");
+  const fontInput = useRef<HTMLInputElement>(null);
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
   // the chest logo on the left or right as you look at the front; the front number takes the other side
   const [logoLeft, setLogoLeft] = useState(false);
@@ -98,10 +110,11 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
 
   const design = useMemo(() => ({
     product, team: team.trim(), font, show, logoLeft, numberCenter,
+    ...(teamFont ? { fontUrl: teamFont.url } : {}),
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, show, logoLeft, numberCenter, used, roster]);
+  }), [product, team, font, teamFont, show, logoLeft, numberCenter, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -170,6 +183,25 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     } finally {
       setLogoBusy(false);
       if (logoInput.current) logoInput.current.value = "";
+    }
+  }
+
+  async function onFont(f?: File | null) {
+    if (!f || !token) return;
+    setFontErr(""); setFontBusy(true);
+    try {
+      if (/\.woff2$/i.test(f.name)) throw new Error("woff2");
+      const a = await importFont(f);
+      if (/^data:font\/woff2/.test(a.data)) throw new Error("woff2");
+      const url = await uploadAsset(a, token);
+      setTeamFont({ url, name: a.name, family: fontFamilyOf(a.id) });
+    } catch (e: any) {
+      setFontErr(e?.message === "woff2"
+        ? L("ไฟล์ .woff2 ใช้ทำไฟล์งานไม่ได้ — ใช้ .ttf .otf หรือ .woff", "A .woff2 file can't be used for the print files — use .ttf, .otf or .woff", ".woff2はご利用いただけません。.ttf・.otf・.woffをお使いください")
+        : lang === "th" ? e?.message || "นำเข้าฟอนต์ไม่สำเร็จ" : L("", "Couldn't use this font file", "このフォントを使用できませんでした"));
+    } finally {
+      setFontBusy(false);
+      if (fontInput.current) fontInput.current.value = "";
     }
   }
 
@@ -256,11 +288,30 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
               {FONTS.map(f => (
                 <label key={f.id} className="ou-product" data-on={font === f.id ? "" : undefined}>
                   <input type="radio" name="font" checked={font === f.id} onChange={() => setFont(f.id)} />
-                  <b style={{ fontFamily: `"${f.family}", sans-serif`, fontSize: 22 }}>10 ABC</b>
+                  <b style={{ fontFamily: `"${f.family}", sans-serif`, fontSize: 22 }}>{f.sample}</b>
                   <span className="dim">{f.name}</span>
                 </label>
               ))}
             </div>
+            <span className="flabel">{L("ฟอนต์ของทีมเอง (ถ้ามี)", "Your team's own font (optional)", "チーム独自のフォント（任意）")}</span>
+            <div className="bd-teamfont">
+              {teamFont && <span className="sample" style={{ fontFamily: `"${teamFont.family}", sans-serif` }}>10 ABC</span>}
+              <button type="button" className="abtn ghost" disabled={fontBusy} onClick={() => fontInput.current?.click()}>
+                {fontBusy ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : teamFont ? L("เปลี่ยนฟอนต์", "Change font", "フォントを変更") : L("อัปโหลดฟอนต์ (.ttf .otf .woff)", "Upload a font (.ttf .otf .woff)", "フォントをアップロード（.ttf .otf .woff）")}
+              </button>
+              {teamFont && <button type="button" className="minibtn" onClick={() => setTeamFont(null)}>{L("ไม่ใช้", "Don't use it", "使わない")}</button>}
+            </div>
+            <input ref={fontInput} type="file" accept={TEAM_FONT_ACCEPT} hidden onChange={e => onFont(e.target.files?.[0])} />
+            {teamFont && (
+              <p className="dim" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+                {teamFont.name} · {L(
+                  "ชื่อ เบอร์ และชื่อทีมใช้ฟอนต์นี้ ตัวอักษรที่ฟอนต์นี้ไม่มี (เช่น ภาษาไทย) ใช้ฟอนต์ที่เลือกด้านบนแทน",
+                  "names, numbers and the team name are set in it; any letter it lacks (Thai, say) comes from the font picked above",
+                  "名前・番号・チーム名はこのフォントで作成します。含まれない文字（タイ文字など）は上で選んだ書体になります",
+                )}
+              </p>
+            )}
+            {fontErr && <p className="ou-warn">⚠ {fontErr}</p>}
             <span className="flabel">{L("พิมพ์อะไรบ้าง", "What's printed", "プリント内容")}</span>
             <div className="bd-checks">
               {SHOW.map(k => (

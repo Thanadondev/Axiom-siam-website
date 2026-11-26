@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
-import { textShape } from "./text";
+import { textShape, FONT_IDS } from "./text";
 import { BibDesignSchema } from "./design";
 import { drawPiece, frontNumber, edgeX, logoBox, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
 import { factoryCmyk, ink } from "./color";
@@ -79,6 +79,20 @@ describe("paths and outlined text", () => {
     expect(bounds(textShape("SAGINUMA FC", "block", { w: 320, h: 50 }, { cx: 0, cy: 0 })!.segs)!.w).toBeLessThanOrEqual(320.5);
     expect(textShape("ทีมไทย", "block", { h: 40 }, { x: 0, top: 0 })!.segs.length).toBeGreaterThan(10);
     expect(textShape("  ", "block", { h: 40 }, { x: 0 })).toBeNull();
+  });
+
+  it("every font draws numbers, Latin and Thai names (a Thai name in a Latin face falls back to a Thai one)", () => {
+    for (const f of FONT_IDS) {
+      for (const text of ["48", "TAICHI", "สมชาย", "ปู่"]) {
+        const t = textShape(text, f, { h: 85 }, { cx: 0, top: 0 });
+        expect(t, `${f} ${text}`).not.toBeNull();
+        expect(t!.box.h, `${f} ${text}`).toBeCloseTo(85, 0);
+        expect(t!.segs.length, `${f} ${text}`).toBeGreaterThan(8);
+      }
+    }
+    // the new faces really are their own shapes, not the fallback
+    const shape = (f: (typeof FONT_IDS)[number]) => { const t = textShape("88", f, { h: 85 }, { x: 0, top: 0 })!; return `${t.box.w.toFixed(1)}:${t.segs.length}`; };
+    expect(new Set(FONT_IDS.map(shape)).size).toBe(FONT_IDS.length);
   });
 
   it("the front number keeps clear of the armhole, however many digits and whatever the font", () => {

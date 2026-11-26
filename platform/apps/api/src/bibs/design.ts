@@ -1,3 +1,4 @@
+import { FONT_IDS } from "./text";
 import { z } from "zod";
 import { BIB_SIZES } from "./template";
 
@@ -39,7 +40,7 @@ export const BibDesignSchema = z.object({
   product: z.enum(["bib_r", "bib_n"]),
   /** printed across the front */
   team: z.string().max(30).default(""),
-  font: z.enum(["block", "classic", "thai"]).default("block"),
+  font: z.enum(FONT_IDS).default("block"),
   /** side A, and for a reversible bib the reverse (side B) */
   sides: z.array(SideLookSchema).min(1).max(2),
   /** where the pieces carry what */

@@ -5,7 +5,7 @@ import { resolve } from "path";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "../orders/order-files.service";
 import { BibDesignSchema, type BibDesign } from "./design";
-import { buildBibJob, logoArt, type BuiltJob } from "./job";
+import { buildBibJob, logoArt, teamFont, type BuiltJob } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
@@ -133,7 +133,9 @@ export class BibJobService {
     const full = await this.logo(logoUrl);
     const png = full ? fitPng(full, PREVIEW_LOGO_PX) : undefined;
     const logo = logoArt(d, png);
-    const { svg } = orderSheetSvg(d, { font: d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter }, z, counts, { ref: "PREVIEW", date: new Date() });
+    // the team's own font, as the print files will set it (or the note saying it couldn't be read)
+    const tf = teamFont(d, await this.font(d.fontUrl));
+    const { svg } = orderSheetSvg(d, { font: tf.font ?? d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter }, z, counts, { ref: "PREVIEW", date: new Date(), ...(tf.note ? { notes: [tf.note] } : {}) });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
   }
 
