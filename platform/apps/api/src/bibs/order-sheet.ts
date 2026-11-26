@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import * as jpeg from "jpeg-js";
-import { drawPiece, frontNumber, moveShapes, type Art, type Shape } from "./draw";
+import { drawPiece, frontNumber, moveShapes, teamCy, type Art, type Shape } from "./draw";
 import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
@@ -137,10 +137,11 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
         // the number as drawn: a wide one sits further in and may be smaller (draw.ts frontNumber)
         const fn = art.show.frontNumber && art.number ? frontNumber(p, art) : null;
         // a number in the middle points out on the side away from the logo
-        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: F.number.top },
+        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: art.numberCenter ? fn.box.y / p.h : F.number.top },
           art.numberCenter ? fn.box.w / 2 / k + 6 : art.logoLeft ? 45 : 30, art.numberCenter ? !art.logoLeft : undefined);
         if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
-        if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + F.team.cy * p.h * s }, { x: R + 30, y: y0 + (F.team.cy * p.h + 50 * k) * s });
+        const tcy = teamCy(p, art);
+        if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + tcy * s }, { x: R + 30, y: y0 + tcy * s + 50 * k * s });
       } else {
         const B = LAYOUT.back;
         if (art.show.backName && art.name) callout(out, `H${Math.round(B.name.h * k)}mm`, { x: x0 + (0.5 * p.w + 120 * k) * s, y: y0 + (B.name.top * p.h + 17 * k) * s }, { x: R, y: y0 + (B.name.top * p.h + 17 * k) * s });

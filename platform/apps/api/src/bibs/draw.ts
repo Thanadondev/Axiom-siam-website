@@ -229,25 +229,33 @@ export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; 
   return { x: L.logo.cx * p.w - w / 2, y, w, h };
 }
 
+/** the team name's centre height (mm): under the number when the number is in the middle, else the middle */
+export function teamCy(p: Piece, art: Art): number {
+  const k = p.w / BASE_WIDTH, F = LAYOUT.front, M = F.middle;
+  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return M.cy * p.h + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
+  return F.team.cy * p.h;
+}
+
 export function frontNumber(p: Piece, art: Art): TextShape | null {
   const k = p.w / BASE_WIDTH;
   const L = frontLayout(!!art.logoLeft);
   const mid = p.w / 2;
   if (art.numberCenter) {
-    // in the middle of the chest: as wide as the armholes and the logo leave room for, either side of the centre line
-    const at = { cx: mid, top: L.number.top * p.h };
-    let t = textShape(art.number, art.font, { h: L.number.h * k }, at);
+    // in the middle of the piece: as wide as the armholes (and the logo, if it reaches down that far) leave room for
+    const M = LAYOUT.front.middle;
+    const at = { cx: mid, cy: M.cy * p.h };
+    let t = textShape(art.number, art.font, { h: M.h * k }, at);
     if (!t) return null;
     const cut = parsePath(p.cut);
     let lo = edgeX(cut, t.box.y, t.box.y + t.box.h, "left", mid) + FRONT_NUMBER_CLEAR.edge * k;
     let hi = edgeX(cut, t.box.y, t.box.y + t.box.h, "right", mid) - FRONT_NUMBER_CLEAR.edge * k;
     const lb = logoBox(p, art);
-    if (lb) {
+    if (lb && lb.y < t.box.y + t.box.h && lb.y + lb.h > t.box.y) {
       if (lb.x + lb.w / 2 > mid) hi = Math.min(hi, lb.x - FRONT_NUMBER_CLEAR.logo * k);
       else lo = Math.max(lo, lb.x + lb.w + FRONT_NUMBER_CLEAR.logo * k);
     }
     const room = 2 * Math.min(mid - lo, hi - mid);
-    if (Number.isFinite(room) && t.box.w > room) t = textShape(art.number, art.font, { h: L.number.h * k, maxW: room }, at)!;
+    if (Number.isFinite(room) && t.box.w > room) t = textShape(art.number, art.font, { h: M.h * k, maxW: room }, at)!;
     return t;
   }
   const at = { cx: L.number.cx * p.w, top: L.number.top * p.h };
@@ -287,7 +295,7 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
     const lb = logoBox(p, art);
     if (lb && art.logo) out.push({ kind: "image", png: art.logo.png, ...lb, ...(art.logo.tint ? { tint: look.ink } : {}) });
     if (art.show.frontTeam) {
-      const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: L.team.cy * p.h });
+      const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: teamCy(p, art) });
       if (t) out.push(...inked(t.segs, look, k));
     }
   } else {

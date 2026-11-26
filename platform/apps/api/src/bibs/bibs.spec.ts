@@ -4,7 +4,7 @@ import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
 import { textShape } from "./text";
 import { BibDesignSchema } from "./design";
-import { drawPiece, frontNumber, edgeX, logoBox, FRONT_NUMBER_CLEAR } from "./draw";
+import { drawPiece, frontNumber, edgeX, logoBox, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
 import { factoryCmyk, ink } from "./color";
 import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND } from "./template";
 import { buildBibJob } from "./job";
@@ -108,7 +108,7 @@ describe("paths and outlined text", () => {
     expect(frontNumber(m, { ...art, number: "88" })!.box.h).toBeCloseTo(85, 0);
   });
 
-  it("a front number in the middle sits on the centre line, clear of the armholes and of the logo", () => {
+  it("a front number in the middle sits in the middle of the piece, clear of the armholes, the logo and the team name", () => {
     // a wide logo (110 mm across at M), the hardest case for the room beside it
     const logo = { png: new Uint8Array(0), w: 1300, h: 1000 };
     for (const size of BIB_SIZES) {
@@ -117,11 +117,17 @@ describe("paths and outlined text", () => {
         const a = { ...art, font, logoLeft, numberCenter: true, number, logo };
         const b = bounds(frontNumber(p, a)!.segs)!, at = `${size} ${font} ${number}${logoLeft ? " logoLeft" : ""}`;
         expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
+        expect(b.y + b.h / 2, at).toBeCloseTo(p.h / 2, 0);
         expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
         expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+        // the logo: above it, or beside it with room to spare
         const l = logoBox(p, a)!;
-        const gap = logoLeft ? b.x - (l.x + l.w) : l.x - (b.x + b.w);
-        expect(gap, at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.logo * k - 0.5);
+        const below = b.y - (l.y + l.h), gap = logoLeft ? b.x - (l.x + l.w) : l.x - (b.x + b.w);
+        expect(below >= 0 || gap >= FRONT_NUMBER_CLEAR.logo * k - 0.5, `${at}: below ${below.toFixed(1)}, gap ${gap.toFixed(1)}`).toBe(true);
+        // the team name moves under it
+        const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+        expect(team.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
+        expect(team.y + team.h, at).toBeLessThan(p.h - 30 * k);
       }
     }
     // two digits in the block font keep their full 85 mm beside a square logo

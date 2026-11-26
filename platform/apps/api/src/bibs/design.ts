@@ -89,6 +89,8 @@ export const LAYOUT = {
     number: { cx: 0.264, top: 0.278, h: 85 },
     logo: { cx: 0.743, top: 0.268, h: 85, maxW: 110 },
     team: { cx: 0.5, cy: 0.5, w: 320, h: 50 },
+    /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
+    middle: { cy: 0.5, h: 85, teamGap: 15 },
   },
   back: {
     name: { cx: 0.5, top: 0.146, h: 35, maxW: 380 },
