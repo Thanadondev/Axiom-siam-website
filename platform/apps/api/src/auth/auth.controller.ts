@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { AuthService } from "./auth.service";
+import { AuthService, TooManyLinks } from "./auth.service";
 import {
   RegisterSchema,
   LoginSchema,
@@ -13,11 +13,9 @@ import {
   AddressUpdateSchema,
   TotpCodeSchema,
   TotpDisableSchema,
-  GoogleSignInSchema,
   SetPasswordSchema,
   type TotpCodeDto,
   type TotpDisableDto,
-  type GoogleSignInDto,
   type SetPasswordDto,
   type RegisterDto,
   type LoginDto,
@@ -59,6 +57,18 @@ export class AuthController {
     return this.auth.verifyEmail(dto.token);
   }
 
+  // limited per account inside (RESEND_VERIFY_PER_HOUR), so no @RateLimit by IP here
+  @UseGuards(JwtAuthGuard)
+  @Post("resend-verify")
+  async resendVerify(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
+    try {
+      return await this.auth.resendVerify(user.id);
+    } catch (e) {
+      if (e instanceof TooManyLinks) res.setHeader("Retry-After", String(e.retryAfter));
+      throw e;
+    }
+  }
+
   @Public()
   @RateLimit({ limit: 10, windowMs: 5 * 60_000 }) // slows credential stuffing
   @Post("login")
@@ -67,23 +77,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const { accessToken, refreshToken, user } = await this.auth.login(dto);
-    res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts);
-    return { accessToken, user };
-  }
-
-  // ---------- Google sign-in ----------
-  @Public()
-  @Get("providers")
-  providers() {
-    // the frontend hides buttons for providers that aren't configured
-    return { google: !!process.env.GOOGLE_CLIENT_ID, googleClientId: process.env.GOOGLE_CLIENT_ID ?? null };
-  }
-
-  @Public()
-  @RateLimit({ limit: 20, windowMs: 5 * 60_000 })
-  @Post("google")
-  async google(@Body(new ZodValidationPipe(GoogleSignInSchema)) dto: GoogleSignInDto, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken, user } = await this.auth.googleSignIn(dto.credential);
     res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts);
     return { accessToken, user };
   }
@@ -132,7 +125,7 @@ export class AuthController {
     return this.auth.totpDisable(user.id, dto.password, dto.code);
   }
 
-  // set (Google-only accounts) or change the password
+  // set the first password (an account made without one) or change it
   @UseGuards(JwtAuthGuard)
   @RateLimit({ limit: 10, windowMs: 15 * 60_000 })
   @Post("password")
@@ -144,7 +137,7 @@ export class AuthController {
   @RateLimit({ limit: 5, windowMs: 15 * 60_000 }) // stops reset-email bombing
   @Post("request-reset")
   requestReset(@Body(new ZodValidationPipe(RequestResetSchema)) dto: RequestResetDto) {
-    return this.auth.requestReset(dto.email);
+    return this.auth.requestReset(dto.email, dto.locale);
   }
 
   @Public()

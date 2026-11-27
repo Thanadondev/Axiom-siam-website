@@ -1,8 +1,9 @@
 /**
- * The rule that ties together password-based and Google-only accounts.
+ * The rule that ties together accounts with a password and accounts without one.
  * Pure so it can be unit-tested without a database.
  *
- * A Google-only account has `hasPassword === false`. It should never be forced
+ * Sign-up is by email and password, but an account made before that (it signed in
+ * with Google, now removed) or by hand has `hasPassword === false`. It is never forced
  * to type a password it doesn't have — for those flows a valid 2FA/recovery
  * code (or simply not requiring a current password when setting the first one)
  * is proof enough.

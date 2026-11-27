@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
+import { SIZES } from "../../lib/order-draft";
 import UserMenu from "../../components/UserMenu";
 import "../app.css"; // user-menu styles
 
@@ -12,6 +13,10 @@ function DesignerBridge() {
   const { user, token } = useAuth();
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // the editor has said it is ready, and which design / template was opened in it:
+  // the editor is often ready before the sign-in is restored, and the design opens then
+  const readyRef = useRef(false);
+  const openedRef = useRef("");
   const sp = useSearchParams();
   const designId = sp.get("design");
   const templateId = sp.get("template");
@@ -28,36 +33,40 @@ function DesignerBridge() {
       iframeRef.current?.contentWindow?.postMessage(msg, "*");
     }
 
+    /** the colourway the buyer picked in the marketplace: sent after axiom-open so it wins over the saved doc's */
+    function sendVariant() {
+      if (vBody || vTrim || vSize || vTrimLevel) {
+        setTimeout(() => reply({
+          type: "axiom-set-variant",
+          bodyColor: vBody || undefined,
+          trimColor: vTrim || undefined,
+          size: vSize || undefined,
+          trim: vTrimLevel || undefined,
+        }), 250);
+      }
+    }
+
+    /** opens the design or template in the link once, when both the editor and the sign-in are ready; then its colourway */
+    async function openSaved() {
+      const want = designId ? `d:${designId}` : templateId ? `t:${templateId}` : "";
+      if (!want || !token || !readyRef.current || openedRef.current === want) return;
+      openedRef.current = want;
+      try {
+        const d = await apiFetch<{ stateJson: any }>(designId ? `/designs/${designId}` : `/templates/${templateId}/state`, { token });
+        reply({ type: "axiom-open", doc: d.stateJson });
+      } catch {
+        /* ignore — not owned or not found */
+      }
+      sendVariant();
+    }
+
     async function onMessage(ev: MessageEvent) {
       const m = ev.data || {};
       if (m.type === "axiom-ready") {
         reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
-        if (designId && token) {
-          try {
-            const d = await apiFetch<{ stateJson: any }>(`/designs/${designId}`, { token });
-            reply({ type: "axiom-open", doc: d.stateJson });
-          } catch {
-            /* ignore */
-          }
-        } else if (templateId && token) {
-          try {
-            const d = await apiFetch<{ stateJson: any }>(`/templates/${templateId}/state`, { token });
-            reply({ type: "axiom-open", doc: d.stateJson });
-          } catch {
-            /* ignore — not owned or not found */
-          }
-        }
-        // Apply the colourway the buyer picked in the marketplace. Sent after
-        // axiom-open so it wins over whatever the saved doc had.
-        if (vBody || vTrim || vSize || vTrimLevel) {
-          setTimeout(() => reply({
-            type: "axiom-set-variant",
-            bodyColor: vBody || undefined,
-            trimColor: vTrim || undefined,
-            size: vSize || undefined,
-            trim: vTrimLevel || undefined,
-          }), 250);
-        }
+        readyRef.current = true;
+        // a design or template to open sends the colourway after it (now, or once the sign-in is back); nothing to open, now
+        if (designId || templateId) await openSaved(); else sendVariant();
       }
       if (m.type === "axiom-save") {
         if (!token) { reply({ type: "axiom-save-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }
@@ -78,18 +87,46 @@ function DesignerBridge() {
           reply({ type: "axiom-save-result", ok: false, error: e.message });
         }
       }
+      if (m.type === "axiom-ai-quota") {
+        if (!token) { reply({ type: "axiom-ai-quota-result", loggedIn: false }); return; }
+        try {
+          const q = await apiFetch<{ enabled: boolean; closed: string | null; daily: number; remaining: number }>("/ai/patterns/quota", { token });
+          reply({ type: "axiom-ai-quota-result", loggedIn: true, ...q });
+        } catch { /* say nothing: the button still answers for itself */ }
+        return;
+      }
+      if (m.type === "axiom-ai-pattern") {
+        if (!token) { reply({ type: "axiom-ai-pattern-result", id: m.id, ok: false, error: "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย" }); return; }
+        try {
+          const res = await apiFetch<{ patterns: unknown[]; remaining: number }>("/ai/patterns", {
+            method: "POST", token,
+            body: JSON.stringify({ prompt: m.prompt, body: m.body, trim: m.trim, count: m.count, image: m.image }),
+          });
+          reply({ type: "axiom-ai-pattern-result", id: m.id, ok: true, patterns: res.patterns, remaining: res.remaining });
+        } catch (e: any) {
+          reply({ type: "axiom-ai-pattern-result", id: m.id, ok: false, error: e.message });
+        }
+        return;
+      }
       if (m.type === "axiom-save-order") {
         if (!token) { reply({ type: "axiom-save-order-result", ok: false, error: "กรุณาเข้าสู่ระบบก่อนบันทึก" }); return; }
         try {
           const p = m.payload || {};
           const nm = `${p.name || "ออเดอร์ทีม"} (${p.count || 0} ตัว)`;
+          // the print data the designer laid down (every shape outlined, on the bib's pattern):
+          // kept by the API, its id in the design, so the order's print files are made from it
+          let doc = p.doc;
+          if (p.print) {
+            const pr = await apiFetch<{ id: string }>("/designer-prints", { method: "POST", token, body: JSON.stringify(p.print) });
+            doc = { ...doc, printId: pr.id };
+          }
           const res = await apiFetch<{ id: string }>("/designs", {
             method: "POST",
             token,
             body: JSON.stringify({
               name: nm,
               mode: p.style === 2 ? "reversible" : "single",
-              stateJson: p.doc,
+              stateJson: doc,
               previewUrl: p.preview,
             }),
           });
@@ -106,6 +143,8 @@ function DesignerBridge() {
                 trim: p.trim,
                 reversible: !!p.reversible,
                 roster: Array.isArray(p.roster) ? p.roster : [],
+                // a bib on the CB-005 pattern: S–XL and XXL (3L)
+                sizes: SIZES,
               }));
             } catch { /* private mode / quota — the page still works, just unprefilled */ }
             router.push(`/checkout?design=${res.id}`);
@@ -145,6 +184,8 @@ function DesignerBridge() {
     window.addEventListener("message", onMessage);
     // proactively (re)send auth whenever it changes, in case the iframe loaded first
     reply({ type: "axiom-auth", user: user ? { id: user.id, email: user.email, name: user.fullName } : null });
+    // the sign-in came back after the editor was ready: open the design now
+    void openSaved();
     return () => window.removeEventListener("message", onMessage);
   }, [user, token, designId, templateId, router, vBody, vTrim, vSize, vTrimLevel]);
 

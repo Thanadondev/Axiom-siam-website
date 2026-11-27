@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
-import { textShape } from "./text";
-import { BibDesignSchema } from "./design";
-import { drawPiece } from "./draw";
-import { ink, naiveCmyk } from "./color";
-import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND } from "./template";
+import { textShape, FONT_IDS } from "./text";
+import { BibDesignSchema, LAYOUT } from "./design";
+import { drawPiece, frontNumber, edgeX, logoBox, sponsorBoxes, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
+import { factoryCmyk, ink } from "./color";
+import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND, HEM_BAND } from "./template";
 import { buildBibJob } from "./job";
 
 // colours off the factory's DTP chart
@@ -81,6 +81,163 @@ describe("paths and outlined text", () => {
     expect(textShape("  ", "block", { h: 40 }, { x: 0 })).toBeNull();
   });
 
+  it("every font draws numbers, Latin and Thai names (a Thai name in a Latin face falls back to a Thai one)", () => {
+    for (const f of FONT_IDS) {
+      for (const text of ["48", "TAICHI", "สมชาย", "ปู่"]) {
+        const t = textShape(text, f, { h: 85 }, { cx: 0, top: 0 });
+        expect(t, `${f} ${text}`).not.toBeNull();
+        expect(t!.box.h, `${f} ${text}`).toBeCloseTo(85, 0);
+        expect(t!.segs.length, `${f} ${text}`).toBeGreaterThan(8);
+      }
+    }
+    // the new faces really are their own shapes, not the fallback
+    const shape = (f: (typeof FONT_IDS)[number]) => { const t = textShape("88", f, { h: 85 }, { x: 0, top: 0 })!; return `${t.box.w.toFixed(1)}:${t.segs.length}`; };
+    expect(new Set(FONT_IDS.map(shape)).size).toBe(FONT_IDS.length);
+  });
+
+  it("the front number keeps clear of the armhole, however many digits and whatever the font", () => {
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const font of ["block", "classic", "thai"] as const) for (const logoLeft of [false, true]) {
+        const one = frontNumber(p, { ...art, font, logoLeft, number: "8" })!;
+        for (const number of ["88", "188"]) {
+          const t = frontNumber(p, { ...art, font, logoLeft, number })!;
+          const b = bounds(t.segs)!;
+          const e = edgeX(cut, b.y, b.y + b.h, logoLeft ? "right" : "left", p.w / 2);
+          const gap = logoLeft ? e - (b.x + b.w) : b.x - e;
+          expect(gap, `${size} ${font} ${number}${logoLeft ? " logoLeft" : ""}`).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+          // grows toward the middle, never past it
+          if (logoLeft) expect(b.x).toBeGreaterThanOrEqual(p.w / 2 + FRONT_NUMBER_CLEAR.centre * k - 0.5);
+          else expect(b.x + b.w).toBeLessThanOrEqual(p.w / 2 - FRONT_NUMBER_CLEAR.centre * k + 0.5);
+          expect(b.h).toBeLessThanOrEqual(one.box.h + 0.5);
+        }
+      }
+    }
+    // a one-digit number in the block font is where the team's sheets put it, at full height
+    const m = piecesFor("M", "A").front!;
+    const t = frontNumber(m, { ...art, number: "7" })!;
+    expect(t.box.h).toBeCloseTo(85, 0);
+    expect(t.box.x + t.box.w / 2).toBeCloseTo(0.264 * m.w, 0);
+    // two digits in the block font still fit at full height: they move in, not shrink
+    expect(frontNumber(m, { ...art, number: "88" })!.box.h).toBeCloseTo(85, 0);
+  });
+
+  it("a front number in the middle sits in the middle of the piece, clear of the armholes, the logo and the team name", () => {
+    // a wide logo (110 mm across at M), the hardest case for the room beside it
+    const logo = { png: new Uint8Array(0), w: 1300, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const font of ["block", "classic", "thai"] as const) for (const logoLeft of [false, true]) for (const number of ["7", "88", "188"]) {
+        const a = { ...art, font, logoLeft, numberCenter: true, number, logo };
+        const b = bounds(frontNumber(p, a)!.segs)!, at = `${size} ${font} ${number}${logoLeft ? " logoLeft" : ""}`;
+        expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
+        expect(b.y + b.h / 2, at).toBeCloseTo(p.h / 2, 0);
+        expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+        expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+        // the logo: above it, or beside it with room to spare
+        const l = logoBox(p, a)!;
+        const below = b.y - (l.y + l.h), gap = logoLeft ? b.x - (l.x + l.w) : l.x - (b.x + b.w);
+        expect(below >= 0 || gap >= FRONT_NUMBER_CLEAR.logo * k - 0.5, `${at}: below ${below.toFixed(1)}, gap ${gap.toFixed(1)}`).toBe(true);
+        // the team name moves under it
+        const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+        expect(team.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
+        expect(team.y + team.h, at).toBeLessThan(p.h - 30 * k);
+      }
+    }
+    // two digits in the block font keep their full 85 mm beside a square logo
+    const m = piecesFor("M", "A").front!;
+    expect(frontNumber(m, { ...art, numberCenter: true, number: "88", logo: { png: new Uint8Array(0), w: 1000, h: 1000 } })!.box.h).toBeCloseTo(85, 0);
+  });
+
+  it("a logo in the middle: a number beside it keeps clear of it; a number in the middle goes a little up, the team name above it and the logo below it, bigger", () => {
+    const wide = { png: new Uint8Array(0), w: 1300, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const logo of [wide, square]) for (const font of ["block", "classic", "thai"] as const) for (const number of ["7", "88", "188"]) for (const numberCenter of [false, true]) {
+        const a = { ...art, font, number, logo, logoCenter: true, numberCenter, team: "SAGINUMA FC", sponsors: { left: { png: new Uint8Array(0), w: 600, h: 1000 } } };
+        const l = logoBox(p, a)!, at = `${size} ${font} ${number} ${logo.w}${numberCenter ? " numberCenter" : ""}`;
+        expect(l.x + l.w / 2, at).toBeCloseTo(p.w / 2, 3);
+        const b = bounds(frontNumber(p, a)!.segs)!;
+        if (numberCenter) {
+          // the number in the middle, a little high, the team name above it, the logo below it
+          expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
+          expect(b.y + b.h / 2, at).toBeCloseTo(LAYOUT.front.stack.numberCy * p.h, 0);
+          const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+          expect(b.y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(team.y - p.neckDepth, at).toBeGreaterThanOrEqual(5 * k);
+          expect(team.x - edgeX(cut, team.y, team.y + team.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(20 * k);
+          expect(l.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(p.h - (l.y + l.h), at).toBeGreaterThanOrEqual(40 * k - 0.01);
+          // clear of the sponsors in the bottom corners: beside them or above them
+          for (const sb of sponsorBoxes(p, a)) {
+            const apart = Math.max(sb.x - (l.x + l.w), l.x - (sb.x + sb.w), sb.y - (l.y + l.h));
+            expect(apart, at).toBeGreaterThanOrEqual(10 * k - 0.01);
+          }
+          // with no sponsors, bigger than on the chest: the full 170 mm box on M
+          if (logo === square) expect(logoBox(p, { ...a, sponsors: undefined })!.h, at).toBeCloseTo(170 * k, 3);
+        } else {
+          // on the left, clear of the logo and the armhole
+          expect(l.x - (b.x + b.w), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.logo * k - 0.5);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+          if (number.length < 3) expect(b.h, at).toBeGreaterThan(40 * k); // three digits beside a wide logo get small: the page says so
+        }
+      }
+    }
+  });
+
+  it("sponsors sit in the front's bottom corners: inside the piece, clear of the hem band and the team name", () => {
+    const wide = { png: new Uint8Array(0), w: 3000, h: 1000 }, tall = { png: new Uint8Array(0), w: 600, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const [left, right] of [[wide, tall], [tall, wide]]) for (const numberCenter of [false, true]) {
+        const a = { ...art, number: "188", numberCenter, sponsors: { left, right } };
+        const boxes = sponsorBoxes(p, a), at = `${size}${numberCenter ? " numberCenter" : ""}`;
+        expect(boxes.map(b => b.slot)).toEqual(["left", "right"]);
+        const team = bounds(textShape("SAGINUMA FC", "block", { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+        for (const b of boxes) {
+          expect(b.w, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.maxW * k + 0.01);
+          expect(b.h, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.h * k + 0.01);
+          expect(b.slot === "left" ? b.x + b.w < p.w / 2 : b.x > p.w / 2, at).toBe(true);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
+          expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);
+          expect(p.h - (b.y + b.h), at).toBeGreaterThanOrEqual(HEM_BAND + 10);
+          expect(b.y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
+        }
+      }
+      // drawn as pictures on the front only, and only the ones given
+      const one = { ...art, sponsors: { right: wide } };
+      expect(drawPiece(p, "front", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(1);
+      expect(drawPiece(piecesFor(size, "A").back!, "back", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(0);
+    }
+  });
+
+  it("sponsors on the back sit in a row under the number: inside the piece, apart, clear of the number and the hem band", () => {
+    const wide = { png: new Uint8Array(0), w: 3000, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").back!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut), B = LAYOUT.back;
+      const num = bounds(drawPiece(p, "back", look("#ffffff", false), { ...art, number: "88" }).filter(s => s.kind === "path" && s.fill === YELLOW).flatMap(s => s.kind === "path" ? s.segs : []))!;
+      for (const logos of [[wide, wide, wide], [square, wide, square], [wide, square, wide]]) {
+        const a = { ...art, number: "88", sponsors: { backLeft: logos[0], backCenter: logos[1], backRight: logos[2] } };
+        const boxes = sponsorBoxes(p, a, "back"), at = `${size} ${logos.map(l => l.w).join("/")}`;
+        expect(boxes.map(b => b.slot)).toEqual(["backLeft", "backCenter", "backRight"]);
+        expect(boxes[1].x + boxes[1].w / 2, at).toBeCloseTo(p.w / 2, 3);
+        for (const [i, b] of boxes.entries()) {
+          expect(b.w, at).toBeLessThanOrEqual(B.sponsor.maxW * k + 0.01);
+          expect(b.h, at).toBeLessThanOrEqual(B.sponsor.h * k + 0.01);
+          expect(b.y - (num.y + num.h), at).toBeGreaterThanOrEqual(15 * k);
+          expect(p.h - (b.y + b.h), at).toBeGreaterThanOrEqual(HEM_BAND + 10);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
+          expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);
+          if (i) expect(b.x - (boxes[i - 1].x + boxes[i - 1].w), at).toBeGreaterThanOrEqual(10 * k);
+        }
+      }
+      // the back's sponsors are drawn on the back only
+      const one = { ...art, sponsors: { backCenter: wide } };
+      expect(drawPiece(p, "back", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(1);
+      expect(drawPiece(piecesFor(size, "A").front!, "front", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(0);
+    }
+  });
+
   it("draws Japanese names in kanji and kana, not empty boxes", () => {
     // an empty box ("tofu") is two rectangles: ~10 segments a character, and every character the same
     const one = (ch: string) => pathData(textShape(ch, "block", { h: 35 }, { x: 0, top: 0 })!.segs);
@@ -99,7 +256,20 @@ describe("colour", () => {
     expect(ink(BLACK).cmyk).toEqual([0, 0, 0, 100]);
     expect(ink("#ffffff")).toMatchObject({ cmyk: [0, 0, 0, 0], onChart: true });
     expect(ink("#123456").onChart).toBe(false);
-    expect(naiveCmyk("#ff0000")).toEqual([0, 100, 100, 0]);
+    expect(ink("#123456").cmyk).toEqual(factoryCmyk("#123456"));
+  });
+
+  it("converts an off-chart colour as the factory's Illustrator does; a grey in black only, like the chart's", () => {
+    // values Illustrator gives with the factory's colour settings
+    expect(factoryCmyk("#ff0000")).toEqual([0, 99, 100, 0]);
+    expect(factoryCmyk("#255934")).toEqual([83, 40, 90, 37]); // not the muddy C58 M0 Y42 K65 of the plain formula
+    // the chart's own colours come out within a few points of the chart
+    for (const [hex, cmyk] of [["#f26522", [0, 75, 100, 0]], ["#ffcc4e", [0, 20, 80, 0]]] as const)
+      factoryCmyk(hex).forEach((v, i) => expect(Math.abs(v - cmyk[i])).toBeLessThanOrEqual(3));
+    expect(factoryCmyk("#000000")).toEqual([0, 0, 0, 100]);
+    expect(factoryCmyk("#939598")).toEqual([0, 0, 0, 50]); // a chart grey
+    expect(factoryCmyk("#7f7f7f")[3]).toBeGreaterThan(55);
+    expect(factoryCmyk("#7f7f7f").slice(0, 3)).toEqual([0, 0, 0]);
   });
 
   it("prints the CMYK written under each swatch on the factory's chart (DTP-28color-cs4.svg), by its number", async () => {
@@ -138,7 +308,22 @@ describe("design", () => {
   });
 });
 
+/** a PDF's page content, decoded */
+async function pageContent(bytes: Uint8Array) {
+  const pdf = await PDFDocument.load(bytes);
+  return pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+    .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+}
+
 describe("the job package", () => {
+  it("no job label on the page (order no, team, name, 1/6): only each piece's size mark is in the cut line's grey", async () => {
+    const job = await buildBibJob(design(), { ref: "AX-261116-0T82", date: new Date(2026, 10, 16) });
+    const files = unzipSync(job.zip);
+    const content = await pageContent(files[`${job.name}/M/02 No.48 TAICHI_ol.pdf`]);
+    // the grey (K50) as a fill: the size mark in each of the 4 pieces, nothing else (the label made it 5)
+    expect(content.match(/\n0 0 0 0\.5 k\n/g)?.length).toBe(4);
+  });
+
   it("one CMYK print file per bib, order sheet per size, name list, design", async () => {
     const job = await buildBibJob(design(), { ref: "AX-261111-T1", date: new Date(2026, 10, 11) });
     expect(job.name).toBe("AX-261111-T1 R-bib (M XXL) SAGINUMA FC");
@@ -167,13 +352,24 @@ describe("the job package", () => {
     expect(sheet.indexOf(">SORA<")).toBeLessThan(sheet.indexOf(">TAICHI<")); // by number within a size
   }, 30_000);
 
-  it("the logo goes in as a CMYK picture", async () => {
+  it("the logo goes in as an RGB picture, for Illustrator to make CMYK with the factory's settings", async () => {
     // a 2×2 red PNG with one see-through pixel
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBkZGBgYAEUUA/0nH5SQAAAAAElFTkSuQmCC", "base64");
     const job = await buildBibJob(design({ roster: [{ name: "A", number: "1", size: "S" }] }), { ref: "AX-T4", date: new Date(), logoPng: new Uint8Array(png) });
     const bytes = Buffer.from(Object.values(unzipSync(job.zip)).find((_, i, a) => Object.keys(unzipSync(job.zip))[i].endsWith("_ol.pdf"))!);
-    expect(bytes.includes("DeviceCMYK")).toBe(true);
-    expect(bytes.includes("DeviceRGB")).toBe(false);
+    expect(bytes.includes("/ColorSpace /DeviceRGB")).toBe(true);
+  }, 30_000);
+
+  it("sponsors' logos go in each bib's print file", async () => {
+    const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBkZGBgYAEUUA/0nH5SQAAAAAElFTkSuQmCC", "base64"));
+    const images = async (sponsorPngs?: { left?: Uint8Array; right?: Uint8Array }) => {
+      const job = await buildBibJob(design({ product: "bib_n", sides: [look("#ffffff")], roster: [{ name: "A", number: "1", size: "S" }] }), { ref: "AX-T5", date: new Date(), ...(sponsorPngs ? { sponsorPngs } : {}) });
+      const files = unzipSync(job.zip), pdf = Object.keys(files).find(f => f.endsWith("_ol.pdf"))!;
+      return (Buffer.from(files[pdf]).toString("latin1").match(/\/Subtype \/Image/g) ?? []).length;
+    };
+    const none = await images();
+    expect(await images({ left: png })).toBeGreaterThan(none);
+    expect(await images({ left: png, right: new Uint8Array(png) })).toBeGreaterThan(await images({ left: png }));
   }, 30_000);
 
   it("a normal bib: front and back only; off-chart colours reported", async () => {
@@ -181,7 +377,7 @@ describe("the job package", () => {
     const pdf = await PDFDocument.load(unzipSync(job.zip)[`${job.name}/M/01 No.2 SORA_ol.pdf`]);
     expect(mm(pdf.getPage(0).getSize().height)).toBeCloseTo(layoutFor("M", ["A"]).page.h, 0);
     expect(job.name).toContain("N-bib");
-    expect(job.offChart).toEqual(["#123456 → C79.1 M39.5 Y0 K66.3"]);
+    expect(job.offChart).toEqual(["#123456 → C98 M80 Y41 K34"]);
   }, 30_000);
 });
 
@@ -206,6 +402,23 @@ describe("the kit studio's basketball singlet, on the bib template", async () =>
     expect(plain.rib).toBeUndefined();
     expect(kitBibDesign(snap({ logo: "none" }), []).show.frontLogo).toBe(false);
   });
+
+  it("made reversible: an R-bib, side B in its own colours and pattern, the trim levels shared", async () => {
+    const b = { colors: { body: "#ffffff", trim: "#1d4ed8", stripe: "#93c5fd", number: "#1d4ed8" }, pattern: "side" };
+    const d = BibDesignSchema.parse(kitBibDesign(snap({ reversible: true, sideB: b }), [{ name: "TANAKA", number: "7", size: "M" }]));
+    expect(d.product).toBe("bib_r");
+    expect(d.sides).toHaveLength(2);
+    expect(d.sides[0]).toMatchObject({ body: "#ed1c24", pattern: "diagonal" });
+    expect(d.sides[1]).toEqual({ body: "#ffffff", pattern: "side", patternColor: "#93c5fd", ink: "#1d4ed8", rib: { neck: "#1d4ed8", arm: "#1d4ed8", hem: "#ffffff" } });
+    // never saved side B: white in side A's colours, plain; junk colours fall back the same way
+    const fb = kitBibDesign(snap({ reversible: true, sideB: { colors: { body: "red" } } }), []).sides[1];
+    expect(fb).toMatchObject({ body: "#ffffff", pattern: "plain", ink: "#ed1c24", patternColor: "#ed1c24" });
+    expect(kitBibDesign(snap({ sideB: b }), []).product).toBe("bib_n"); // side B only counts when made reversible
+    const job = await buildBibJob(d, { ref: "AX-261116-R1", date: new Date(2026, 10, 16) });
+    const z = unzipSync(job.zip);
+    expect(Object.keys(z).filter(k => k.endsWith("_ol.pdf"))).toHaveLength(1);
+    expect(JSON.parse(strFromU8(z[`${job.name}/${job.name}_design.json`])).design.product).toBe("bib_r");
+  }, 30_000);
 
   it("one piece per shirt ordered: the names given, else the design's own name and number", () => {
     const items = [{ size: "M", qty: 2, roster: [{ playerName: "TANAKA", number: "7", qty: 1 }] }, { size: "L", qty: 1, roster: [] }];

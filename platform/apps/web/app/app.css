@@ -272,7 +272,7 @@ a.noteitem:hover{background:var(--soft)}
 .ou-list li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--border); }
 .ou-list li span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .ou-list li span:last-child { flex: none; }
-.ou-sizes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.ou-sizes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .ou-warn { color: var(--err, #dc2626); font-size: 13px; margin: 10px 0 0; }
 .ou-hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
 .ou-fname { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
@@ -308,7 +308,9 @@ a.noteitem:hover{background:var(--soft)}
 @media (max-width: 760px) { .od-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- /order/bib: designing bibs on the web ---------- */
-.bd-fonts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-fonts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-teamfont { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; }
+.bd-teamfont .sample { font-size: 24px; line-height: 1.1; padding: 6px 12px; border: 1.5px solid var(--brand); border-radius: 10px; }
 .bd-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 6px; font-size: 13.5px; }
 .bd-checks label, .bd-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .bd-toggle { margin: 14px 0 4px; font-size: 13.5px; }
@@ -316,12 +318,43 @@ a.noteitem:hover{background:var(--soft)}
 .bd-logo .pic { width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; text-align: center;
   background: repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
 .bd-logo .pic img { max-width: 104px; max-height: 104px; object-fit: contain; }
+.bd-sponsor-row { margin-top: 12px; }
+.bd-sponsors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+.bd-sponsors[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bd-slot { display: grid; justify-items: center; gap: 6px; text-align: center; font-size: 13px; }
+.bd-slot .pic { width: 100%; max-width: 120px; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 12px; font-size: 12px;
+  background: repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+.bd-slot .pic img { max-width: 86%; max-height: 86%; object-fit: contain; }
+.bd-slot .acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
 .bd-pickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
 .bd-pickers.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .bd-seg { display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; margin: 6px 0 8px; }
 .bd-seg button { padding: 7px 14px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13.5px; cursor: pointer; }
 .bd-seg button + button { border-left: 1.5px solid var(--border); }
 .bd-seg button[aria-checked="true"] { background: var(--brand); color: #fff; }
+.bd-stepbar { padding-top: 14px; padding-bottom: 14px; }
+.app.ax .bd-stepbar { padding: 16px; }
+.bd-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.bd-steps li { flex: 1 1 auto; }
+.bd-steps button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.bd-steps button:hover { border-color: var(--brand); }
+.bd-steps .n { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--border); font-size: 11.5px; font-weight: 700; }
+.bd-steps button[data-done] { color: var(--ink); }
+.bd-steps button[data-done] .n { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.bd-steps button[aria-current="step"] { border-color: var(--brand); color: var(--brand); font-weight: 700; box-shadow: 0 0 0 3px rgba(var(--glow-rgb), 0.12); }
+.bd-steps button[aria-current="step"] .n { border-color: var(--brand); }
+.bd-steps button[data-warn] .n { background: var(--err, #dc2626); border-color: var(--err, #dc2626); color: #fff; }
+.bd-stepnav { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; }
+.bd-stepnav .dim { font-size: 12.5px; }
+@media (max-width: 520px) {
+  .bd-stepnav { justify-content: center; }
+  .bd-stepnav .abtn { flex: 1 1 100%; }
+  .bd-stepnav .dim { order: -1; flex: 1 1 100%; text-align: center; }
+}
+.verify-note { margin: 14px 0 0; padding: 12px 14px; border: 1.5px solid #f59e0b; border-radius: 12px; background: rgba(245, 158, 11, 0.08); font-size: 13.5px; line-height: 1.55; }
+.verify-note p { margin: 4px 0 0; }
+.verify-note .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ou-grid > div > .verify-note { margin: 16px 0; }
 .bd-roster { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 13px; }
 .bd-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
 .bd-run .ainput, .app.ax .bd-run .ainput { width: auto; min-width: 0; padding: 6px 8px; flex: none; }
@@ -336,6 +369,7 @@ a.noteitem:hover{background:var(--soft)}
 .bd-sheet[data-busy] { opacity: .6; }
 .bd-sheet img { display: block; width: 100%; height: auto; }
 @media (max-width: 640px) {
-  .bd-fonts, .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
+  .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
+  .bd-fonts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-logo { grid-template-columns: minmax(0, 1fr); }
 }

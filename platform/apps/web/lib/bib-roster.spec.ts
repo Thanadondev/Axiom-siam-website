@@ -28,6 +28,14 @@ describe("bib name list", () => {
     const r = readRoster("TAICHI\t48\nSORA\t10\tXS\nA VERY VERY LONG NAME INDEED\t1\tM\nOK\t1\tM");
     expect(r.rows).toHaveLength(1);
     expect(r.errors.map(e => [e.line, e.why])).toEqual([[1, "size"], [2, "size"], [3, "name"]]);
+    // a Thai name that looks short: its vowels and tone marks count, and the customer is told the count
+    const th = readRoster("ณัฐพงษ์ เจริญรุ่งเรือง\t9\tM\nกิตติ์ธเนศ ศรีสุวรรณ\t10\tM");
+    expect(th.errors).toEqual([{ line: 1, text: "ณัฐพงษ์ เจริญรุ่งเรือง\t9\tM", why: "name", len: 22 }]);
+    expect(th.rows).toEqual([{ name: "กิตติ์ธเนศ ศรีสุวรรณ", number: "10", size: "M" }]);
+  });
+
+  it("00 stays 00 (its own number), a padded 05 is 5", () => {
+    expect(readRoster("00\tM\n0\tM\nNo.05\tL\n007\tL").rows.map(r => r.number)).toEqual(["00", "0", "5", "7"]);
   });
 
   it("numbers a run of bibs with no names", () => {

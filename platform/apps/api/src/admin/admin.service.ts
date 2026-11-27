@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { toCsv } from "../common/csv";
+import { mailConfig } from "../auth/mail.service";
 import type {
   ListQueryDto, UpdateUserDto, AdminTemplateDto, UpdateReportDto, CreatePayoutDto, UpdateQuoteDto,
 } from "./admin.dto";
@@ -41,6 +42,7 @@ export class AdminService {
     });
 
     return {
+      mail: mailConfig(),
       users: { total: users, new7: newUsers7, new30: newUsers30, suspended },
       templates: { total: templates, published },
       sales: {
@@ -179,10 +181,13 @@ export class AdminService {
       data.suspendedAt = dto.suspended ? new Date() : null;
       data.suspendReason = dto.suspended ? (dto.suspendReason ?? null) : null;
     }
+    if (dto.verified) data.isVerified = true;
     const u = await this.prisma.user.update({
       where: { id }, data,
-      select: { id: true, email: true, role: true, suspendedAt: true, suspendReason: true },
+      select: { id: true, email: true, role: true, suspendedAt: true, suspendReason: true, isVerified: true },
     });
+    // the links already sent have nothing left to do
+    if (dto.verified) await this.prisma.authToken.updateMany({ where: { userId: id, type: "email_verify", revokedAt: null }, data: { revokedAt: new Date() } });
     return u;
   }
 

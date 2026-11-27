@@ -34,7 +34,7 @@ describe("parseOrderDraft — the happy hand-off", () => {
 
   it("derives the size breakdown — one shirt per player", () => {
     const d = parseOrderDraft(designerDraft(), DESIGN_ID)!;
-    expect(d.qty).toEqual({ S: 0, M: 1, L: 1, XL: 1 });
+    expect(d.qty).toEqual({ S: 0, M: 1, L: 1, XL: 1, XXL: 0 });
   });
 
   it("marks a style-2 design as reversible", () => {
@@ -130,18 +130,19 @@ describe("qtyFromRoster / linesFromQty — what the API receives", () => {
       { playerName: "b", number: "2", size: "L" },
       { playerName: "c", number: "3", size: "S" },
     ]);
-    expect(q).toEqual({ S: 1, M: 0, L: 2, XL: 0 });
+    expect(q).toEqual({ S: 1, M: 0, L: 2, XL: 0, XXL: 0 });
   });
 
   it("emits only sizes with a quantity — zero-qty lines never reach the API", () => {
-    expect(linesFromQty({ S: 0, M: 3, L: 0, XL: 1 })).toEqual([
+    expect(linesFromQty({ S: 0, M: 3, L: 0, XL: 1, XXL: 0 })).toEqual([
       { size: "M", qty: 3 },
       { size: "XL", qty: 1 },
     ]);
   });
 
-  it("keeps size order S,M,L,XL", () => {
-    expect(linesFromQty({ S: 1, M: 1, L: 1, XL: 1 }).map(l => l.size)).toEqual(["S", "M", "L", "XL"]);
+  it("keeps size order S,M,L,XL,XXL", () => {
+    expect(linesFromQty({ S: 1, M: 1, L: 1, XL: 1, XXL: 0 }).map(l => l.size)).toEqual(["S", "M", "L", "XL"]);
+    expect(linesFromQty({ S: 0, M: 1, L: 0, XL: 0, XXL: 2 })).toEqual([{ size: "M", qty: 1 }, { size: "XXL", qty: 2 }]);
   });
 
   it("returns [] for an empty order (checkout must block before submitting)", () => {
@@ -161,7 +162,7 @@ describe("qtyFromRoster / linesFromQty — what the API receives", () => {
     const d = parseOrderDraft(designerDraft({ roster }), DESIGN_ID)!;
     expect(d.roster).toHaveLength(40);
     expect(linesFromQty(d.qty).reduce((s, l) => s + l.qty, 0)).toBe(40);
-    expect(d.qty).toEqual({ S: 10, M: 10, L: 10, XL: 10 });
+    expect(d.qty).toEqual({ S: 10, M: 10, L: 10, XL: 10, XXL: 0 });
   });
 });
 
@@ -189,14 +190,14 @@ describe("DRAFT_KEY", () => {
 
 describe("parseOrderDraft — counts without a roster (/shop customizer)", () => {
   it("takes per-size counts when no player is named", () => {
-    const d = parseOrderDraft(designerDraft({ roster: [], qty: { S: 2, M: 5, L: 0, XL: 1 } }), DESIGN_ID);
+    const d = parseOrderDraft(designerDraft({ roster: [], qty: { S: 2, M: 5, L: 0, XL: 1, XXL: 0 } }), DESIGN_ID);
     expect(d!.roster).toEqual([]);
-    expect(d!.qty).toEqual({ S: 2, M: 5, L: 0, XL: 1 });
+    expect(d!.qty).toEqual({ S: 2, M: 5, L: 0, XL: 1, XXL: 0 });
   });
 
   it("lets a roster win over counts", () => {
-    const d = parseOrderDraft(designerDraft({ qty: { S: 40, M: 40, L: 40, XL: 40 } }), DESIGN_ID);
-    expect(d!.qty).toEqual({ S: 0, M: 1, L: 1, XL: 1 });
+    const d = parseOrderDraft(designerDraft({ qty: { S: 40, M: 40, L: 40, XL: 40, XXL: 0 } }), DESIGN_ID);
+    expect(d!.qty).toEqual({ S: 0, M: 1, L: 1, XL: 1, XXL: 0 });
   });
 
   it("is all zeros when neither is sent (old designer drafts)", () => {
@@ -207,12 +208,25 @@ describe("parseOrderDraft — counts without a roster (/shop customizer)", () =>
 
 describe("qtyFromRaw", () => {
   it("clamps and truncates", () => {
-    expect(qtyFromRaw({ S: -3, M: 2.9, L: 99999, XL: "4" })).toEqual({ S: 0, M: 2, L: 5000, XL: 4 });
+    expect(qtyFromRaw({ S: -3, M: 2.9, L: 99999, XL: "4", XXL: 0 })).toEqual({ S: 0, M: 2, L: 5000, XL: 4, XXL: 0 });
   });
 
   it("turns junk into zeros", () => {
     for (const junk of [null, undefined, "x", 7, [], { S: "abc", M: NaN }]) {
       expect(qtyFromRaw(junk)).toEqual(emptyQty());
     }
+  });
+});
+
+describe("XXL (3L): only when the page that wrote the draft offers it (the bib kit)", () => {
+  it("a bib kit draft keeps XXL; a draft that doesn't list its sizes sends XXL to M", () => {
+    const row = { playerName: "ก", number: "1", size: "XXL" };
+    const bib = parseOrderDraft(JSON.stringify({ designId: "d-1", fabric: "mesh", trim: "full", roster: [row], sizes: ["S", "M", "L", "XL", "XXL"] }), "d-1")!;
+    expect(bib.roster[0].size).toBe("XXL");
+    expect(bib.qty.XXL).toBe(1);
+    const jersey = parseOrderDraft(JSON.stringify({ designId: "d-1", fabric: "mesh", trim: "full", roster: [row] }), "d-1")!;
+    expect(jersey.roster[0].size).toBe("M");
+    expect(qtyFromRaw({ XXL: 3, M: 1 })).toMatchObject({ M: 1, XXL: 0 });
+    expect(qtyFromRaw({ XXL: 3, M: 1 }, ["S", "M", "L", "XL", "XXL"])).toMatchObject({ M: 1, XXL: 3 });
   });
 });

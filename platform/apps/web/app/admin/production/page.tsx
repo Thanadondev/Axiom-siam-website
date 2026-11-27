@@ -6,7 +6,8 @@ import JerseyStage from "../../../components/JerseyStage";
 import KitThumb from "../../../components/KitThumb";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch } from "../../../lib/api";
-import { kitById, restoreConfig, KITS, type Kit } from "../../../lib/kits";
+import { kitById, restoreConfig, sideLook, KITS, type Kit, type KitSide } from "../../../lib/kits";
+import { designerBib, designerDoc } from "../../../lib/designer-doc";
 import { useKitAssets } from "../../../lib/use-kit-assets";
 import { assetHref } from "../../../lib/kit-assets";
 import { apiHref } from "../../../lib/order-upload";
@@ -33,6 +34,8 @@ interface Card {
   user: { id: string; email: string; fullName?: string | null };
   items: { size: string; qty: number }[];
   look: Look | null;
+  /** the print files are the website's own (a design made on the site), not a zip the customer sent */
+  webMade?: boolean;
   /** where it is on the line: 0 not started, 1–9 the factory steps, 10 shipped */
   productionStep?: number;
   /** money still owed (the balance after a deposit): it can't ship until this is 0 */
@@ -72,9 +75,11 @@ const sizeSplit = (items: { size: string; qty: number }[]) => {
 function kitOf(look: Look | null): Kit | null {
   return look ? kitById(look.kit) ?? null : null;
 }
-function jerseyLook(kit: Kit, look: Look | null) {
+/** one side of the kit as the customer designed it: side B only on an R-bib (the bib kit made reversible) */
+function jerseyLook(kit: Kit, look: Look | null, side: KitSide = "A") {
   const c = restoreConfig(kit, look ? { ...look } : null);
-  return { colors: c.colors, pattern: c.pattern, trim: c.trim, fabric: c.fabric, name: c.name.trim(), number: c.number, font: c.font };
+  const s = sideLook(c, side);
+  return { colors: s.colors, pattern: s.pattern, trim: c.trim, fabric: c.fabric, name: c.name.trim(), number: c.number, font: c.font, reversible: !!c.reversible };
 }
 
 export default function ProductionBoard() {
@@ -213,7 +218,7 @@ export default function ProductionBoard() {
                           <b className="ax-mono">{c.orderNo}</b>
                           <span>{c.user.fullName || c.user.email}</span>
                           <span className="sizes">{qtyOf(c)} ตัว · {sizeSplit(c.items).map(([s, n]) => `${s}${n}`).join(" ")}</span>
-                          {c.file && <span className="erp" title={c.file.name}>ไฟล์ลูกค้า · {c.fabricSummary?.split(" · ")[0]}</span>}
+                          {c.file && <span className="erp" title={c.file.name}>{c.webMade ? "ไฟล์งานจากเว็บ" : "ไฟล์ลูกค้า"} · {c.fabricSummary?.split(" · ")[0]}</span>}
                           {c.status === "in_production" && at > 0 && (
                             <span className="step"><i style={{ width: `${(at / SHIP_STEP) * 100}%` }} />ขั้น {at}/{SHIP_STEP} · {STEPS[at - 1]?.th}</span>
                           )}
@@ -275,6 +280,8 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
 }) {
   const [o, setO] = useState<any>(null);
   const [err, setErr] = useState("");
+  // an R-bib: which side the 3D shows
+  const [side, setSide] = useState<KitSide>("A");
   const fetchOne = useCallback(() => apiFetch<any>(`/admin/orders/${id}`, { token }).then(setO).catch(e => setErr(e.message)), [id, token]);
   useEffect(() => { setO(null); fetchOne(); }, [fetchOne]);
   useEffect(() => {
@@ -285,11 +292,13 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
 
   const snap = o?.items?.[0]?.designSnapshot;
   const look: Look | null = snap && snap.kind === "kit-studio" ? snap : null;
+  // a bib from the advanced designer whose print files the website made from its own drawing
+  const designerPrint = !!designerDoc(snap)?.printId;
   const kit = kitOf(look) ?? (look ? KITS[0] : null);
   const cfg = kit ? restoreConfig(kit, look ? { ...look } : null) : null;
   // the customer's own logo and font travel inside the order's design snapshot
   const assets = useKitAssets({ ...(cfg ?? {}), assets: snap?.assets });
-  const base = kit ? jerseyLook(kit, look) : null;
+  const base = kit ? jerseyLook(kit, look, side) : null;
   const jl = base ? { ...base, logo: assets.logo, logoTint: assets.logoTint, fontFamily: assets.fontFamily } : null;
   const files: { label: string; name: string; href: string; image: boolean }[] = [];
   const lf = snap?.assets?.logo, ff = snap?.assets?.font;
@@ -320,6 +329,13 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
         {o && (
           <>
             <div className="ax-pb-3d">
+              {kit && jl?.reversible && (
+                <div className="ax-pb-sides" role="group" aria-label="ด้านของ R-bib" style={{ position: "absolute", top: 10, left: 10, zIndex: 2, display: "flex", gap: 6 }}>
+                  {(["A", "B"] as KitSide[]).map(sd => (
+                    <button key={sd} type="button" className="ax-sq" aria-pressed={side === sd} onClick={() => setSide(sd)}>ด้าน {sd}</button>
+                  ))}
+                </div>
+              )}
               {kit && jl ? <JerseyStage kit={kit} look={jl} /> : zips.length ? (
                 zipPic
                   ? <a href={apiHref(zipPic)} target="_blank" rel="noreferrer" style={{ display: "flex", flex: 1, padding: 12 }}><img src={apiHref(zipPic)} alt={`ภาพตัวอย่างงาน ${zips[0].name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} /></a>
@@ -331,7 +347,7 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
               )}
             </div>
             <div className="ax-pb-facts">
-              <div><span>เสื้อ</span><b>{kit ? `${kit.name} · ${kit.code}` : zips.length ? (o.fabricSummary?.split(" · ")[0] ?? "บิบ") : "-"}</b></div>
+              <div><span>เสื้อ</span><b>{kit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : zips.length ? (o.fabricSummary?.split(" · ")[0] ?? "บิบ") : "-"}</b></div>
               <div><span>สเปก</span><b>{o.fabricSummary ?? "-"}</b></div>
               <div><span>ลูกค้า</span><b>{o.user?.fullName || o.user?.email}</b></div>
               <div><span>ยอดรวม</span><b>{baht(o.total)}</b></div>
@@ -367,8 +383,9 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
                 {look?.logoTint && <p className="ax-psub" style={{ margin: "6px 0 0", fontSize: 13 }}>พิมพ์โลโก้สีเดียว (สีเดียวกับเบอร์)</p>}
               </div>
             )}
-            {(snap?.kind === "bib-design" || (snap?.kind === "kit-studio" && KITS_ON_BIB.includes(String(snap.kit).toLowerCase()))) && (
-              <BibJobLine o={o} built={zips.length > 0} token={token} onChanged={fetchOne} what={snap.kind === "bib-design" ? "เอี๊ยมออกแบบบนเว็บ" : "เสื้อบาสออกแบบบนเว็บ (ตัดบนแพทเทิร์นเอี๊ยม CB-005)"} />
+            {(snap?.kind === "bib-design" || designerPrint || (snap?.kind === "kit-studio" && KITS_ON_BIB.includes(String(snap.kit).toLowerCase()))) && (
+              <BibJobLine o={o} built={zips.length > 0} token={token} onChanged={fetchOne}
+                what={snap.kind === "bib-design" ? "เอี๊ยมออกแบบบนเว็บ" : designerPrint ? "เอี๊ยมจากโปรแกรมออกแบบขั้นสูง (ไซซ์อื่นย่อ-ขยายจากไซซ์ที่ออกแบบ)" : "เสื้อบาสออกแบบบนเว็บ (ตัดบนแพทเทิร์นเอี๊ยม CB-005)"} />
             )}
             {zips.length > 0 && <NasLine o={o} zips={zips} token={token} onChanged={fetchOne} />}
             {!["cancelled", "refunded"].includes(o.status) && (
@@ -413,7 +430,7 @@ function Drawer({ id, token, onClose, onMove, onStep, onChanged, busy }: {
               <button type="button" className="ax-sq" onClick={() => window.print()}>พิมพ์ใบสั่งผลิต</button>
               <Link className="ax-sq" href={`/orders/${o.id}`} target="_blank">หน้าออเดอร์</Link>
             </div>
-            <JobSheet o={o} kit={kit} look={jl} split={split} roster={roster} />
+            <JobSheet o={o} kit={kit} look={kit ? jerseyLook(kit, look, "A") : null} lookB={kit && cfg?.reversible ? jerseyLook(kit, look, "B") : null} split={split} roster={roster} />
           </>
         )}
       </aside>
@@ -502,7 +519,7 @@ function ErpPanel({ o, token, onChanged }: { o: any; token: string; onChanged: (
 }
 
 /** the paper the factory floor gets — only visible when printing */
-function JobSheet({ o, kit, look, split, roster }: { o: any; kit: Kit | null; look: ReturnType<typeof jerseyLook> | null; split: [string, number][]; roster: any[] }) {
+function JobSheet({ o, kit, look, lookB, split, roster }: { o: any; kit: Kit | null; look: ReturnType<typeof jerseyLook> | null; lookB?: ReturnType<typeof jerseyLook> | null; split: [string, number][]; roster: any[] }) {
   return (
     <div className="ax-pb-print" aria-hidden="true">
       <div className="h">
@@ -510,12 +527,16 @@ function JobSheet({ o, kit, look, split, roster }: { o: any; kit: Kit | null; lo
         <div style={{ textAlign: "right" }}><span>สั่งเมื่อ {new Date(o.createdAt).toLocaleDateString("th-TH", { dateStyle: "medium" })}</span><span>{STATUS_TH[o.status]}</span></div>
       </div>
       <div className="g">
-        <div className="pic">{kit && look ? <KitThumb kit={kit} colors={look.colors} pattern={look.pattern} number={look.number} /> : null}</div>
+        <div className="pic">
+          {kit && look ? <KitThumb kit={kit} colors={look.colors} pattern={look.pattern} number={look.number} /> : null}
+          {kit && lookB ? <KitThumb kit={kit} colors={lookB.colors} pattern={lookB.pattern} number={lookB.number} /> : null}
+        </div>
         <div>
-          <p><b>เสื้อ</b> {kit ? `${kit.name} (${kit.code})` : "แบบอัปโหลด / ดีไซเนอร์"}</p>
+          <p><b>เสื้อ</b> {kit ? `${kit.name} (${kit.code})${lookB ? " · R-bib 2 ด้าน" : ""}` : designerLabel(o.items?.[0]?.designSnapshot) ?? "แบบอัปโหลด / ดีไซเนอร์"}</p>
           <p><b>สเปก</b> {o.fabricSummary}</p>
-          {look && <p><b>สี</b> {Object.entries(look.colors).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>}
-          {look && <p><b>ลาย</b> {look.pattern} · <b>ฟอนต์</b> {o.items?.[0]?.designSnapshot?.assets?.font?.name ?? look.font} · <b>โลโก้</b> {o.items?.[0]?.designSnapshot?.assets?.logo?.name ?? (o.items?.[0]?.designSnapshot?.logo === "none" ? "ไม่มี" : "AXIOM")}</p>}
+          {look && <p><b>สี{lookB ? " ด้าน A" : ""}</b> {Object.entries(look.colors).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>}
+          {look && <p><b>ลาย{lookB ? " ด้าน A" : ""}</b> {look.pattern} · <b>ฟอนต์</b> {o.items?.[0]?.designSnapshot?.assets?.font?.name ?? look.font} · <b>โลโก้</b> {o.items?.[0]?.designSnapshot?.assets?.logo?.name ?? (o.items?.[0]?.designSnapshot?.logo === "none" ? "ไม่มี" : "AXIOM")}</p>}
+          {lookB && <p><b>สี ด้าน B</b> {Object.entries(lookB.colors).map(([k, v]) => `${k} ${v}`).join(" · ")} · <b>ลาย</b> {lookB.pattern}</p>}
           <table><tbody><tr>{split.map(([s]) => <th key={s}>{s}</th>)}<th>รวม</th></tr><tr>{split.map(([s, n]) => <td key={s}>{n}</td>)}<td>{split.reduce((t, [, n]) => t + n, 0)}</td></tr></tbody></table>
         </div>
       </div>
@@ -567,7 +588,13 @@ function ShipDialog({ card, busy, onCancel, onShip }: { card: Card; busy: boolea
  */
 /** a bib designed on the web: its print files are made by the website; the team can make them again */
 /** kits from the kit studio cut on the bib template: their print files are made by the website (apps/api/src/bibs/kit.ts) */
-const KITS_ON_BIB = ["bib"];
+const KITS_ON_BIB = ["bib", "rim"]; // rim: the bib kit's old id (/shop/rim)
+
+/** what an advanced design is, for the job sheet: drawn on the bib's pattern, "แบบ 2" both sides */
+function designerLabel(snap: unknown): string | null {
+  const bib = designerBib(snap);
+  return bib ? `เอี๊ยมจากโปรแกรมออกแบบขั้นสูง · ${bib === "bib_r" ? "R-bib 2 ด้าน" : "N-bib"}` : null;
+}
 
 function BibJobLine({ o, built, token, onChanged, what }: { o: any; built: boolean; token: string; onChanged: () => void; what: string }) {
   const [busy, setBusy] = useState(false);

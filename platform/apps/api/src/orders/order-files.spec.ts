@@ -31,6 +31,8 @@ const prisma: any = {
     updateMany: async ({ where, data }: any) => { const hit = files.filter(f => match(f, where)); hit.forEach(f => Object.assign(f, data)); return { count: hit.length }; },
     delete: async ({ where }: any) => { files = files.filter(f => f.id !== where.id); },
   },
+  // USER's email confirmed; anyone else's not
+  user: { findUnique: async ({ where }: any) => ({ isVerified: where.id === USER }) },
   address: { findFirst: async ({ where }: any) => (where.id === ADDR && where.userId === USER ? { id: ADDR } : null) },
   design: { findFirst: async ({ where }: any) => designs.find(d => d.id === where.id && d.userId === where.userId) ?? null },
   order: {
@@ -174,6 +176,17 @@ describe("ordering bibs with the zip", () => {
     await expect(svc.create(USER, order({ fileId: mine.id, product: "bib_n" }))).rejects.toThrow(/ใช้กับออเดอร์อื่นไปแล้ว/);
     expect(orders).toHaveLength(1);
   });
+
+  it("an account whose email isn't confirmed can't order yet, and the page is told why", async () => {
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(OTHER, Readable.from([zip()]), "theirs.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    const err: any = await svc.create(OTHER, order({ fileId: up.id, product: "bib_n" })).catch(e => e);
+    expect(err.getStatus()).toBe(403);
+    expect(err.getResponse()).toMatchObject({ code: "email_unverified" });
+    expect(orders).toHaveLength(0);
+    expect(files[0].orderId).toBeNull(); // the zip stays theirs, to order once confirmed
+  });
 });
 
 describe("ordering bibs designed on the web", () => {
@@ -206,6 +219,7 @@ describe("ordering bibs designed on the web", () => {
   it("counts the bibs from the name list, prices them as bibs, and attaches the print files it builds", async () => {
     const { svc } = await services();
     const res = await svc.create(USER, CreateOrderSchema.parse(webOrder()));
+    await svc.built(res.id);
     expect(res.breakdown).toMatchObject({ unitPrice: 245, subtotal: 245 * 3, garment: "bib_r" });
     const o = orders[0];
     expect(o.fabricSummary).toBe("R-bib (2 ด้าน) · ออกแบบบนเว็บ");
@@ -228,7 +242,8 @@ describe("ordering bibs designed on the web", () => {
     const { mkdirSync, writeFileSync } = await import("fs");
     mkdirSync(join(dir, "kit-assets", "logos"), { recursive: true });
     writeFileSync(join(dir, "kit-assets", "logos", `${SHA}.png`), PNG);
-    await svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })));
+    const made = await svc.create(USER, CreateOrderSchema.parse(webOrder({ logoUrl: `/uploads/kit-assets/logos/${SHA}.png` })));
+    await svc.built(made.id);
     const first = files[0].id;
     // building again replaces a build the team hasn't taken to the NAS
     const again = await bibs.attach(orders[0].id);
@@ -266,6 +281,7 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
       lines: [{ size: "M", qty: 2 }, { size: "L", qty: 1 }],
       roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "鈴木", number: "7", size: "M" }, { playerName: "SATO", number: "4", size: "L" }],
     }));
+    await svc.built(res.id);
     // priced as a normal bib: one price a piece, whatever the fabric and trim
     expect(res.breakdown).toMatchObject({ garment: "bib_n", unitPrice: 252, subtotal: 252 * 3 });
     const o = orders[0];
@@ -282,7 +298,42 @@ describe("ordering the basketball singlet from the kit studio (/shop/bib)", () =
   it("other kits (a football shirt) get no print files: they aren't on a template yet", async () => {
     designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
     const svc = await services();
-    await svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] }));
+    process.env.OPEN_ALL = "1"; // football shirts open again after the bibs-only launch (orders/launch.ts)
+    try {
+      await svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] }));
+    } finally { delete process.env.OPEN_ALL; }
     expect(files).toHaveLength(0);
+  });
+
+  it("made reversible: an R-bib at the R-bib's price, both sides in the job; XXL (3L) on the bib only", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: { ...kitState(), reversible: true, sideB: { colors: { body: "#ffffff", trim: "#ffc20e", stripe: "#ed1c24", number: "#ed1c24" }, pattern: "hoops" } } });
+    const svc = await services();
+    const res = await svc.create(USER, CreateOrderSchema.parse({
+      designId: DESIGN, fabric: "mesh", trim: "full", reversible: true, shippingAddressId: ADDR,
+      lines: [{ size: "M", qty: 1 }, { size: "XXL", qty: 1 }],
+      roster: [{ playerName: "TANAKA", number: "23", size: "M" }, { playerName: "BIG", number: "99", size: "XXL" }],
+    }));
+    await svc.built(res.id);
+    expect(res.breakdown).toMatchObject({ garment: "bib_r", unitPrice: 245, subtotal: 245 * 2 });
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const z = unzipSync(readFileSync(join(dir, "order-files", files[0].path)));
+    const json = Object.entries(z).find(([n]) => n.endsWith("_design.json"))![1];
+    expect(JSON.parse(strFromU8(json)).design).toMatchObject({ product: "bib_r", sides: [{ body: "#ed1c24" }, { body: "#ffffff", pattern: "rings" }] });
+    expect(Object.keys(z).some(n => /\/XXL-3L\/01 No\.99 BIG_ol\.pdf$/.test(n))).toBe(true);
+
+    // a football shirt isn't made in XXL
+    designs.push({ id: "66666666-6666-4666-8666-666666666666", userId: USER, stateJson: kitState("striker") });
+    process.env.OPEN_ALL = "1";
+    try {
+      await expect(svc.create(USER, CreateOrderSchema.parse({ designId: "66666666-6666-4666-8666-666666666666", fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "XXL", qty: 10 }] })))
+        .rejects.toThrow(/XXL มีเฉพาะเอี๊ยม/);
+    } finally { delete process.env.OPEN_ALL; }
+  }, 30_000);
+
+  it("while it's bibs only, a football shirt can't be ordered", async () => {
+    designs.push({ id: DESIGN, userId: USER, stateJson: kitState("striker") });
+    const svc = await services();
+    await expect(svc.create(USER, CreateOrderSchema.parse({ designId: DESIGN, fabric: "mesh", trim: "full", shippingAddressId: ADDR, lines: [{ size: "M", qty: 10 }] })))
+      .rejects.toThrow(/เฉพาะเอี๊ยม/);
   });
 });

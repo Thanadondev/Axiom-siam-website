@@ -14,5 +14,19 @@
     "baseUrl": "./"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist"],
+  // `nest start --watch`: files customers upload (UPLOAD_DIR=./uploads) must not
+  // count as code changes, or every logo upload restarts the API mid-order.
+  // Nor may a file merely read: Windows stamps a file's last-access time when it is
+  // read an hour after the last stamp, an event-based watcher takes that for a change,
+  // and the API restarted with no code changed (reproduced 2026-11-17 by setting one
+  // package.json's access time; TypeScript watches the package.json files that steer
+  // module resolution even when node_modules is excluded). Files are polled instead,
+  // which compares modified times; the workspace's packages aren't watched at all
+  // (a package installed or updated needs the API started again).
+  "watchOptions": {
+    "watchFile": "dynamicPriorityPolling",
+    "excludeDirectories": ["**/node_modules", "../../node_modules", "uploads", "dist", "coverage"],
+    "excludeFiles": ["../../node_modules/**"]
+  }
 }

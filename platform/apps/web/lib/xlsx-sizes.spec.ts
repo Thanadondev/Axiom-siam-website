@@ -44,6 +44,10 @@ describe("a size written in an order list", () => {
   it("knows ours however it's written, reports others, ignores notes", () => {
     expect(["L", "Ｌ", "l", "L（大人サイズ）", "M (junior)", "ＸＬ", " S "].map(s => sizeToken(s)?.size)).toEqual(["L", "L", "L", "L", "M", "XL", "S"]);
     expect(["LL", "O", "SS", "2XL", "130"].map(s => sizeToken(s))).toEqual(["LL", "O", "SS", "2XL", "130"].map(t => ({ size: null, token: t })));
+    // the size in brackets first: "（M）ジュニアサイズ"
+    expect(["（M）ジュニアサイズ", "(L) 大人", "（ＸＬ）"].map(t => sizeToken(t)?.size)).toEqual(["M", "L", "XL"]);
+    // XXL, also as the factory names it (CB-005 "XXL-3L"); LL / 2XL stay unclear
+    expect(["XXL", "ｘｘｌ", "3L", "XXL-3L", "XXL（3L）"].map(t => sizeToken(t)?.size)).toEqual(["XXL", "XXL", "XXL", "XXL", "XXL"]);
     expect(sizeToken("※リストはサイズごと背番号の順に")).toBeNull();
     expect(sizeToken("")).toBeNull();
   });
@@ -75,7 +79,7 @@ describe("counting sizes in a customer's order list", () => {
       [1, "L", 1, 81, "a", 21, "M", 2, 5, "b", 41, "S", 1, 3, "c"],
       [2, "M", 1, 55, "d", 22, null, null, null, null, 42, null, null, null, null],
     ]]]));
-    expect(r?.counts).toEqual({ S: 1, M: 3, L: 1, XL: 0 });
+    expect(r?.counts).toEqual({ S: 1, M: 3, L: 1, XL: 0, XXL: 0 });
   });
 
   it("the filled-in form: skips the worked example sheet, reads 'L（大人サイズ）', leaves the summary box alone", async () => {
@@ -91,6 +95,22 @@ describe("counting sizes in a customer's order list", () => {
     ];
     const r = await book(xlsx([["記入例", example], ["商品注文リスト", form]]));
     expect(r).toMatchObject({ sheet: "商品注文リスト", counts: { S: 1, M: 2, L: 2, XL: 0 }, total: 5 });
+  });
+
+  it("a team that typed its order over the worked example (the order sheet left empty): read from there, and said so; the shop's own sample never", async () => {
+    const head = ["番号", "サイズ（S/M/L）", "枚数", "ネーム（プリントする名前）"];
+    const empty: (string | number | null)[][] = [["チーム・団体名", null], head];
+    const filled: (string | number | null)[][] = [["チーム・団体名", "FORZA福岡"], head, [12, "L", 1, "TSUBASA"], [27, "L", 1, "GOUSHI"], [5, "M（ジュニアサイズ）", 1, "TOA"]];
+    const r = await book(xlsx([["記入例", filled], ["商品注文リスト", empty]]));
+    expect(r).toMatchObject({ sheet: "記入例", counts: { M: 1, L: 2 }, total: 3, fromExample: true });
+    // untouched: still the shop's sample company and contact — not an order
+    const sample: (string | number | null)[][] = [["チーム・団体名", "グランスポーツ株式会社"], ["監督・担当者名", "山田　太郎"], head, [1, "M（ジュニアサイズ）", 1, "HIROKI"], [2, "L（大人サイズ）", 2, "TADASHI"]];
+    expect(await book(xlsx([["記入例", sample], ["商品注文リスト", empty]]))).toBeNull();
+    // a real order sheet still wins over a filled-in example
+    const form: (string | number | null)[][] = [head, [1, "S", 2, "A"]];
+    const real = await book(xlsx([["記入例", filled], ["商品注文リスト", form]]));
+    expect(real).toMatchObject({ sheet: "商品注文リスト", counts: { S: 2 } });
+    expect(real?.fromExample).toBeUndefined();
   });
 
   it("the long form: a 'ビブスサイズ' header far across the sheet, instructions above it not taken for headers", async () => {

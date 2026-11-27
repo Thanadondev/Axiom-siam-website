@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, statSync } from "node:fs";
 import { basename } from "node:path";
 import { Readable } from "node:stream";
+import { confirmEmail } from "./e2e-confirm.mjs";
 
 const API = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "");
 const SAMPLE = process.env.SAMPLE_ZIP;
@@ -43,6 +44,8 @@ async function main() {
   const reg = await api("/auth/register", { method: "POST", body: { email, password, fullName: "ผู้ทดสอบไฟล์ E2E" } });
   if (!check("สมัครสมาชิก", reg.ok, `HTTP ${reg.status} ${JSON.stringify(reg.data)}`)) return;
   const token = (await api("/auth/login", { method: "POST", body: { email, password } })).data.accessToken;
+  // orders need a confirmed email
+  try { check("ยืนยันอีเมล", !!(await confirmEmail(api, email))); } catch (e) { check("ยืนยันอีเมล", false, e.message); return; }
   const addr = await api("/auth/addresses", { method: "POST", token, body: { recipient: "ผู้ทดสอบ", phone: "0800000000", line1: "1 ถนนทดสอบ", province: "กรุงเทพฯ", postalCode: "10110", isDefault: true } });
 
   const q = await api("/orders/quote?totalQty=15&fabric=mesh&trim=none&garment=bib_r");

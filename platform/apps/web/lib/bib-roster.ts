@@ -14,7 +14,7 @@ export const BIB_SIZE_LABEL: Record<BibSize, string> = {
 };
 
 export interface BibRow { name: string; number: string; size: BibSize }
-export interface RosterRead { rows: BibRow[]; errors: { line: number; text: string; why: "size" | "number" | "name" }[] }
+export interface RosterRead { rows: BibRow[]; errors: { line: number; text: string; why: "size" | "number" | "name"; /** a name's length as counted (Thai vowels and tone marks count) */ len?: number }[] }
 
 export const NAME_MAX = 20;
 
@@ -53,12 +53,13 @@ export function readRoster(text: string): RosterRead {
       const z: BibSize | null = size ? null : readSize(c);
       if (z) { size = z; continue; }
       const n = c.replace(/^(no\.?|#)/i, "");
-      if (!number && /^\d{1,3}$/.test(n)) { number = String(Number(n)); continue; }
+      // "05" in a team's list is 5; "00" is its own number, not 0
+      if (!number && /^\d{1,3}$/.test(n)) { number = /^0+$/.test(n) ? n : String(Number(n)); continue; }
       rest.push(c);
     }
     const name = rest.join(" ").trim();
     const why = !size ? "size" : name.length > NAME_MAX ? "name" : rest.some(r => /^\d{4,}$/.test(r)) ? "number" : null;
-    if (why || !size) { errors.push({ line: i + 1, text: raw.trim(), why: why ?? "size" }); return; }
+    if (why || !size) { errors.push({ line: i + 1, text: raw.trim(), why: why ?? "size", ...(why === "name" ? { len: name.length } : {}) }); return; }
     rows.push({ name, number, size });
   });
   return { rows, errors };
@@ -78,12 +79,13 @@ const PIECE_W: Record<BibSize, number> = { S: 459, M: 519, L: 609, XL: 683, XXL:
  * on M (no wider than 110 mm), scaled with the piece — so the largest size on the
  * list decides. Dots per inch over its printed height.
  */
-export function logoDpi(w: number, h: number, sizes: BibSize[]): { dpi: number; mm: number; size: string } {
+/** how sharp a logo prints where it prints biggest; `box` is where it's fitted on the M piece (mm): the chest logo's by default, or a sponsor's (80 × 170) */
+export function logoDpi(w: number, h: number, sizes: BibSize[], box = { h: 85, maxW: 110 }): { dpi: number; mm: number; size: string } {
   const size = (sizes.length ? sizes : (["M"] as BibSize[])).reduce((a, b) => (PIECE_W[b] > PIECE_W[a] ? b : a));
   const k = PIECE_W[size] / PIECE_W.M;
-  let mmH = 85 * k;
+  let mmH = box.h * k;
   const mmW = (mmH * w) / h;
-  if (mmW > 110 * k) mmH = (110 * k * h) / w;
+  if (mmW > box.maxW * k) mmH = (box.maxW * k * h) / w;
   return { dpi: Math.round(h / (mmH / 25.4)), mm: Math.round(mmH), size: BIB_SIZE_LABEL[size] };
 }
 

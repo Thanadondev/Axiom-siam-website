@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import VerifyEmailNotice from "../../../components/VerifyEmailNotice";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch, type ApiError } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
@@ -23,7 +24,8 @@ import { uploadZip, previewDataUrl, ZIP_MAX_BYTES, mb, UploadError, type Uploade
  * other languages the page says what went wrong in its own words.
  */
 
-const SIZES = ["S", "M", "L", "XL"] as const;
+// a bib is made S–XL and XXL (3L)
+const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
 const PRODUCTS = [
   { id: "bib_n", name: "N-bib", sub: ["บิบด้านเดียว", "Single-sided bib", "片面ビブス"] },
   { id: "bib_r", name: "R-bib", sub: ["บิบ 2 ด้าน (กลับด้านได้)", "Reversible bib (2 sides)", "リバーシブルビブス（両面）"] },
@@ -45,7 +47,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [peekErr, setPeekErr] = useState("");
   const [pic, setPic] = useState("");
   const [drag, setDrag] = useState(false);
-  const [qty, setQty] = useState<Record<string, number>>({ S: 0, M: 0, L: 0, XL: 0 });
+  const [qty, setQty] = useState<Record<string, number>>({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 });
   /** the counts read from the order list (.xlsx) in the zip, offered — never filled in unasked */
   const [fromList, setFromList] = useState<SizeCount | null>(null);
   const [listState, setListState] = useState<"" | "reading" | "done" | "unreadable">("");
@@ -211,7 +213,7 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   }
 
   const shell = (children: React.ReactNode, size: "narrow" | "wide") => (
-    <AppShell narrow={size === "narrow"} wide={size === "wide"} lang={lang} onLang={setLang}>{children}</AppShell>
+    <AppShell narrow={size === "narrow"} wide={size === "wide"} station="heatpress" lang={lang} onLang={setLang}>{children}</AppShell>
   );
 
   if (loading) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>, "narrow");
@@ -336,6 +338,11 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                     {SIZES.map(z => <span key={z}>{z} <b>{fromList.counts[z]}</b></span>)}
                     <span>= <b>{L(`${fromList.total} ตัว`, `${fromList.total} pieces`, `${fromList.total}枚`)}</b></span>
                   </div>
+                  {fromList.fromExample && (
+                    <p className="dim" style={{ margin: 0 }}>
+                      {L("อ่านจากชีตตัวอย่าง (記入例) เพราะชีตรายชื่อว่าง — ตรวจจำนวนให้ตรงก่อนใช้", "Read from the example sheet (記入例), as the order sheet is empty — check the counts before using them", "注文シートが空のため、記入例シートから読み取りました。枚数をご確認ください")}
+                    </p>
+                  )}
                   {unknown.length > 0 && (
                     <p className="ou-warn" style={{ margin: 0 }}>
                       ⚠ {L("ในรายชื่อมีไซส์ที่เราไม่ได้ผลิต", "The list has sizes we don't make", "名簿に当社で製作していないサイズがあります")}: {unknown.map(([t, n]) => `${t} × ${n}`).join(", ")}
@@ -443,7 +450,8 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </div>
           )}
           {err && <p className="ou-warn" role="alert">⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || (!toAgent && !addrId)} onClick={submit}>
+          <VerifyEmailNotice lang={lang} />
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
             {busy === "upload" ? L("กำลังอัปโหลดไฟล์…", "Uploading…", "アップロード中…")
               : busy === "order" ? L("กำลังสร้างออเดอร์…", "Placing the order…", "注文を作成中…")
               : L("อัปโหลดไฟล์และสั่งผลิต", "Upload and place the order", "データをアップロードして注文する")}
@@ -473,7 +481,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 export default function OrderUploadPage() {
   const [lang, setLang] = useLang();
   return (
-    <Suspense fallback={<AppShell narrow><div className="acard"><p className="asub">…</p></div></AppShell>}>
+    <Suspense fallback={<AppShell narrow station="heatpress"><div className="acard"><p className="asub">…</p></div></AppShell>}>
       <UploadOrder lang={lang} setLang={setLang} />
     </Suspense>
   );

@@ -7,8 +7,11 @@
  * blob so the checkout page stays dumb — and so it can be unit-tested.
  */
 
-export const SIZES = ["S", "M", "L", "XL"] as const;
+/** every size an order line can be: XXL (3L) only for the bib (lib/kits.ts kitSizes; the API checks it too) */
+export const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
 export type Size = (typeof SIZES)[number];
+/** the sizes everything but the bib is made in */
+export const JERSEY_SIZES: readonly Size[] = ["S", "M", "L", "XL"];
 
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
@@ -30,17 +33,15 @@ export interface OrderDraft {
   qty: Record<Size, number>;
 }
 
-const isSize = (v: unknown): v is Size => (SIZES as readonly unknown[]).includes(v);
-
-/** blank size / "xl" / junk all resolve to something orderable */
-export function normaliseSize(raw: unknown, fallback: Size = "M"): Size {
+/** blank size / "xl" / junk all resolve to something orderable; a size this garment isn't made in (XXL but on a bib) too */
+export function normaliseSize(raw: unknown, fallback: Size = "M", sizes: readonly Size[] = JERSEY_SIZES): Size {
   if (typeof raw !== "string") return fallback;
   const up = raw.trim().toUpperCase();
-  return isSize(up) ? up : fallback;
+  return (sizes as readonly string[]).includes(up) ? (up as Size) : fallback;
 }
 
 export function emptyQty(): Record<Size, number> {
-  return { S: 0, M: 0, L: 0, XL: 0 };
+  return { S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
 }
 
 /** shirts per size from a roster — one shirt per named player */
@@ -66,13 +67,17 @@ export function parseOrderDraft(raw: string | null | undefined, designId: string
   }
   if (!d || typeof d !== "object") return null;
   if (d.designId !== designId) return null; // stale draft from another design
+  // the sizes the garment is made in, as the page that wrote the draft knows them (the bib kit adds XXL); else S–XL
+  const sizes: readonly Size[] = Array.isArray(d.sizes) && d.sizes.length
+    ? SIZES.filter(s => d.sizes.includes(s))
+    : JERSEY_SIZES;
 
   const roster: RosterRow[] = (Array.isArray(d.roster) ? d.roster : [])
     .filter((r: any) => r && typeof r === "object")
     .map((r: any) => ({
       playerName: String(r.playerName ?? "").trim(),
       number: String(r.number ?? "").trim(),
-      size: normaliseSize(r.size),
+      size: normaliseSize(r.size, "M", sizes),
     }))
     // a row with neither a name nor a number is not a person
     .filter((r: RosterRow) => r.playerName !== "" || r.number !== "");
@@ -87,15 +92,15 @@ export function parseOrderDraft(raw: string | null | undefined, designId: string
     roster,
     // a roster decides the sizes; without one, take the per-size counts the
     // /shop customizer sends (shirts without printed names)
-    qty: roster.length ? qtyFromRoster(roster) : qtyFromRaw(d.qty),
+    qty: roster.length ? qtyFromRoster(roster) : qtyFromRaw(d.qty, sizes),
   };
 }
 
 /** per-size counts from an untrusted blob: whole numbers 0–5000, junk → 0 */
-export function qtyFromRaw(raw: unknown): Record<Size, number> {
+export function qtyFromRaw(raw: unknown, sizes: readonly Size[] = JERSEY_SIZES): Record<Size, number> {
   const q = emptyQty();
   if (!raw || typeof raw !== "object") return q;
-  for (const s of SIZES) {
+  for (const s of sizes) {
     const n = Math.trunc(Number((raw as Record<string, unknown>)[s]));
     q[s] = Number.isFinite(n) ? Math.max(0, Math.min(5000, n)) : 0;
   }

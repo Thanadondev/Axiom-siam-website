@@ -1,0 +1,27 @@
+{
+  "name": "@axiom/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "generate": "dotenv -e ../../.env -- prisma generate",
+    "migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "studio": "dotenv -e ../../.env -- prisma studio",
+    "validate": "dotenv -e ../../.env -- prisma validate",
+    "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "seed:demo": "dotenv -e ../../.env -- tsx prisma/seed-demo.ts",
+    "make-admin": "dotenv -e ../../.env -- tsx prisma/make-admin.ts",
+    "users": "dotenv -e ../../.env -- tsx prisma/list-users.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.0",
+    "dotenv-cli": "^7.4.2"
+  }
+}

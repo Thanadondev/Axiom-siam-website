@@ -56,7 +56,7 @@ export default function OrderDetail() {
   }
 
   const shell = (children: React.ReactNode, wide = false) => (
-    <AppShell narrow={!wide} wide={wide} lang={lang} onLang={setLang}>{children}</AppShell>
+    <AppShell narrow={!wide} wide={wide} station="shipping" lang={lang} onLang={setLang}>{children}</AppShell>
   );
   if (loading || (!o && !err)) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>);
   if (err && !o) return shell(

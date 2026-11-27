@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import * as jpeg from "jpeg-js";
-import { drawPiece, moveShapes, type Art, type Shape } from "./draw";
+import { drawPiece, frontNumber, logoBox, moveShapes, sponsorBoxes, teamCy, type Art, type Shape } from "./draw";
 import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
@@ -29,32 +29,54 @@ export interface SheetMeta {
   notes?: string[];
 }
 
-function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; body: string } {
+export function svgShapes(shapes: Shape[], ids: { n: number }): { defs: string; body: string } {
   let defs = "", body = "";
+  const clipOf = (segs?: Seg[]) => {
+    if (!segs) return "";
+    const id = `c${ids.n++}`;
+    defs += `<clipPath id="${id}"><path d="${pathData(segs)}"/></clipPath>`;
+    return ` clip-path="url(#${id})"`;
+  };
   for (const s of shapes) {
     if (s.kind === "image") {
-      body += `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="data:image/png;base64,${Buffer.from(s.tint ? tintPng(s.png, s.tint) : s.png).toString("base64")}"/>`;
+      const href = `data:image/png;base64,${Buffer.from(s.tint ? tintPng(s.png, s.tint) : s.png).toString("base64")}`;
+      const img = s.m
+        ? `<image x="0" y="0" width="1" height="1" preserveAspectRatio="none" transform="matrix(${s.m.join(" ")})" href="${href}"/>`
+        : `<image x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" preserveAspectRatio="none" href="${href}"/>`;
+      const seen0 = s.opacity !== undefined && s.opacity < 1 ? `<g opacity="${s.opacity}">${img}</g>` : img;
+      const seen = s.blend ? `<g style="mix-blend-mode:${s.blend}">${seen0}</g>` : seen0;
+      const inner = s.artClip ? `<g${clipOf(s.artClip)}>${seen}</g>` : seen;
+      body += s.clip ? `<g${clipOf(s.clip)}>${inner}</g>` : inner;
       continue;
     }
-    let clip = "";
-    if (s.clip) {
-      const id = `c${ids.n++}`;
-      defs += `<clipPath id="${id}"><path d="${pathData(s.clip)}"/></clipPath>`;
-      clip = ` clip-path="url(#${id})"`;
-    }
-    const paint = `fill="${s.fill ?? "none"}"` + (s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="round"` : "");
-    body += `<path d="${pathData(s.segs)}" ${paint}${clip}/>`;
+    const clip = clipOf(s.clip);
+    const gradRef = (g: NonNullable<typeof s.grad>) => {
+      const id = `g${ids.n++}`, c = g.coords;
+      const stops = [...g.stops].sort((a, b) => a.o - b.o).map(t => `<stop offset="${t.o}" stop-color="${t.c}"/>`).join("");
+      defs += g.type === "linear"
+        ? `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${c[0]}" y1="${c[1]}" x2="${c[2]}" y2="${c[3]}" gradientTransform="matrix(${g.m.join(" ")})">${stops}</linearGradient>`
+        : `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${c[0]}" cy="${c[1]}" r="${c[2]}" fx="${c[3]}" fy="${c[4]}" gradientTransform="matrix(${g.m.join(" ")})">${stops}</radialGradient>`;
+      return `url(#${id})`;
+    };
+    const fillRef = s.grad && s.fill ? gradRef(s.grad) : s.fill ?? "none";
+    const strokeRef = s.strokeGrad && s.stroke ? gradRef(s.strokeGrad) : s.stroke;
+    const see = s.opacity !== undefined && s.opacity < 1 ? ` opacity="${s.opacity}"` : "";
+    const paint = `fill="${fillRef}"${see}` + (s.evenOdd ? ` fill-rule="evenodd"` : "") + (s.stroke ? ` stroke="${strokeRef}" stroke-width="${s.width ?? 0.35}" stroke-linejoin="${s.join ?? "round"}"${s.join === "miter" ? ` stroke-miterlimit="${s.miter ?? 4}"` : ""}` : "");
+    const dash = s.stroke && s.dash?.length ? ` stroke-dasharray="${s.dash.join(" ")}"` : "";
+    const path = `<path d="${pathData(s.segs)}" ${paint}${dash}${s.artClip ? clipOf(s.artClip) : ""}/>`;
+    const mixed = s.blend ? `<g style="mix-blend-mode:${s.blend}">${path}</g>` : path;
+    body += clip ? `<g${clip}>${mixed}</g>` : mixed;
   }
   return { defs, body };
 }
 
-const label = (text: string, h: number, at: Parameters<typeof textShape>[3], fill: string, out: Shape[]) => {
+export const label = (text: string, h: number, at: Parameters<typeof textShape>[3], fill: string, out: Shape[]) => {
   const t = textShape(text, "label", { h }, at, 1);
   if (t) out.push({ kind: "path", segs: t.segs, fill });
   return t?.box;
 };
 const line = (x0: number, y0: number, x1: number, y1: number): Seg[] => [{ op: "M", x: x0, y: y0 }, { op: "L", x: x1, y: y1 }];
-const box = (x: number, y: number, w: number, h: number): Seg[] => [
+export const box = (x: number, y: number, w: number, h: number): Seg[] => [
   { op: "M", x, y }, { op: "L", x: x + w, y }, { op: "L", x: x + w, y: y + h }, { op: "L", x, y: y + h }, { op: "Z" },
 ];
 
@@ -70,7 +92,9 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   const reversible = d.product === "bib_r";
   const sides = reversible ? (["A", "B"] as const) : (["A"] as const);
   const W = 2400;
-  const colW = 860, gapX = 260, left = 170;
+  // the back piece ends at 2060 at most, clear of the rib colour box at W - 305 (it used to run 50 px under it);
+  // 150 on the left leaves room for the front's print-size notes
+  const colW = 860, gapX = 190, left = 150;
   const pA = piecesFor(size, "A");
   const s = Math.min(colW / Math.max(pA.front.w, pA.back.w), 1.6); // px per mm
   const pieceH = Math.max(pA.front.h, pA.back.h) * s;
@@ -103,19 +127,34 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
       // the print sizes, as on the team's sheets
       const R = x0 + p.w * s + 24;
       if (part === "front") {
-        const F = frontLayout(!!art.logoLeft);
+        const F = frontLayout(!!art.logoLeft, !!art.logoCenter);
         // the note of whatever is on the viewer's left sits left of the piece, as on the team's sheets; the other's right
-        const note = (text: string, it: { cx: number; top: number }, reach: number) => {
+        const note = (text: string, it: { cx: number; top: number }, reach: number, left = it.cx < 0.5) => {
           const y = y0 + (it.top * p.h + 42 * k) * s;
-          const onLeft = it.cx < 0.5;
+          const onLeft = left;
           callout(out, text, { x: x0 + (it.cx * p.w + (onLeft ? -reach : reach) * k) * s, y }, { x: onLeft ? x0 - 24 : R, y });
         };
-        if (art.show.frontNumber && art.number) note(`H${Math.round(F.number.h * k)}mm`, F.number, art.logoLeft ? 45 : 30);
-        if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
-        if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + F.team.cy * p.h * s }, { x: R + 30, y: y0 + (F.team.cy * p.h + 50 * k) * s });
+        // the number as drawn: a wide one sits further in and may be smaller (draw.ts frontNumber)
+        const fn = art.show.frontNumber && art.number ? frontNumber(p, art) : null;
+        // a number in the middle points out on the side away from the logo
+        if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: art.numberCenter ? fn.box.y / p.h : F.number.top },
+          art.numberCenter ? fn.box.w / 2 / k + 6 : art.logoLeft ? 45 : 30, art.numberCenter ? !art.logoLeft : undefined);
+        const lb = logoBox(p, art);
+        // a logo under the middle number: its own size and place (bigger there); else as on the team's sheets
+        if (lb && art.logoCenter && art.numberCenter) note(`H${Math.round(lb.h)}mm`, { cx: 0.5, top: lb.y / p.h }, lb.w / 2 / k + 6, false);
+        else if (lb && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoCenter ? 62 : art.logoLeft ? 30 : 45);
+        // the sponsors: their printed size, out to their own side of the piece
+        for (const sb of sponsorBoxes(p, art)) {
+          const y = y0 + (sb.y + sb.h / 2) * s;
+          callout(out, `${Math.round(sb.w)}x${Math.round(sb.h)}mm`, { x: x0 + (sb.slot === "left" ? sb.x : sb.x + sb.w) * s, y }, { x: sb.slot === "left" ? x0 - 24 : R, y });
+        }
+        const tcy = teamCy(p, art);
+        if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + tcy * s }, { x: R + 30, y: y0 + tcy * s + 50 * k * s });
       } else {
         const B = LAYOUT.back;
         if (art.show.backName && art.name) callout(out, `H${Math.round(B.name.h * k)}mm`, { x: x0 + (0.5 * p.w + 120 * k) * s, y: y0 + (B.name.top * p.h + 17 * k) * s }, { x: R, y: y0 + (B.name.top * p.h + 17 * k) * s });
+        // the sponsors under the number: each one's printed size under it (leaders out to the side would cross the others)
+        for (const sb of sponsorBoxes(p, art, "back")) label(`${Math.round(sb.w)}x${Math.round(sb.h)}mm`, 15, { cx: x0 + (sb.x + sb.w / 2) * s, top: y0 + (sb.y + sb.h) * s + 8 }, GREEN, out);
         if (art.show.backNumber && art.number) callout(out, `H${Math.round(B.number.h * k)}mm`, { x: x0 + (0.5 * p.w + 120 * k) * s, y: y0 + (B.number.top * p.h + 100 * k) * s }, { x: R, y: y0 + (B.number.top * p.h + 100 * k) * s });
       }
     });
@@ -124,24 +163,24 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   // ---- rib colours per side, right of its row (under side A's print-size notes), in the CMYK that prints
   sides.forEach((side, row) => {
     const look = d.sides[row];
-    const rx = W - 300, ry = top + row * rowH + (row ? pieceH * 0.1 : pieceH * 0.62);
+    const rx = W - 305, ry = top + row * rowH + (row ? pieceH * 0.1 : pieceH * 0.62);
     const title = reversible ? `RIB COLOUR (${row ? "REVERSE" : "FRONT SIDE"})` : "RIB COLOUR";
     if (!look.rib) {
-      out.push({ kind: "path", segs: box(rx, ry, 270, 84), stroke: RED, width: 3, fill: "#ffffff" });
-      out.push({ kind: "path", segs: box(rx, ry, 270, 36), fill: RED });
-      label(title, 16, { cx: rx + 135, cy: ry + 18 }, "#ffffff", out);
+      out.push({ kind: "path", segs: box(rx, ry, 290, 84), stroke: RED, width: 3, fill: "#ffffff" });
+      out.push({ kind: "path", segs: box(rx, ry, 290, 36), fill: RED });
+      label(title, 16, { cx: rx + 145, cy: ry + 18 }, "#ffffff", out);
       label("No rib bands", 18, { x: rx + 18, cy: ry + 60 }, INK, out);
       return;
     }
     const rib = look.rib;
-    out.push({ kind: "path", segs: box(rx, ry, 270, 230), stroke: RED, width: 3, fill: "#ffffff" });
-    out.push({ kind: "path", segs: box(rx, ry, 270, 36), fill: RED });
-    label(title, 16, { cx: rx + 135, cy: ry + 18 }, "#ffffff", out);
+    out.push({ kind: "path", segs: box(rx, ry, 290, 230), stroke: RED, width: 3, fill: "#ffffff" });
+    out.push({ kind: "path", segs: box(rx, ry, 290, 36), fill: RED });
+    label(title, 16, { cx: rx + 145, cy: ry + 18 }, "#ffffff", out);
     (["neck", "arm", "hem"] as const).forEach((z, i) => {
       const y = ry + 56 + i * 58;
       out.push({ kind: "path", segs: box(rx + 18, y, 44, 44), fill: rib[z], stroke: "#bcbec0", width: 2 });
       label(z === "neck" ? "Neck" : z === "arm" ? "Sleeves" : "Hem", 18, { x: rx + 76, top: y + 2 }, INK, out);
-      label(rib[z] === look.body ? "Same as body" : inkText(rib[z]), 14, { x: rx + 76, top: y + 26 }, MUTE, out);
+      label(rib[z] === look.body ? "Same as body" : inkText(rib[z]), 13, { x: rx + 72, top: y + 26 }, MUTE, out);
     });
   });
 
@@ -149,7 +188,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
   const fy = H - 230;
   // colours off the factory chart, as converted, so the team can check them
   const off = [...new Set(d.sides.flatMap(sd => [sd.body, sd.patternColor, sd.ink, sd.inkOutline, sd.rib?.neck, sd.rib?.arm, sd.rib?.hem]))]
-    .filter((h): h is string => !!h).map(ink).filter(i => !i.onChart);
+    .filter((h): h is string => !!h).map(h => ink(h)).filter(i => !i.onChart);
   const notes = [...(meta.notes ?? [])];
   if (off.length) notes.push(`Off-chart colours, converted: ${off.map(i => `${i.hex.toUpperCase()} → ${cmykText(i.cmyk)}`).join("   ")}`);
   notes.reverse().forEach((n, i) => label(n, 18, { x: 28, bottom: fy - 16 - i * 28 }, RED, out));

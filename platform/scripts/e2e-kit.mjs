@@ -16,6 +16,7 @@
  * with `npm run test:e2e:purge`.
  */
 import { deflateSync } from "zlib";
+import { confirmEmail, bibsOnlyRefusal, OPEN_ALL_HINT } from "./e2e-confirm.mjs";
 
 const ORIGIN = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "");
 const API = ORIGIN + "/api/v1";
@@ -71,6 +72,8 @@ async function main() {
   const login = await api("/auth/login", { method: "POST", body: { email, password } });
   if (!check("เข้าสู่ระบบ", login.ok && login.data.accessToken, JSON.stringify(login.data))) return finish();
   const token = login.data.accessToken;
+  // orders need a confirmed email
+  try { check("ยืนยันอีเมล", !!(await confirmEmail(api, email))); } catch (e) { check("ยืนยันอีเมล", false, e.message); return finish(); }
 
   section("2. อัปโหลดโลโก้และฟอนต์");
   const logoData = "data:image/png;base64," + pngSquare().toString("base64");
@@ -123,6 +126,11 @@ async function main() {
     roster: [{ playerName: "SOMCHAI", number: "10", size: "L", qty: 1 }, { playerName: "ANAN", number: "7", size: "M", qty: 1 }],
     shippingAddressId: addr.data.id, note: "E2E kit",
   } });
+  if (bibsOnlyRefusal(order)) {
+    ok("ช่วงเปิดเฉพาะ Bib: API ไม่รับออเดอร์นี้ (ถูกต้อง)", order.data.message);
+    results.push(`  \x1b[33m⚠ ${OPEN_ALL_HINT}\x1b[0m`);
+    return finish();
+  }
   if (!check("สร้างออเดอร์", order.ok, JSON.stringify(order.data))) return finish();
   ok("เลขออเดอร์", order.data.orderNo);
   const mine = await api(`/orders/${order.data.id}`, { token });

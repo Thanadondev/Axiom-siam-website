@@ -1,3 +1,4 @@
+import { FONT_IDS } from "./text";
 import { z } from "zod";
 import { BIB_SIZES } from "./template";
 
@@ -6,6 +7,13 @@ import { BIB_SIZES } from "./template";
  * The job builder turns it into the same package the graphics team makes by
  * hand (print file per size, order sheet, name list).
  */
+
+/** a logo the kit-asset upload stored: the browser re-encodes every logo to PNG */
+const LOGO_URL = z.string().regex(/^\/uploads\/kit-assets\/logos\/[a-f0-9]{64}\.png$/, "logo must be uploaded on the design page");
+
+/** where sponsors go: two on the front, three on the back */
+export const SPONSOR_SLOTS = ["left", "right", "backLeft", "backCenter", "backRight"] as const;
+export type SponsorSlot = (typeof SPONSOR_SLOTS)[number];
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "colour must be #RRGGBB").transform(s => s.toLowerCase());
 
@@ -39,7 +47,7 @@ export const BibDesignSchema = z.object({
   product: z.enum(["bib_r", "bib_n"]),
   /** printed across the front */
   team: z.string().max(30).default(""),
-  font: z.enum(["block", "classic", "thai"]).default("block"),
+  font: z.enum(FONT_IDS).default("block"),
   /** side A, and for a reversible bib the reverse (side B) */
   sides: z.array(SideLookSchema).min(1).max(2),
   /** where the pieces carry what */
@@ -53,10 +61,16 @@ export const BibDesignSchema = z.object({
   roster: z.array(RosterRowSchema).min(1).max(500),
   /** the chest logo on the wearer's right (the viewer's left) and the number opposite, as the kit studio places them */
   logoLeft: z.boolean().default(false),
+  /** the chest logo in the middle of the chest instead (logoLeft then doesn't count); a number beside it goes on the viewer's left */
+  logoCenter: z.boolean().default(false),
+  /** the front number in the middle of the chest instead of beside the logo (the logo keeps its side) */
+  numberCenter: z.boolean().default(false),
   /** print the logo in one colour, the side's ink (the kit studio's "one colour" logo) */
   logoTint: z.boolean().default(false),
   /** with no team logo, the Axiom mark in its place (always one colour, a little smaller), as the kit studio shows it */
   axiomMark: z.boolean().default(false),
+  /** sponsors' logos, full colour: the front's bottom corners (left, right as you look at the front), and a row under the back number */
+  sponsors: z.object(Object.fromEntries(SPONSOR_SLOTS.map(s => [s, LOGO_URL.optional()])) as Record<SponsorSlot, z.ZodOptional<typeof LOGO_URL>>).default({}),
   /** the team's own font for names and numbers (uploaded in the kit studio); ours stand in for what it lacks */
   fontUrl: z.string().regex(/^\/uploads\/kit-assets\/fonts\/[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/).optional(),
   /** made in the kit studio: the kit, named on the order sheet and the job folder */
@@ -70,9 +84,10 @@ export type SideLook = z.infer<typeof SideLookSchema>;
 export type RosterRow = z.infer<typeof RosterRowSchema>;
 export type BibDesign = z.infer<typeof BibDesignSchema>;
 
-/** the front's layout, with the logo and number swapped when the logo goes on the viewer's left */
-export function frontLayout(logoLeft: boolean) {
+/** the front's layout: the logo and number swapped when the logo goes on the viewer's left; a logo in the middle leaves the number on the left */
+export function frontLayout(logoLeft: boolean, logoCenter = false) {
   const F = LAYOUT.front;
+  if (logoCenter) return { ...F, logo: { ...F.logo, cx: 0.5 } };
   return logoLeft ? { ...F, number: { ...F.number, cx: F.logo.cx }, logo: { ...F.logo, cx: F.number.cx } } : F;
 }
 
@@ -87,10 +102,23 @@ export const LAYOUT = {
     number: { cx: 0.264, top: 0.278, h: 85 },
     logo: { cx: 0.743, top: 0.268, h: 85, maxW: 110 },
     team: { cx: 0.5, cy: 0.5, w: 320, h: 50 },
+    /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
+    middle: { cy: 0.5, h: 85, teamGap: 15 },
+    /**
+     * the logo and the number both in the middle: the number a little above the middle of the piece (its
+     * centre at numberCy of the height), the team name above it and the logo, bigger, below it, `gap` mm
+     * apart; the logo keeps `floor` mm above the hem's cut line and `clear` mm from the sponsors in the
+     * bottom corners, smaller if it must (mm on M)
+     */
+    stack: { numberCy: 0.46, gap: 15, floor: 40, clear: 10, logo: { h: 170, maxW: 260 } },
+    /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
+    sponsor: { cx: 0.25, bottom: 35, h: 80, maxW: 170 },
   },
   back: {
     name: { cx: 0.5, top: 0.146, h: 35, maxW: 380 },
     number: { cx: 0.5, top: 0.286, h: 200, maxW: 330 },
+    /** sponsors in a row under the number: each fitted in an h × maxW box, left / middle / right at cx, 0.5, 1 - cx, `gap` mm under the number's full height */
+    sponsor: { cx: 0.2, gap: 25, h: 65, maxW: 130 },
   },
   /** keyline round name/number, mm on M */
   outline: 3,

@@ -1,0 +1,106 @@
+สรุปงานวันนี้ — Axiom Siam Platform
+วันที่ 26 ต.ค. 2569 (2026-10-26)
+==================================================
+
+สถานะ: งานทั้งหมดยังไม่ได้ commit (อยู่บน branch main)
+commit ล่าสุด: 1cd5942 "Replace Stripe with Thai bank transfer + slip review; fix auth role/email bugs"
+
+1) โมเดล 3D เสื้อและหุ่น (Blender)
+--------------------------------------------------
+- scripts/blender/build_kits_v2.py — สร้างโมเดลเสื้อเวอร์ชัน 2
+  * เวอร์ชันแรกพองเหมือนหมอน เวอร์ชันนี้เอาแพทเทิร์นแบนมาสวมหุ่น
+    แล้วใช้ cloth simulation ให้ผ้าทิ้งตัวตามไหล่ แขน และเอว
+  * มีขอบกุ๊นจริงที่คอ แขน และชาย (Trim_Neck / Trim_Arm / Trim_Hem)
+    ส่วนปกโปโล สาบ และกระดุมขยับตามผ้า และผ้ามีความหนา
+  * เก็บพิกัดแพทเทิร์นเดิมไว้ (_rest / _restn) ให้เว็บใช้ระบายสี ลาย ชื่อ และเบอร์ได้
+  * ผลลัพธ์: public/models/kits/{club,pacer,rim,smash,striker}.glb
+- scripts/blender/dress_mannequins.py, mannequin_builder.py, studio.py
+  * สวมเสื้อให้หุ่นโชว์สีดำเงาบนแท่นสี่เหลี่ยม แล้วจัดท่าเป็นแขนลงหรือท่าวิ่ง
+  * ผลลัพธ์: public/models/mannequins/*.glb
+- scripts/blender/factory_kit.py — ชุดพร็อพโรงงานสำหรับหน้าแรก
+  * ผลลัพธ์: public/models/factory/factory_kit.glb
+  * ใช้ material ชื่อ Fabric, Glow และ Screen ให้เว็บย้อมสีหรือทำให้เรืองแสง
+
+2) หน้าแรกใหม่ — เดินชมโรงงาน 3D ตามการเลื่อนหน้าจอ
+--------------------------------------------------
+- app/page.tsx + home.css + components/ScrollStory.tsx
+  * ฉากโรงงานตอนพลบค่ำ ทำด้วย Three.js กล้องเคลื่อนตามการ scroll มี 7 ตอน:
+    ประตูโรงงาน → ตัดเย็บและเปลี่ยนสี → พิมพ์ผ้า → ใส่ชื่อและเบอร์
+    → ทั้งทีม (QC) → ผลงานจริง → ปุ่ม call-to-action
+  * ถ้าผู้ใช้ตั้งค่า reduced motion จะไม่มีอนิเมชันกล้อง
+- lib/three-cdn.ts — โหลด Three.js r128, GLTFLoader และ meshopt จาก CDN แค่ครั้งเดียว
+- lib/factory-kit.ts, lib/jersey3d.ts — โหลดพร็อพโรงงาน หุ่น และเสื้อ 3D
+
+
+3) ร้านค้า /shop/[kit] และ Checkout
+--------------------------------------------------
+- app/shop/[kit]/page.tsx + components/LockerScene.tsx
+  * หน้าปรับแต่งเสื้อในฉากห้องล็อกเกอร์ มี 4 แท็บ: สี / ลาย / ชื่อ-เบอร์ / สั่งซื้อ
+  * ดูเสื้อได้จากด้านหน้า ด้านข้าง และด้านหลัง และ capture รูปเป็น PNG ได้
+- app/checkout/page.tsx + components/CheckoutScene.tsx (หน้าใหม่)
+  * มี 4 ขั้นตอน: จำนวน → จัดส่ง → ยืนยัน → ชำระเงิน
+  * ฉาก 3D:
+    - build: เสื้อหมุนอยู่บนแท่น พร้อมกองเสื้อพับแยกตามไซส์
+    - pack: เสื้อลอยลงกล่อง กล่องปิดเทป แล้วติดป้ายเลขออเดอร์
+    - sent: ชำระเงินแล้ว กล่องเลื่อนไปฝ่ายผลิต
+
+
+4) หลังบ้าน — บอร์ดผลิต (Production board)
+--------------------------------------------------
+- app/admin/production/page.tsx (หน้าใหม่) และเพิ่มลิงก์ "🏭 บอร์ดผลิต" ในหน้า /admin
+  * แสดงออเดอร์ที่จ่ายแล้วเป็นคอลัมน์ตามสถานะการผลิต
+    เลื่อนสถานะได้ด้วยปุ่มหรือด้วยการลากการ์ด
+  * เปิดการ์ดแล้วจะเห็นเสื้อ 3D จำนวนแยกไซส์ รายชื่อ (roster) และใบสั่งงานที่พิมพ์ได้
+  * การเปลี่ยนสถานะเรียก endpoint admin ตัวเดิม จึงยังใช้กฎ state machine เดิม
+- API: apps/api/src/orders/kit-look.ts (+ spec)
+  * ดึงข้อมูลหน้าตาเสื้อจาก design snapshot (kit, สี, ลาย, เบอร์, ชื่อ, ฟอนต์, ผ้า, ขลิบ)
+  * กรองให้รับเฉพาะสี hex และจำกัดความยาวข้อความ
+- orders.service.ts: รายการออเดอร์ส่ง look ไปด้วย
+  และส่ง designSnapshot ให้เฉพาะ admin
+
+
+5) ตลาดเทมเพลต (Marketplace)
+--------------------------------------------------
+- app/templates/page.tsx — ออกแบบใหม่ เอา 3 อันดับขายดีมาวางเรียงเป็นพัดที่เอียงตามเมาส์
+  และเพิ่ม TemplateCard กับ StoreFooter
+- app/templates/[id]/page.tsx — ดูตัวอย่างลายบนสีและไซส์ที่เลือกได้สด
+  สีที่เลือกไว้จะติดไปตอนกดเปิดใน designer และแสดง "ลายอื่นจากนักออกแบบคนเดียวกัน"
+- app/designers/[id]/page.tsx — ปรับหน้าโปรไฟล์นักออกแบบ
+- API: GET /market/templates/:id/preview-state (ใช้ได้โดยไม่ต้องล็อกอิน)
+  * ถ้ายังไม่ได้ซื้อจะได้ watermark:true
+  * draft ที่ยังไม่เผยแพร่จะให้ดูได้เฉพาะเจ้าของ
+  * หมายเหตุ: ข้อมูลเวกเตอร์ยังดึงผ่าน devtools ได้ ลายน้ำแค่กันการก๊อปทั่วไป
+- Designer (public/designer/editor.js, index.html)
+  * เพิ่มโหมด ?preview=1 ซึ่งล็อกไม่ให้ขยับลาย และวางลายน้ำเฉียงทั่วภาพ
+    ลายน้ำจะไม่ติดไปตอน export และจะวางใหม่ทุกครั้งที่เปลี่ยนสีหรือไซส์
+  * เปลี่ยนธีมเป็นมืดและส้มให้เหมือนหน้าร้าน แถบเครื่องมืออยู่บรรทัดเดียว
+    และเลื่อนข้างได้บนจอแคบ
+
+
+6) ปรับธีมทั้งเว็บให้เป็นแบรนด์เดียวกัน
+--------------------------------------------------
+- components/AppShell.tsx — หน้าบัญชี ออเดอร์ admin และข้อตกลงใช้ StoreHeader/StoreFooter
+  ธีมมืดเดียวกับร้าน (เอาปุ่มสลับธีมสว่าง/มืดออก)
+  * เมนู: ออกแบบเสื้อ (/shop) · ตลาดลาย · ออกแบบขั้นสูง (/design)
+  * เพิ่มโหมด auth: ฟอร์มอยู่ด้านขวา เสื้อ 3D หมุนอยู่ด้านซ้าย
+    (หน้า login, register, forgot, reset, verify)
+- ปรับสีของ account, admin, admin/users, orders, invoice, showcase, PayPanel, SlipReview,
+  SecurityCard, TwoFactorCard, JerseyHero, WireScene และ VariantPreview ให้เข้ากับธีมใหม่
+  (สี error/success ใช้ CSS variable --err / --okc)
+- เพิ่มโลโก้ใหม่: public/models/axiom-icon.png, axiom-logo-dark.png
+
+
+7) อื่นๆ
+--------------------------------------------------
+- รันเว็บ dev แล้ว: web http://localhost:3000 (โหลดหน้าแรกได้ 200), API http://localhost:4000/api/v1
+  * Docker/Postgres ไม่ได้เปิดอยู่ หน้าที่ต้องใช้ DB จึงยังไม่ทำงาน
+    ให้รัน: cd platform && docker compose up -d
+
+
+สิ่งที่ควรทำต่อ
+--------------------------------------------------
+[ ] เปิด Docker แล้วทดสอบ flow เต็ม: /shop → checkout → ชำระเงิน → บอร์ดผลิต
+[ ] รันเทสต์: npm test (มีไฟล์ spec ใหม่: kit-look.spec.ts, kits.spec.ts, next-path.spec.ts)
+[ ] commit งานของวันนี้ (ไฟล์ .glb และ .blend ใหญ่ ควรพิจารณาใช้ Git LFS)
+[ ] เช็กไฟล์ที่ถูกลบออกไป 2 ไฟล์: Axiom-Siam-Website-Pitch.pptx และ ~$axiom-platform-summary.pptx
+    ว่าตั้งใจลบหรือไม่ ก่อน commit

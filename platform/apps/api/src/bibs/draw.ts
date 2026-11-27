@@ -1,7 +1,7 @@
-import { frontLayout, LAYOUT, type SideLook } from "./design";
+import { frontLayout, LAYOUT, type SideLook, type SponsorSlot } from "./design";
 import { mapPath, parsePath, type Seg } from "./path";
 import { BASE_WIDTH, type Part, type Piece, type Rib } from "./template";
-import { textShape, type FontRef } from "./text";
+import { textShape, type FontRef, type TextShape } from "./text";
 
 /**
  * One cut piece with its artwork, as plain shapes in mm (y down, origin at the
@@ -9,8 +9,64 @@ import { textShape, type FontRef } from "./text";
  * so what the customer approves is what goes to the printer.
  */
 export type Shape =
-  | { kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[] }
-  | { kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string };
+  | {
+    kind: "path"; segs: Seg[]; fill?: string; stroke?: string; width?: number; clip?: Seg[]; evenOdd?: boolean;
+    /** the artwork's own clip (a crop, a logo's clip path), inside the piece's */
+    artClip?: Seg[];
+    /** a dashed stroke: dash and gap lengths, mm */
+    dash?: number[];
+    /** the stroke's corners (round when not given) and, for sharp ones, how far a spike may reach (× the width) */
+    join?: "miter" | "bevel";
+    miter?: number;
+    /** a gradient fill, in place of `fill` (which stays its first colour, for anything that draws one colour) */
+    grad?: Grad;
+    /** a gradient stroke, in place of `stroke` (which stays its first colour) */
+    strokeGrad?: Grad;
+    /** see-through: 0–1 (1, or none, is solid) */
+    opacity?: number;
+    /** how it mixes with what is under it (Illustrator's blending modes); normal when not given */
+    blend?: Blend;
+  }
+  | {
+    kind: "image"; png: Uint8Array; x: number; y: number; w: number; h: number; tint?: string;
+    /** in place of x/y/w/h: the matrix [a b c d e f] that takes the image's unit square (y down) onto the page — a turned picture */
+    m?: Affine;
+    clip?: Seg[];
+    artClip?: Seg[];
+    opacity?: number;
+    blend?: Blend;
+  };
+
+/** the blending modes, by their CSS names (the designer's canvas uses the same) */
+export const BLENDS = ["multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion"] as const;
+export type Blend = (typeof BLENDS)[number];
+/** the PDF's name for each (ISO 32000 11.3.5) */
+export const PDF_BLEND: Record<Blend, string> = {
+  multiply: "Multiply", screen: "Screen", overlay: "Overlay", darken: "Darken", lighten: "Lighten",
+  "color-dodge": "ColorDodge", "color-burn": "ColorBurn", "hard-light": "HardLight", "soft-light": "SoftLight",
+  difference: "Difference", exclusion: "Exclusion",
+};
+
+/**
+ * A gradient fill as Illustrator makes one: linear between two points, or
+ * radial about a centre (with its focus), with colour stops 0–1 along it;
+ * past the ends it keeps the end colours. `coords` are in the gradient's own
+ * space, which `m` takes onto the page (mm): a gradient squashed or turned
+ * with its shape stays with it.
+ */
+export interface Grad {
+  type: "linear" | "radial";
+  /** linear: x1 y1 x2 y2; radial: cx cy r fx fy */
+  coords: number[];
+  stops: { o: number; c: string }[];
+  m: Affine;
+}
+
+/** an SVG matrix: x' = a·x + c·y + e, y' = b·x + d·y + f */
+export type Affine = [number, number, number, number, number, number];
+
+/** a PNG and its pixel size */
+export type Img = { png: Uint8Array; w: number; h: number };
 
 export interface Art {
   font: FontRef;
@@ -21,6 +77,12 @@ export interface Art {
   logo?: { png: Uint8Array; w: number; h: number; tint?: boolean; scale?: number };
   /** the logo on the viewer's left and the number on the right (the kit studio's front) */
   logoLeft?: boolean;
+  /** the logo in the middle of the chest */
+  logoCenter?: boolean;
+  /** the front number in the middle of the chest; the logo keeps its side and the number keeps clear of it */
+  numberCenter?: boolean;
+  /** sponsors' logos (PNG): the front's bottom corners, as you look at the front, and the row under the back number */
+  sponsors?: Partial<Record<SponsorSlot, Img>>;
   show: { frontNumber: boolean; frontLogo: boolean; frontTeam: boolean; backName: boolean; backNumber: boolean };
 }
 
@@ -116,6 +178,178 @@ export interface DrawOpts {
   sizeMark?: string;
 }
 
+/** points along a path, cubics sampled, for measuring against the cut line */
+function polyline(segs: Seg[]): [number, number][] {
+  const pts: [number, number][] = [];
+  let x = 0, y = 0;
+  for (const s of segs) {
+    if (s.op === "M" || s.op === "L") { x = s.x; y = s.y; pts.push([x, y]); }
+    else if (s.op === "C") {
+      for (let i = 1; i <= 16; i++) {
+        const t = i / 16, u = 1 - t;
+        pts.push([u * u * u * x + 3 * u * u * t * s.x1 + 3 * u * t * t * s.x2 + t * t * t * s.x, u * u * u * y + 3 * u * u * t * s.y1 + 3 * u * t * t * s.y2 + t * t * t * s.y]);
+      }
+      x = s.x; y = s.y;
+    }
+  }
+  return pts;
+}
+
+/**
+ * Where the cut line comes furthest in on one side of the piece between heights
+ * y0 and y1 (the armhole curves inward): the largest x left of `mid`, or the
+ * smallest right of it.
+ */
+export function edgeX(cut: Seg[], y0: number, y1: number, side: "left" | "right", mid: number): number {
+  const pts = polyline(cut);
+  let best = side === "left" ? -Infinity : Infinity;
+  for (let yy = y0; yy <= y1 + 1e-6; yy += Math.max(0.5, (y1 - y0) / 40)) {
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, ya] = pts[i], [x2, yb] = pts[(i + 1) % pts.length];
+      if (ya === yb || (ya - yy) * (yb - yy) > 0) continue;
+      const x = x1 + ((yy - ya) / (yb - ya)) * (x2 - x1);
+      if (side === "left" && x < mid) best = Math.max(best, x);
+      if (side === "right" && x > mid) best = Math.min(best, x);
+    }
+  }
+  return best;
+}
+
+/**
+ * The front number keeps clear of the armhole: at least this far (mm on the M
+ * piece) from the cut line, and this far from the piece's centre line. A one-digit
+ * number sits where the team's sheets put it; a wider one (two or three digits,
+ * a broad font) moves toward the middle, and only if it still doesn't fit is it
+ * made smaller. Before, a two-digit number in the classic or Thai font ran into
+ * the cut line.
+ */
+export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15, logo: 12 };
+
+/** the logo's printed size (mm) fitted in a box of h × maxW on M (its own scale applied) */
+function logoSize(k: number, logo: NonNullable<Art["logo"]>, box: { h: number; maxW: number }) {
+  const g = logo.scale ?? 1;
+  let h = box.h * k * g, w = (h * logo.w) / logo.h;
+  if (w > box.maxW * k * g) { w = box.maxW * k * g; h = (w * logo.h) / logo.w; }
+  return { w, h };
+}
+
+/** the logo and the number both in the middle of the front: stacked down the middle (middleStack) */
+const stacked = (art: Art) => !!art.logoCenter && !!art.numberCenter;
+
+/**
+ * The logo and the number both in the middle of the front: team name, number, logo down the middle. The
+ * number a little above the middle (there on a bib without one too, so every bib matches), the
+ * team name goes above it, and the logo below it, bigger, down toward the hem. Sponsors in the bottom
+ * corners come first: the logo is made shorter to stay above them, or narrower to fit between them,
+ * whichever leaves it bigger. Centre heights (mm), and the logo's box.
+ */
+export function middleStack(p: Piece, art: Art): { number: number; team: number; logo?: { x: number; y: number; w: number; h: number } } {
+  const k = p.w / BASE_WIDTH, F = LAYOUT.front, S = F.stack, M = F.middle, mid = p.w / 2;
+  const number = S.numberCy * p.h;
+  const team = number - (M.h / 2 + S.gap + F.team.h / 2) * k;
+  if (!art.show.frontLogo || !art.logo) return { number, team };
+  const top = number + (M.h / 2 + S.gap) * k, floor = p.h - S.floor * k, gap = S.clear * k;
+  const full = logoSize(k, art.logo, S.logo);
+  const sized = (w: number, h: number) => { const s = Math.min(1, w / full.w, h / full.h); return { w: full.w * s, h: full.h * s }; };
+  const sp = sponsorBoxes(p, art);
+  // shorter: above the floor and above every sponsor its full width would reach over
+  const over = sp.filter(b => b.x < mid + full.w / 2 + gap && b.x + b.w > mid - full.w / 2 - gap);
+  const shorter = sized(full.w, Math.min(floor, ...over.map(b => b.y - gap)) - top);
+  // narrower: between the sponsors, as tall as the floor lets it
+  let lo = -Infinity, hi = Infinity;
+  for (const b of sp) { if (b.x + b.w / 2 < mid) lo = Math.max(lo, b.x + b.w + gap); else hi = Math.min(hi, b.x - gap); }
+  const narrower = sized(2 * Math.min(mid - lo, hi - mid), floor - top);
+  const pick = narrower.w > 0 && narrower.w * narrower.h > shorter.w * shorter.h ? narrower : shorter;
+  return { number, team, logo: { x: mid - pick.w / 2, y: top, w: pick.w, h: pick.h } };
+}
+
+/** where the chest logo prints on the front piece (mm), or null when there is none */
+export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; h: number } | null {
+  if (!art.show.frontLogo || !art.logo) return null;
+  const k = p.w / BASE_WIDTH, L = frontLayout(!!art.logoLeft, !!art.logoCenter), g = art.logo.scale ?? 1;
+  if (stacked(art)) return middleStack(p, art).logo ?? null;
+  let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
+  if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
+  // a smaller logo keeps its centre where the full-size one would be
+  const y = L.logo.top * p.h + ((1 - g) * L.logo.h * k) / 2;
+  return { x: L.logo.cx * p.w - w / 2, y, w, h };
+}
+
+/**
+ * Where the sponsors' logos print on a piece (mm), each fitted in its box and centred in it: on the
+ * front the two bottom corners, on the back a row under the number (where it is, printed or not).
+ */
+export function sponsorBoxes(p: Piece, art: Art, part: Part = "front"): { slot: SponsorSlot; img: Img; x: number; y: number; w: number; h: number }[] {
+  const k = p.w / BASE_WIDTH;
+  const F = LAYOUT.front.sponsor, B = LAYOUT.back.sponsor, N = LAYOUT.back.number;
+  const row: { box: { h: number; maxW: number }; cy: number; at: [SponsorSlot, number][] } = part === "front"
+    ? { box: F, cy: p.h - (F.bottom + F.h / 2) * k, at: [["left", F.cx], ["right", 1 - F.cx]] }
+    : { box: B, cy: N.top * p.h + (N.h + B.gap + B.h / 2) * k, at: [["backLeft", B.cx], ["backCenter", 0.5], ["backRight", 1 - B.cx]] };
+  const out: ReturnType<typeof sponsorBoxes> = [];
+  for (const [slot, cx] of row.at) {
+    const img = art.sponsors?.[slot];
+    if (!img) continue;
+    let h = row.box.h * k, w = (h * img.w) / img.h;
+    if (w > row.box.maxW * k) { w = row.box.maxW * k; h = (w * img.h) / img.w; }
+    out.push({ slot, img, x: cx * p.w - w / 2, y: row.cy - h / 2, w, h });
+  }
+  return out;
+}
+
+/** a number in the middle: its centre height (mm), the middle of the piece (a little higher with the logo in the middle under it) */
+export function middleNumberCy(p: Piece, art: Art): number {
+  return stacked(art) ? middleStack(p, art).number : LAYOUT.front.middle.cy * p.h;
+}
+
+/** the team name's centre height (mm): under the number when the number is in the middle (above it when the logo is in the middle too), else the middle */
+export function teamCy(p: Piece, art: Art): number {
+  const k = p.w / BASE_WIDTH, F = LAYOUT.front, M = F.middle;
+  if (stacked(art)) return middleStack(p, art).team;
+  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return middleNumberCy(p, art) + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
+  return F.team.cy * p.h;
+}
+
+export function frontNumber(p: Piece, art: Art): TextShape | null {
+  const k = p.w / BASE_WIDTH;
+  const L = frontLayout(!!art.logoLeft, !!art.logoCenter);
+  const mid = p.w / 2;
+  if (art.numberCenter) {
+    // in the middle of the piece: as wide as the armholes (and the logo, if it reaches down that far) leave room for
+    const M = LAYOUT.front.middle;
+    const at = { cx: mid, cy: middleNumberCy(p, art) };
+    let t = textShape(art.number, art.font, { h: M.h * k }, at);
+    if (!t) return null;
+    const cut = parsePath(p.cut);
+    let lo = edgeX(cut, t.box.y, t.box.y + t.box.h, "left", mid) + FRONT_NUMBER_CLEAR.edge * k;
+    let hi = edgeX(cut, t.box.y, t.box.y + t.box.h, "right", mid) - FRONT_NUMBER_CLEAR.edge * k;
+    const lb = logoBox(p, art);
+    if (lb && lb.y < t.box.y + t.box.h && lb.y + lb.h > t.box.y) {
+      if (lb.x + lb.w / 2 > mid) hi = Math.min(hi, lb.x - FRONT_NUMBER_CLEAR.logo * k);
+      else lo = Math.max(lo, lb.x + lb.w + FRONT_NUMBER_CLEAR.logo * k);
+    }
+    const room = 2 * Math.min(mid - lo, hi - mid);
+    if (Number.isFinite(room) && t.box.w > room) t = textShape(art.number, art.font, { h: M.h * k, maxW: room }, at)!;
+    return t;
+  }
+  const at = { cx: L.number.cx * p.w, top: L.number.top * p.h };
+  let t = textShape(art.number, art.font, { h: L.number.h * k }, at);
+  if (!t) return null;
+  const onLeft = L.number.cx < 0.5;
+  const e = edgeX(parsePath(p.cut), t.box.y, t.box.y + t.box.h, onLeft ? "left" : "right", mid);
+  if (!Number.isFinite(e)) return t;
+  let lo = onLeft ? e + FRONT_NUMBER_CLEAR.edge * k : mid + FRONT_NUMBER_CLEAR.centre * k;
+  let hi = onLeft ? mid - FRONT_NUMBER_CLEAR.centre * k : e - FRONT_NUMBER_CLEAR.edge * k;
+  // a logo at the same height reaching into the number's half (one in the middle of the chest): the number keeps clear of it
+  const lb = logoBox(p, art);
+  if (lb && lb.y < t.box.y + t.box.h && lb.y + lb.h > t.box.y) {
+    if (onLeft) hi = Math.min(hi, lb.x - FRONT_NUMBER_CLEAR.logo * k);
+    else lo = Math.max(lo, lb.x + lb.w + FRONT_NUMBER_CLEAR.logo * k);
+  }
+  if (t.box.w > hi - lo) t = textShape(art.number, art.font, { h: L.number.h * k, maxW: hi - lo }, at)!;
+  const x = Math.min(Math.max(t.box.x, lo), hi - t.box.w);
+  return x === t.box.x ? t : { segs: mapPath(t.segs, 1, x - t.box.x, 0), box: { ...t.box, x } };
+}
+
 export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: DrawOpts = {}): Shape[] {
   const k = p.w / BASE_WIDTH;
   const cut = parsePath(p.cut);
@@ -132,21 +366,15 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
   }
 
   if (part === "front") {
-    const L = frontLayout(!!art.logoLeft);
+    const L = frontLayout(!!art.logoLeft, !!art.logoCenter);
     if (art.show.frontNumber) {
-      const t = textShape(art.number, art.font, { h: L.number.h * k }, { cx: L.number.cx * p.w, top: L.number.top * p.h });
+      const t = frontNumber(p, art);
       if (t) out.push(...inked(t.segs, look, k));
     }
-    if (art.show.frontLogo && art.logo) {
-      const g = art.logo.scale ?? 1;
-      let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
-      if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
-      // a smaller logo keeps its centre where the full-size one would be
-      const top = L.logo.top * p.h + ((1 - g) * L.logo.h * k) / 2;
-      out.push({ kind: "image", png: art.logo.png, x: L.logo.cx * p.w - w / 2, y: top, w, h, ...(art.logo.tint ? { tint: look.ink } : {}) });
-    }
+    const lb = logoBox(p, art);
+    if (lb && art.logo) out.push({ kind: "image", png: art.logo.png, ...lb, ...(art.logo.tint ? { tint: look.ink } : {}) });
     if (art.show.frontTeam) {
-      const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: L.team.cy * p.h });
+      const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: teamCy(p, art) });
       if (t) out.push(...inked(t.segs, look, k));
     }
   } else {
@@ -161,6 +389,8 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
     }
   }
 
+  for (const b of sponsorBoxes(p, art, part)) out.push({ kind: "image", png: b.img.png, x: b.x, y: b.y, w: b.w, h: b.h });
+
   if (opts.cutLine) out.push({ kind: "path", segs: cut, stroke: CUT_COLOR, width: 0.353 });
   if (opts.sizeMark) {
     const t = textShape(opts.sizeMark, "label", { h: 4.5 }, { right: p.w - 4, bottom: p.h - 2.5 }, 2);
@@ -172,6 +402,8 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
 /** shapes moved by (dx, dy) */
 export function moveShapes(shapes: Shape[], dx: number, dy: number, k = 1): Shape[] {
   return shapes.map(s => s.kind === "image"
-    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k }
-    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined });
+    ? { ...s, x: s.x * k + dx, y: s.y * k + dy, w: s.w * k, h: s.h * k, m: s.m && [s.m[0] * k, s.m[1] * k, s.m[2] * k, s.m[3] * k, s.m[4] * k + dx, s.m[5] * k + dy], clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy) }
+    : { ...s, segs: mapPath(s.segs, k, dx, dy), clip: s.clip && mapPath(s.clip, k, dx, dy), artClip: s.artClip && mapPath(s.artClip, k, dx, dy), width: s.width !== undefined ? s.width * k : undefined, dash: s.dash?.map(v => v * k),
+      ...(s.grad ? { grad: { ...s.grad, m: [s.grad.m[0] * k, s.grad.m[1] * k, s.grad.m[2] * k, s.grad.m[3] * k, s.grad.m[4] * k + dx, s.grad.m[5] * k + dy] as Affine } } : {}),
+      ...(s.strokeGrad ? { strokeGrad: { ...s.strokeGrad, m: [s.strokeGrad.m[0] * k, s.strokeGrad.m[1] * k, s.strokeGrad.m[2] * k, s.strokeGrad.m[3] * k, s.strokeGrad.m[4] * k + dx, s.strokeGrad.m[5] * k + dy] as Affine } } : {}) });
 }

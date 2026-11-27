@@ -1,0 +1,474 @@
+import { describe, it, expect } from "vitest";
+import { unzipSync, strFromU8 } from "fflate";
+import { buildDesignerJob, compose, designerFacts, designerPiece, designerRows, DesignerPrintSchema, FIT_MARGIN_MM, fitInPiece, fitToSize, patternBox, pictures, transformPath, type DesignerPrint } from "./designer-print";
+import { piecesFor } from "./template";
+import { parsePath } from "./path";
+import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import { moveShapes } from "./draw";
+import { unitRadial } from "./print-pdf";
+
+// an 8×8 red PNG
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAAA1BMVEXmABL5rOCAAAAAC0lEQVR4nGNgQAUAABAAATm9j2UAAAAASUVORK5CYII=";
+
+const square = (x: number, y: number, s: number) => `M${x} ${y}L${x + s} ${y}L${x + s} ${y + s}L${x} ${y + s}Z`;
+
+/** a design as the designer sends it: drawn on M, a logo and a stripe on every bib, a number per player */
+function spec(over: Partial<DesignerPrint> = {}): unknown {
+  const M = piecesFor("M", "A");
+  return {
+    app: "axiom-print", v: 1, size: "M", reversible: false, team: "Test FC",
+    body: "#1D4ED8", trimColor: "#ffffff", trim: "full",
+    images: [PNG],
+    panels: [
+      { side: "A", part: "front", objs: [
+        // a stripe right across: a background, stretched with the piece
+        { c: [M.front.w / 2, 400], w: M.front.w, h: 40, items: [{ d: `M0 380H${M.front.w}V420H0Z`, m: [1, 0, 0, 1, 0, 0], fill: "#FACC15" }] },
+        // the logo, 60 mm, turned a quarter
+        { c: [150, 200], w: 60, h: 60, items: [{ img: 0, m: [0, 60, -60, 0, 180, 170] }] },
+      ] },
+      { side: "A", part: "back", objs: [] },
+    ],
+    players: [
+      { name: "SOMCHAI", number: "10", size: "M", objs: [
+        // the number, drawn in its own units (×2) and placed by its matrix
+        { panel: 1, c: [M.back.w / 2, 300], w: 100, h: 100, items: [{ d: square(0, 0, 50), m: [2, 0, 0, 2, M.back.w / 2 - 50, 250], fill: "#ffffff", stroke: "#000000", sw: 1 }] },
+      ] },
+      { name: "", number: "7", size: "XL", objs: [
+        { panel: 1, c: [M.back.w / 2, 300], w: 100, h: 100, items: [{ d: square(0, 0, 100), m: [1, 0, 0, 1, M.back.w / 2 - 50, 250], fill: "#ffffff" }] },
+      ] },
+    ],
+    ...over,
+  };
+}
+
+describe("advanced designer print data", () => {
+  it("is checked before anything is drawn", () => {
+    expect(DesignerPrintSchema.safeParse(spec()).success).toBe(true);
+    expect(DesignerPrintSchema.safeParse(spec({ size: "XXXL" as never })).success).toBe(false);
+    expect(DesignerPrintSchema.safeParse({ ...(spec() as object), app: "axiom-roster" }).success).toBe(false);
+    expect(DesignerPrintSchema.safeParse(spec({ panels: [] })).success).toBe(false);
+  });
+
+  it("composes matrices B first, then A", () => {
+    const m = compose([2, 0, 0, 2, 10, 0], [1, 0, 0, 1, 5, 5]); // move by 5, then double and shift 10
+    expect(transformPath(parsePath("M0 0L1 1"), m)).toEqual([{ op: "M", x: 20, y: 10 }, { op: "L", x: 22, y: 12 }]);
+  });
+
+  it("carries a shape to a bigger size: in place across and down, growing with the width; a background stretches", () => {
+    const from = { w: 500, h: 600 }, to = { w: 600, h: 660 };
+    // a number centred, 100 mm, a third of the way down
+    const n = fitToSize({ c: [250, 200], w: 100, h: 100 }, from, to);
+    expect(n[0]).toBeCloseTo(1.2); expect(n[3]).toBeCloseTo(1.2);
+    expect(n[0] * 250 + n[4]).toBeCloseTo(300); // still centred
+    expect(n[3] * 200 + n[5]).toBeCloseTo(220); // a third of the way down
+    // a band across the piece
+    const b = fitToSize({ c: [250, 400], w: 500, h: 40 }, from, to);
+    expect(b[0]).toBeCloseTo(1.2); expect(b[3]).toBeCloseTo(1.1);
+    // on its own size it doesn't move
+    expect(fitToSize({ c: [120, 80], w: 30, h: 30 }, from, from)).toEqual([1, 0, 0, 1, 0, 0]);
+  });
+
+  it("draws a piece: the body, the art over it clipped to the cut line, the trim over that", () => {
+    const d = DesignerPrintSchema.parse(spec());
+    const pics = pictures(d);
+    const front = designerPiece(d, pics, "M", "A", "front", piecesFor("M", "A").front, null);
+    expect(front[0]).toMatchObject({ kind: "path", fill: "#1d4ed8" });
+    const stripe = front.find(s => s.kind === "path" && s.fill === "#facc15")!;
+    expect(stripe.kind === "path" && stripe.clip).toBeTruthy();
+    const logo = front.find(s => s.kind === "image")!;
+    expect(logo.kind === "image" && logo.m).toEqual([0, 60, -60, 0, 180, 170]);
+    // trim "full": neck, both armholes and the hem, after the art
+    const trims = front.filter(s => s.kind === "path" && s.fill !== "#facc15" && (s.fill === "#ffffff" || s.stroke === "#ffffff"));
+    expect(trims.length).toBeGreaterThanOrEqual(3);
+    expect(front.indexOf(trims[0])).toBeGreaterThan(front.indexOf(logo));
+    // the number's stroke scales with its matrix: 1 unit × 2
+    const back = designerPiece(d, pics, "M", "A", "back", piecesFor("M", "A").back, d.players[0]);
+    expect(back.find(s => s.kind === "path" && s.stroke === "#000000")).toMatchObject({ width: 2 });
+    // no trim, no bands
+    const bare = DesignerPrintSchema.parse(spec({ trim: "none" }));
+    expect(designerPiece(bare, pics, "M", "A", "front", piecesFor("M", "A").front, null).filter(s => s.kind === "path" && (s.fill === "#ffffff" || s.stroke === "#ffffff"))).toHaveLength(0);
+  });
+
+  it("lays the pattern picture as the designer does: over its 400 × 470 frame, the same size in cm on every size", () => {
+    const d = DesignerPrintSchema.parse(spec({ pattern: 0 }));
+    const pics = pictures(d);
+    const imgOn = (size: "S" | "XL" | "XXL") => {
+      const p = piecesFor(size, "A").front;
+      const im = designerPiece(d, pics, size, "A", "front", p, null).find(s => s.kind === "image")!;
+      return { im: im as Extract<typeof im, { kind: "image" }>, p };
+    };
+    const s = imgOn("S"), xl = imgOn("XL");
+    // the 8×8 test picture is square: it covers the frame's height (470 units), centred on the piece
+    expect(s.im.h).toBeCloseTo(470 * 1.86347, 1);
+    expect(xl.im.w).toBeCloseTo(s.im.w, 6); // not stretched to the bigger piece
+    expect(s.im.x + s.im.w / 2).toBeCloseTo(s.p.w / 2, 6);
+    // XXL with its cut line is wider than the frame: the picture covers that
+    const xxl = imgOn("XXL");
+    expect(xxl.im.w).toBeGreaterThanOrEqual(patternBox(xxl.p).w - 1e-6);
+    expect(patternBox(xxl.p).w).toBeGreaterThan(400 * 1.86347);
+  });
+
+  it("keeps a long name inside each size's piece, clear of the trim; a short one keeps its size", () => {
+    const back = piecesFor("XXL", "A").back;
+    // a 470 mm name across the shoulders of an XXL back: the armholes are closer there than the piece is wide
+    expect(fitInPiece(back, [back.w / 2, 160], 470, 70)).toBeLessThan(0.95);
+    expect(fitInPiece(back, [back.w / 2, 160], 200, 70)).toBe(1);
+    // the fitted name leaves the margin on both sides
+    const k = fitInPiece(back, [back.w / 2, 160], 470, 70);
+    expect(470 * k).toBeLessThan(back.w - 2 * FIT_MARGIN_MM);
+  });
+
+  it("matches the order's names to the players drawn; spares get the shared art; an unknown name is refused", () => {
+    const d = DesignerPrintSchema.parse(spec());
+    const rows = designerRows(d, [
+      { size: "M", qty: 2, roster: [{ playerName: "Somchai", number: "10", qty: 1 }] },
+      { size: "XL", qty: 1, roster: [{ playerName: null, number: "7", qty: 1 }] },
+    ]);
+    expect(rows.map(r => [r.size, r.number, r.player?.number ?? null])).toEqual([["M", "10", "10"], ["M", "", null], ["XL", "7", "7"]]);
+    expect(() => designerRows(d, [{ size: "M", qty: 1, roster: [{ playerName: "Nobody", number: "99", qty: 1 }] }])).toThrow(/No.99 Nobody/);
+  });
+
+  it("builds the job as a web bib's: a print file per bib, a sheet per size, the list and the design", async () => {
+    const d = DesignerPrintSchema.parse(spec());
+    const rows = designerRows(d, [
+      { size: "M", qty: 2, roster: [{ playerName: "SOMCHAI", number: "10", qty: 1 }] },
+      { size: "XL", qty: 1, roster: [{ playerName: "", number: "7", qty: 1 }] },
+    ]);
+    const job = await buildDesignerJob(d, rows, { ref: "AX-T9", date: new Date(2026, 10, 17) });
+    expect(job.name).toBe("AX-T9 N-bib (M XL) Test FC");
+    const files = unzipSync(job.zip);
+    const names = Object.keys(files).map(n => n.slice(job.name.length + 1)).sort();
+    expect(names).toEqual([
+      "M/01 No.10 SOMCHAI_ol.pdf", "M/02_ol.pdf", "XL-2L/01 No.7_ol.pdf",
+      `${job.name}.xlsx`, `${job.name}_M.jpg`, `${job.name}_XL-2L.jpg`, `${job.name}_design.json`,
+    ].sort());
+    expect(strFromU8(files[`${job.name}/M/01 No.10 SOMCHAI_ol.pdf`].slice(0, 5))).toBe("%PDF-");
+    const meta = JSON.parse(strFromU8(files[`${job.name}/${job.name}_design.json`]));
+    expect(meta).toMatchObject({ template: "CB-005", source: "advanced designer", images: 1 });
+    expect(meta.notes.join(" ")).toMatch(/Drawn on M/);
+    expect(job.counts).toEqual({ M: 2, XL: 1 });
+    // no job label on the page (order no, team, name, 1/2): the cut line's grey fills only the 2 pieces' size marks
+    const pdf = await PDFDocument.load(files[`${job.name}/M/01 No.10 SOMCHAI_ol.pdf`]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content.match(/\n0 0 0 0\.5 k\n/g)?.length).toBe(2);
+  });
+
+  it("tells the print manager what a web bib's design.json does: the product, each side's trim colours, the fabric", async () => {
+    const r = DesignerPrintSchema.parse(spec({ reversible: true, trim: "neck", trimColor: "#fff200" }));
+    expect(designerFacts(r, "B1")).toEqual({
+      product: "bib_r",
+      sides: [{ body: "#1d4ed8", rib: { neck: "#fff200", arm: "#1d4ed8", hem: "#1d4ed8" } }, { body: "#1d4ed8", rib: { neck: "#fff200", arm: "#1d4ed8", hem: "#1d4ed8" } }],
+      kit: { id: "advanced", code: "ADV", name: "Advanced designer", fabric: "B1" },
+    });
+    // no trim: no bands; one side: an N-bib
+    expect(designerFacts(DesignerPrintSchema.parse(spec({ trim: "none" })))).toMatchObject({ product: "bib_n", sides: [{ body: "#1d4ed8" }] });
+    const job = await buildDesignerJob(r, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T11", date: new Date(), fabricId: "B1" });
+    const files = unzipSync(job.zip);
+    const dj = JSON.parse(strFromU8(files[Object.keys(files).find(f => f.endsWith("_design.json"))!]));
+    expect(dj.design).toMatchObject({ product: "bib_r", kit: { fabric: "B1" }, reversible: true });
+  });
+
+  it("an R-bib has side B's pieces too", async () => {
+    const d = DesignerPrintSchema.parse(spec({ reversible: true, panels: [
+      { side: "A", part: "front", objs: [] }, { side: "A", part: "back", objs: [] },
+      { side: "B", part: "front", objs: [] }, { side: "B", part: "back", objs: [] },
+    ] }));
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "S", player: null }], { ref: "AX-T10", date: new Date() });
+    expect(job.name).toMatch(/R-bib/);
+  });
+});
+
+describe("found in the branch review", () => {
+  it("lettering is carried to another size uniformly, even when it spans the piece; a background still stretches", () => {
+    const from = { w: 500, h: 600 }, to = { w: 600, h: 660 };
+    const name = fitToSize({ c: [250, 120], w: 470, h: 40, text: true }, from, to);
+    expect(name[0]).toBeCloseTo(name[3]);
+    const band = fitToSize({ c: [250, 300], w: 500, h: 40 }, from, to);
+    expect(band[0]).not.toBeCloseTo(band[3]);
+  });
+
+  it("side B's pattern picture is mirrored, as the designer shows the inside; side A's is not", () => {
+    const d = DesignerPrintSchema.parse(spec({ pattern: 0, reversible: true, panels: [
+      { side: "A", part: "front", objs: [] }, { side: "A", part: "back", objs: [] },
+      { side: "B", part: "front", objs: [] }, { side: "B", part: "back", objs: [] },
+    ] }));
+    const pics = pictures(d);
+    const p = piecesFor("M", "B").front;
+    const b = designerPiece(d, pics, "M", "B", "front", p, null).find(s => s.kind === "image")!;
+    const a = designerPiece(d, pics, "M", "A", "front", piecesFor("M", "A").front, null).find(s => s.kind === "image")!;
+    expect(b.kind === "image" && b.m![0]).toBeLessThan(0);
+    expect(a.kind === "image" && a.m).toBeUndefined();
+  });
+
+  it("the bib kit's old id (rim) still gets its print files", async () => {
+    const { kitOnBib } = await import("./kit");
+    expect(kitOnBib({ kind: "kit-studio", kit: "rim", colors: { body: "#ffffff", trim: "#ffffff", stripe: "#ffffff", number: "#231f20" } })).toBe(true);
+  });
+
+  it("print data whose picture isn't a PNG is refused before an order can use it", async () => {
+    const { BibJobService } = await import("./bib-jobs.service");
+    const svc = new BibJobService({} as never, {} as never);
+    await expect(svc.savePrint(spec({ images: ["bm90IGEgcG5n"] }))).rejects.toThrow(/รูปที่ 1/);
+  });
+});
+
+describe("found trying hard designs", () => {
+  it("an item's own clip (a logo's clip path, a crop) and a dashed stroke reach the print, carried to the size", async () => {
+    const M = piecesFor("M", "A");
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24", clip: "M180 180H220V220H180Z" },
+        { d: "M150 300H250", m: [2, 0, 0, 2, 0, 0], stroke: "#231f20", sw: 1, dash: [6, 4] },
+        { img: 0, m: [100, 0, 0, 100, 150, 150], clip: "M160 160H200V200H160Z" },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const pics = pictures(d);
+    const front = designerPiece(d, pics, "M", "A", "front", M.front, null);
+    const clipped = front.find(s => s.kind === "path" && s.fill === "#ed1c24")!;
+    expect(clipped.kind === "path" && clipped.artClip?.length).toBeGreaterThan(0);
+    const dashed = front.find(s => s.kind === "path" && s.stroke === "#231f20")!;
+    expect(dashed.kind === "path" && dashed.dash).toEqual([12, 8]); // its units × the matrix's 2
+    expect(front.find(s => s.kind === "image")).toMatchObject({ artClip: expect.any(Array) });
+    // on another size the clip moves and grows with the object
+    const xl = designerPiece(d, pics, "XL", "A", "front", piecesFor("XL", "A").front, null).find(s => s.kind === "path" && s.fill === "#ed1c24")!;
+    expect(xl.kind === "path" && xl.artClip).not.toEqual(clipped.kind === "path" && clipped.artClip);
+    // and the print file takes them
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T12", date: new Date() });
+    expect(job.files.some(f => f.path.endsWith("_ol.pdf"))).toBe(true);
+  });
+});
+
+describe("as Illustrator draws it", () => {
+  const grad = { type: "linear" as const, coords: [0, 0, 1, 0], stops: [{ o: 0, c: "#ed1c24" }, { o: 0.5, c: "#ffffff" }, { o: 1, c: "#231f20" }], m: [100, 0, 0, 100, 150, 150] as [number, number, number, number, number, number] };
+  const design = () => DesignerPrintSchema.parse(spec({ panels: [
+    { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+      { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24", grad, stroke: "#231f20", sw: 2 },
+      { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#0e7c3a", op: 0.5 },
+      { img: 0, m: [40, 0, 0, 40, 150, 340], op: 0.25 },
+    ] }] },
+    { side: "A", part: "back", objs: [] },
+  ], players: [] }));
+
+  it("a gradient fill and a see-through shape reach the piece, the gradient carried to the size with its shape", () => {
+    const d = design(), pics = pictures(d);
+    const front = designerPiece(d, pics, "M", "A", "front", piecesFor("M", "A").front, null);
+    const g = front.find(s => s.kind === "path" && s.grad);
+    expect(g).toMatchObject({ fill: "#ed1c24", grad: { type: "linear", stops: grad.stops } });
+    expect(front.find(s => s.kind === "path" && s.fill === "#0e7c3a")).toMatchObject({ opacity: 0.5 });
+    expect(front.find(s => s.kind === "image")).toMatchObject({ opacity: 0.25 });
+    const xl = designerPiece(d, pics, "XL", "A", "front", piecesFor("XL", "A").front, null).find(s => s.kind === "path" && s.grad)!;
+    expect(xl.kind === "path" && xl.grad!.m).not.toEqual(g!.kind === "path" && g!.grad!.m);
+  });
+
+  it("the print file has the gradient as a CMYK shading through its shape, and the see-through as a graphics state", async () => {
+    const d = design();
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T13", date: new Date() });
+    const files = unzipSync(job.zip);
+    const pdf = await PDFDocument.load(Object.entries(files).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const dicts = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict);
+    const sh = dicts.find(o => o.get(PDFName.of("ShadingType")));
+    expect((sh!.get(PDFName.of("ShadingType")) as PDFNumber).asNumber()).toBe(2);
+    expect(String(sh!.get(PDFName.of("ColorSpace")))).toBe("/DeviceCMYK");
+    expect(dicts.some(o => String(o.get(PDFName.of("ca"))) === "0.5")).toBe(true);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\/Sh1 sh/);
+    expect(content).toMatch(/\/GS\S* gs/);
+  });
+
+  it("a blending mode reaches the piece, the print file (with the see-through in the same state) and the order sheet; one it can't print is drawn normally", async () => {
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#ed1c24" },
+        { d: "M170 170H230V230H170Z", m: [1, 0, 0, 1, 0, 0], fill: "#0054a6", bm: "multiply", op: 0.6 },
+        { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#fff200", bm: "screen" },
+        { d: "M150 330H250V340H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", bm: "luminosity" as never },
+        { img: 0, m: [40, 0, 0, 40, 150, 340], bm: "overlay" },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    expect(front.find(s => s.kind === "path" && s.fill === "#0054a6")).toMatchObject({ blend: "multiply", opacity: 0.6 });
+    expect(front.find(s => s.kind === "image")).toMatchObject({ blend: "overlay" });
+    expect(front.find(s => s.kind === "path" && s.fill === "#231f20")).not.toHaveProperty("blend");
+
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T14", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const gs = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict && String(o.get(PDFName.of("Type"))) === "/ExtGState");
+    const of = (bm: string) => gs.find(o => String(o.get(PDFName.of("BM"))) === bm);
+    expect(String(of("/Multiply")!.get(PDFName.of("ca")))).toBe("0.6");
+    expect(of("/Screen")!.get(PDFName.of("ca"))).toBeUndefined(); // solid: the mode alone
+    expect(of("/Overlay")).toBeDefined();
+
+    const { svgShapes } = await import("./order-sheet");
+    const { body } = svgShapes(front, { n: 0 });
+    expect(body).toMatch(/mix-blend-mode:multiply/);
+    expect(body).toMatch(/mix-blend-mode:overlay/);
+  });
+
+  it("a gradient stroke reaches the piece, the print file (a shading pattern as the stroke's colour) and the order sheet", async () => {
+    const sgrad = { type: "linear" as const, coords: [0, 0, 1, 0], stops: [{ o: 0, c: "#fff200" }, { o: 1, c: "#ed1c24" }], m: [100, 0, 0, 100, 150, 150] as [number, number, number, number, number, number] };
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#0054a6", stroke: "#fff200", sw: 8, sgrad },
+        // no stroke width: nothing to paint the gradient on
+        { d: "M150 300H250V320H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#231f20", stroke: "#fff200", sw: 0, sgrad },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const s = front.find(x => x.kind === "path" && x.fill === "#0054a6")!;
+    expect(s).toMatchObject({ stroke: "#fff200", strokeGrad: { type: "linear", stops: sgrad.stops } });
+    expect(front.find(x => x.kind === "path" && x.fill === "#231f20")).not.toHaveProperty("strokeGrad");
+    // carried with its shape, to the sheet
+    const moved = moveShapes([s], 30, 40, 2)[0];
+    expect(moved.kind === "path" && moved.strokeGrad!.m).toEqual(s.kind === "path" && [2 * s.strokeGrad!.m[0], 0, 0, 2 * s.strokeGrad!.m[3], 2 * s.strokeGrad!.m[4] + 30, 2 * s.strokeGrad!.m[5] + 40]);
+
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T15", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const dicts = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFDict => o instanceof PDFDict);
+    const pat = dicts.find(o => o.get(PDFName.of("PatternType")));
+    expect((pat!.get(PDFName.of("PatternType")) as PDFNumber).asNumber()).toBe(2);
+    // the pattern's matrix goes to the page's own space: points, y up
+    const mx = (pat!.get(PDFName.of("Matrix")) as unknown as { asArray(): PDFNumber[] }).asArray().map(n => n.asNumber());
+    expect(mx[0]).toBeGreaterThan(0);
+    expect(mx[3]).toBeLessThan(0);
+    const sh = pat!.lookup(PDFName.of("Shading"), PDFDict);
+    expect(String(sh.get(PDFName.of("ColorSpace")))).toBe("/DeviceCMYK");
+    // two stops, still a stitching function: the form Illustrator opens as its own gradient
+    expect((sh.lookup(PDFName.of("Function"), PDFDict).get(PDFName.of("FunctionType")) as PDFNumber).asNumber()).toBe(3);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(x => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(x).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\/Pattern CS\s+\/P1 SCN/);
+
+    const { svgShapes } = await import("./order-sheet");
+    const { defs, body } = svgShapes(front, { n: 0 });
+    expect(defs).toMatch(/<linearGradient id="g\d+"[^>]*><stop offset="0" stop-color="#fff200"\/>/);
+    expect(body).toMatch(/fill="#0054a6" stroke="url\(#g\d+\)"/);
+  });
+
+  it("a radial gradient is written as Illustrator writes its own: the unit circle at the origin, moved onto the shape", () => {
+    const g = { type: "radial" as const, coords: [50, 40, 20, 55, 40], stops: [{ o: 0, c: "#ed1c24" }, { o: 1, c: "#231f20" }], m: [2, 0, 0, 3, 100, 10] as [number, number, number, number, number, number] };
+    const u = unitRadial(g);
+    expect(u.coords).toEqual([0, 0, 1, 0.25, 0]);
+    const at = (m: number[], x: number, y: number) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+    // the same circle on the page: its centre, a point on its edge, and the focus
+    expect(at(u.m, 0, 0)).toEqual(at(g.m, 50, 40));
+    expect(at(u.m, 1, 0)).toEqual(at(g.m, 70, 40));
+    expect(at(u.m, 0.25, 0)).toEqual(at(g.m, 55, 40));
+    const lin = { ...g, type: "linear" as const, coords: [0, 0, 1, 0] };
+    expect(unitRadial(lin)).toBe(lin);
+  });
+
+  it("a gradient moves with its shape when the piece is placed on the sheet", () => {
+    const d = design();
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const g = moveShapes(front, 30, 40, 2).find(s => s.kind === "path" && s.grad)!;
+    expect(g.kind === "path" && g.grad!.m).toEqual([200, 0, 0, 200, 330, 340]);
+  });
+
+  it("the order sheet draws them the same", async () => {
+    const { svgShapes } = await import("./order-sheet");
+    const d = design();
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    const { defs, body } = svgShapes(front, { n: 0 });
+    expect(defs).toMatch(/<linearGradient id="g\d+" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0" gradientTransform="matrix\(100 0 0 100 150 150\)"><stop offset="0" stop-color="#ed1c24"\/>/);
+    expect(body).toMatch(/fill="url\(#g\d+\)"/);
+    expect(body).toMatch(/opacity="0.5"/);
+    expect(body).toMatch(/<g opacity="0.25"><image/);
+  });
+});
+
+describe("CMYK typed in", () => {
+  it("a colour the customer gave as CMYK prints exactly that CMYK and isn't reported as off the chart", async () => {
+    const d = DesignerPrintSchema.parse(spec({
+      trimColor: "#0A2E73", body: "#004282",
+      inks: { "#E3262B": [5, 98, 95, 0], "#0a2e73": [100, 80, 0, 35], "#004282": [100, 70, 0, 30] },
+      panels: [
+        { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [{ d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], fill: "#E3262B" }] }] },
+        { side: "A", part: "back", objs: [] },
+      ], players: [],
+    }));
+    expect(d.inks["#e3262b"]).toEqual([5, 98, 95, 0]);
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T14", date: new Date() });
+    expect(job.offChart.join(" ")).not.toMatch(/e3262b|0a2e73/i);
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\n0\.05 0\.98 0\.95 0 k\n/);
+    expect(content).toMatch(/\n1 0\.8 0 0\.35 k\n/); // the trim too
+    expect(content).toMatch(/\n1 0\.7 0 0\.3 k\n/); // and the body
+  });
+
+  it("refuses inks that aren't CMYK 0–100 by a #rrggbb colour", () => {
+    expect(() => DesignerPrintSchema.parse(spec({ inks: { "#e3262b": [5, 98, 95, 120] } }))).toThrow();
+    expect(() => DesignerPrintSchema.parse(spec({ inks: { red: [5, 98, 95, 0] } }))).toThrow();
+  });
+});
+
+describe("stroke corners", () => {
+  it("a sharp or cut corner prints as drawn (miter up to its limit, bevel); round stays the default", async () => {
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [200, 200], w: 100, h: 100, items: [
+        { d: "M150 150H250V250H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#231f20", sw: 4, join: "miter", ml: 10 },
+        { d: "M150 300H250V350H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#ed1c24", sw: 4, join: "bevel" },
+        { d: "M150 400H250V450H150Z", m: [1, 0, 0, 1, 0, 0], stroke: "#00a651", sw: 4 },
+      ] }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const front = designerPiece(d, pictures(d), "M", "A", "front", piecesFor("M", "A").front, null);
+    expect(front.find(s => s.kind === "path" && s.stroke === "#231f20")).toMatchObject({ join: "miter", miter: 10 });
+    expect(front.find(s => s.kind === "path" && s.stroke === "#ed1c24")).toMatchObject({ join: "bevel" });
+    expect(front.find(s => s.kind === "path" && s.stroke === "#00a651")).not.toHaveProperty("join");
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T15", date: new Date() });
+    const pdf = await PDFDocument.load(Object.entries(unzipSync(job.zip)).find(([n]) => n.endsWith("_ol.pdf"))![1]);
+    const content = pdf.context.enumerateIndirectObjects().map(([, o]) => o).filter((o): o is PDFRawStream => o instanceof PDFRawStream)
+      .map(s => { try { return new TextDecoder("latin1").decode(decodePDFRawStream(s).decode()); } catch { return ""; } }).join("\n");
+    expect(content).toMatch(/\n0 j\n10 M\n/);
+    expect(content).toMatch(/\n2 j\n/);
+    const { svgShapes } = await import("./order-sheet");
+    expect(svgShapes(front, { n: 0 }).body).toMatch(/stroke-linejoin="miter" stroke-miterlimit="10"/);
+  });
+});
+
+describe("an R-bib's two sides", () => {
+  const base = { reversible: true, panels: [
+    { side: "A", part: "front", objs: [] }, { side: "A", part: "back", objs: [] },
+    { side: "B", part: "front", objs: [] }, { side: "B", part: "back", objs: [] },
+  ], players: [] };
+  it("side B can have a colour and a pattern of its own, or none; else it is side A's", () => {
+    const M = piecesFor("M", "A");
+    const d = DesignerPrintSchema.parse(spec({ ...base, body: "#FFF200", bodyB: "#ED1C24", images: [PNG, PNG], pattern: 0, patternB: 1 } as never));
+    const pics = pictures(d);
+    const a = designerPiece(d, pics, "M", "A", "front", M.front, null), b = designerPiece(d, pics, "M", "B", "front", M.front, null);
+    expect(a[0]).toMatchObject({ fill: "#fff200" });
+    expect(b[0]).toMatchObject({ fill: "#ed1c24" });
+    const imgA = a.find(s => s.kind === "image"), imgB = b.find(s => s.kind === "image");
+    expect(imgA && imgA.kind === "image" && imgA.png).toBe(pics.png[0]);
+    expect(imgB && imgB.kind === "image" && imgB.png).toBe(pics.png[1]);
+    // none on B
+    const none = DesignerPrintSchema.parse(spec({ ...base, images: [PNG], pattern: 0, patternB: -1 } as never));
+    expect(designerPiece(none, pictures(none), "M", "B", "front", M.front, null).some(s => s.kind === "image")).toBe(false);
+    // not given: B is A's
+    const same = DesignerPrintSchema.parse(spec({ ...base, body: "#FFF200", images: [PNG], pattern: 0 } as never));
+    const sb = designerPiece(same, pictures(same), "M", "B", "front", M.front, null);
+    expect(sb[0]).toMatchObject({ fill: "#fff200" });
+    expect(sb.some(s => s.kind === "image")).toBe(true);
+    // the print manager is told each side's body
+    expect(designerFacts(d).sides.map(s => s.body)).toEqual(["#fff200", "#ed1c24"]);
+  });
+});
+
+describe("a busy design", () => {
+  it("still makes its print file (an AI pattern: thousands of shapes, more operators than one call can take)", async () => {
+    const items = Array.from({ length: 16000 }, (_, i) => ({ d: square((i % 120) * 4, Math.floor(i / 120) * 4, 3), m: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], fill: "#ed1c24" }));
+    const d = DesignerPrintSchema.parse(spec({ panels: [
+      { side: "A", part: "front", objs: [{ c: [240, 270], w: 480, h: 540, items }] },
+      { side: "A", part: "back", objs: [] },
+    ], players: [] }));
+    const job = await buildDesignerJob(d, [{ name: "", number: "", size: "M", player: null }], { ref: "AX-T16", date: new Date() });
+    expect(job.files.some(f => f.path.endsWith("_ol.pdf"))).toBe(true);
+  }, 60_000);
+});

@@ -12,12 +12,13 @@ import { NotifyModule } from "./notify/notify.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { HealthController } from "./health/health.controller";
+import { AiModule } from "./ai/ai.module";
 
 // ✅ Auth · Studio · Market · Admin · Orders · Settings · Notify · Catalog · Payments
 @Module({
   imports: [
     PrismaModule, SettingsModule, NotifyModule,
-    AuthModule, StudioModule, MarketModule, AdminModule, OrdersModule, CatalogModule, PaymentsModule,
+    AuthModule, StudioModule, MarketModule, AdminModule, OrdersModule, CatalogModule, PaymentsModule, AiModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -6,9 +6,11 @@ import { useSearchParams } from "next/navigation";
 import CheckoutScene, { type CheckoutPhase } from "../../components/CheckoutScene";
 import PayPanel from "../../components/PayPanel";
 import { useAuth } from "../../lib/auth-context";
+import VerifyEmailNotice from "../../components/VerifyEmailNotice";
 import { apiFetch } from "../../lib/api";
-import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, type RosterRow, type Size } from "../../lib/order-draft";
-import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
+import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, JERSEY_SIZES, type RosterRow, type Size } from "../../lib/order-draft";
+import { designerBib as designerBibOf } from "../../lib/designer-doc";
+import { KITS, kitById, restoreConfig, kitFabrics, kitTrims, kitPriceGarment, kitSizes, FABRIC_OPTIONS, TRIM_OPTIONS, type Kit, type KitConfig } from "../../lib/kits";
 import { useKitAssets } from "../../lib/use-kit-assets";
 import "../app.css";
 import "../home.css";
@@ -100,7 +102,12 @@ function Checkout() {
 
   const totalQty = SIZES.reduce((n, s) => n + (qty[s] || 0), 0);
   // a hoodie or shorts is priced as such (the server reads the garment from the design itself)
-  const garment = design?.stateJson?.kind === "kit-studio" ? kitPriceGarment(kit) : "jersey";
+  // the advanced designer draws on the bib's pattern: "แบบ 2" (both sides) is an R-bib (the API decides the same way, pricing.ts fromDesigner)
+  const doc = design?.stateJson;
+  const designerBib = designerBibOf(doc);
+  const designerLabel = designerBib === "bib_r" ? "เอี๊ยม R-bib 2 ด้าน" : designerBib ? "เอี๊ยม N-bib" : "";
+  // a bib kit made reversible is an R-bib
+  const garment = doc?.kind === "kit-studio" ? kitPriceGarment(kit, cfg) : designerBib ?? "jersey";
   useEffect(() => {
     if (totalQty === 0) { setBd(null); return; }
     const t = setTimeout(() => {
@@ -133,6 +140,8 @@ function Checkout() {
   const phase: CheckoutPhase = paid ? "sent" : order ? "pack" : "build";
   // a design from the advanced designer has no 3D kit: show its own preview instead
   const isKit = isKitDesign;
+  // the sizes on offer: the bib kit and the advanced designer's bibs also in XXL (3L)
+  const sizes = design?.stateJson?.kind === "kit-studio" ? kitSizes(kit) : designerBib ? SIZES : JERSEY_SIZES;
   const backHref = isKit ? `/shop/${kit.id}` : `/design?design=${designId}`;
   const addr = addresses?.find(a => a.id === addrId);
 
@@ -212,7 +221,7 @@ function Checkout() {
             </div>
           )}
           <div className="ax-sover ax-stitle">
-            <span style={{ fontSize: 15, color: "#e3e1dc" }}>{isKit ? `${kit.name} · ${kit.code}` : `${design?.name ?? "แบบจากโปรแกรมออกแบบ"}${reversible ? " · สองด้าน" : ""}`}</span>
+            <span style={{ fontSize: 15, color: "#e3e1dc" }}>{isKit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : `${designerLabel ? `${designerLabel} · ` : ""}${design?.name ?? "แบบจากโปรแกรมออกแบบ"}${reversible && !designerBib ? " · สองด้าน" : ""}`}</span>
             <h1>{phase === "build" ? <>เช็กให้ครบ<br />ก่อนผลิต.</> : phase === "pack" ? <>แพ็กลงกล่อง<br />แล้ว.</> : <>ส่งเข้าคิว<br />ผลิตแล้ว.</>}</h1>
             <span className="bar" aria-hidden="true" />
             <span className="ax-tagline">{order ? order.orderNo : `${totalQty} PCS`}<br />{FABRIC_OPTIONS.find(f => f.id === fabric)?.label ?? fabric}</span>
@@ -235,7 +244,7 @@ function Checkout() {
                 <p className="ax-psub">{roster.length ? `มีรายชื่อ ${roster.length} คนจากหน้าแบบ · เพิ่มตัวสำรองได้` : "ราคาต่อตัวลดลงเมื่อสั่งมากขึ้น"}</p>
               </div>
               <div>
-                {SIZES.map(s => (
+                {sizes.map(s => (
                   <div className="ax-step" key={s}>
                     <span style={{ fontFamily: "var(--ax-mono)", fontSize: 15 }}>
                       {s}{rosterBySize[s] > 0 && <small style={{ color: "var(--ax-mute)", marginLeft: 10 }}>รายชื่อ {rosterBySize[s]}</small>}
@@ -306,9 +315,9 @@ function Checkout() {
                 <p className="ax-psub">กดยืนยันแล้วออเดอร์จะอยู่ในสถานะรอชำระเงิน ยังยกเลิกได้ก่อนชำระ</p>
               </div>
               <div className="ax-ck-card">
-                <Row k="เสื้อ" v={`${kit.name} · ${kit.code}`} />
+                <Row k="เสื้อ" v={isKit ? `${kit.name} · ${kit.code}${cfg?.reversible ? " · R-bib 2 ด้าน" : ""}` : `${designerLabel ? `${designerLabel} · ` : ""}${design?.name ?? "แบบจากโปรแกรมออกแบบขั้นสูง"}${reversible && !designerBib ? " · สองด้าน" : ""}`} />
                 <Row k="ผ้า / ขลิบ" v={`${FABRIC_OPTIONS.find(f => f.id === fabric)?.label ?? fabric} · ${trimChoices.find(t => t.id === trim)?.label ?? trim}`} />
-                <Row k="ไซซ์" v={SIZES.filter(s => qty[s]).map(s => `${s} ${qty[s]}`).join(" · ")} />
+                <Row k="ไซซ์" v={sizes.filter(s => qty[s]).map(s => `${s} ${qty[s]}`).join(" · ")} />
                 {roster.length > 0 && <Row k="ชื่อ-เบอร์" v={`${roster.filter(r => r.playerName || r.number).length} รายชื่อ`} />}
                 {addr && <Row k="ส่งถึง" v={`${addr.recipient} · ${addr.province ?? ""} ${addr.postalCode}`} />}
               </div>
@@ -342,6 +351,7 @@ function Checkout() {
           )}
 
           {err && <p className="ax-err" role="alert">{err}</p>}
+          {step === 2 && <VerifyEmailNotice />}
 
           {step < 3 && (
             <div className="ax-ck-nav">
@@ -349,7 +359,7 @@ function Checkout() {
               {step < 2 ? (
                 <button type="button" className="ax-btn solid sq" onClick={next} disabled={step === 0 && totalQty === 0}>ต่อไป</button>
               ) : (
-                <button type="button" className="ax-btn solid sq" onClick={place} disabled={busy || !bd || !addrId || rosterOver}>
+                <button type="button" className="ax-btn solid sq" onClick={place} disabled={busy || !bd || !addrId || rosterOver || !user.isVerified}>
                   {busy ? "กำลังสร้างออเดอร์…" : `ยืนยันสั่งผลิต${bd ? ` · ${baht(bd.total)}` : ""}`}
                 </button>
               )}

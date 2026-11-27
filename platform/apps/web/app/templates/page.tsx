@@ -16,12 +16,6 @@ const SORTS = [
   { id: "price_asc", label: "ราคาต่ำ → สูง" },
   { id: "price_desc", label: "ราคาสูง → ต่ำ" },
 ];
-const NAV = [
-  { href: "/shop", label: "ออกแบบเสื้อ" },
-  { href: "/templates", label: "ตลาดลาย" },
-  { href: "/design", label: "ออกแบบขั้นสูง" },
-];
-
 /**
  * The template marketplace. Designers sell patterns made in the advanced
  * designer; a buyer owns the template for good and opens it in the designer
@@ -77,7 +71,7 @@ export default function TemplatesPage() {
 
   return (
     <div className="ax">
-      <StoreHeader nav={NAV} />
+      <StoreHeader />
       <main>
         <section className="ax-wrap ax-mk-hero" aria-labelledby="mk-title">
           <div className="ax-mk-hero-copy">

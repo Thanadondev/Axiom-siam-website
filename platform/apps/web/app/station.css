@@ -1,0 +1,42 @@
+/* The station band at the top of a page (components/StationHero.tsx), and the factory beside the
+   sign-in forms (AppShell's AuthStage): the same renders and dark glass as the home page (factory.css). */
+
+.st-hero {
+  position: relative; width: min(1360px, calc(100% - 2 * clamp(16px, 3vw, 40px))); margin: clamp(14px, 2vw, 24px) auto 0;
+  height: clamp(170px, 19vw, 250px); border-radius: 14px; overflow: hidden; background: #cfd8e3;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+}
+.st-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 55%; user-select: none; }
+.st-hero::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, rgba(13, 14, 16, .9) 0%, rgba(13, 14, 16, .72) 32%, rgba(13, 14, 16, .05) 70%); }
+.st-copy { position: absolute; z-index: 1; left: clamp(18px, 3vw, 40px); top: 50%; translate: 0 -50%; max-width: min(520px, 62%);
+  display: flex; flex-direction: column; gap: 4px; }
+.st-copy small { font-family: var(--ax-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ax-accent); }
+.st-copy b { font-size: clamp(26px, 3vw, 42px); font-weight: 800; line-height: 1.15; color: #fff; }
+.st-copy p { margin: 4px 0 0; font-size: clamp(13.5px, 1.1vw, 15.5px); line-height: 1.6; color: rgba(255, 255, 255, .78); }
+.st-back {
+  position: absolute; z-index: 1; right: 14px; top: 14px; padding: 7px 12px; border-radius: 10px; text-decoration: none;
+  font-size: 13px; font-weight: 600; color: #fff; background: rgba(13, 14, 16, .78); border: 1px solid rgba(255, 255, 255, .14); backdrop-filter: blur(6px);
+}
+.st-back:hover { background: var(--ax-accent); color: var(--ax-accent-ink); border-color: var(--ax-accent); }
+
+/* sign-in / sign-up: the factory instead of the turning kit */
+.ax-auth-art.st-auth { background: #0d0e10; }
+.st-auth .st-auth-pic { position: absolute; inset: 0; }
+.st-auth .st-auth-pic img, .st-auth .st-auth-pic video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 58% 50%; }
+.st-auth .st-auth-pic::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(0deg, rgba(13, 14, 16, .95) 0%, rgba(13, 14, 16, .55) 42%, rgba(13, 14, 16, .1) 75%); }
+
+@media (max-width: 900px) {
+  .ax-auth-art.st-auth .copy { margin-left: 0; height: auto; padding: 24px 20px; justify-content: flex-end; }
+  .ax-auth:has(.st-auth) { min-height: 0; }   /* phones: a short picture, then the form right away */
+  .ax-auth-art.st-auth { min-height: 240px; }
+  /* the words sit on the picture here: darken all of it, not just the bottom */
+  .st-auth .st-auth-pic::after { background: linear-gradient(0deg, rgba(13, 14, 16, .95) 0%, rgba(13, 14, 16, .72) 55%, rgba(13, 14, 16, .4) 100%); }
+}
+@media (max-width: 760px) {
+  .st-hero { width: 100%; border-radius: 0; margin-top: 0; height: 190px; }
+  .st-copy { max-width: calc(100% - 36px); }
+  .st-copy p { display: none; }
+  .st-hero::after { background: linear-gradient(90deg, rgba(13, 14, 16, .9) 0%, rgba(13, 14, 16, .55) 70%, rgba(13, 14, 16, .3) 100%); }
+}

@@ -4,11 +4,13 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import VerifyEmailNotice, { isUnverified } from "../../../components/VerifyEmailNotice";
 import SwatchPicker from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
+import { inkClashes } from "../../../lib/ink-contrast";
 import { apiFetch } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
-import { importPrintLogo, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
+import { importPrintLogo, importFont, fontFamilyOf, uploadAsset, LOGO_ACCEPT } from "../../../lib/kit-assets";
 import { logoDpi } from "../../../lib/bib-roster";
 import { readRoster, numberedLines, countBySize, BIB_SIZES, BIB_SIZE_LABEL, NAME_MAX, type BibSize } from "../../../lib/bib-roster";
 
@@ -35,11 +37,18 @@ interface Address { id: string; recipient: string; phone: string; line1: string;
 const PURPLE = "#662d91", YELLOW = "#fff200", NAVY = "#2e3192", BLACK = "#231f20", WHITE = "#ffffff", GREY = "#939598";
 const SIDE_A: Side = { body: PURPLE, pattern: "plain", patternColor: GREY, ink: YELLOW, outline: true, inkOutline: NAVY, ribs: true, rib: { neck: BLACK, arm: BLACK, hem: BLACK } };
 const SIDE_B: Side = { body: WHITE, pattern: "plain", patternColor: GREY, ink: PURPLE, outline: true, inkOutline: BLACK, ribs: false, rib: { neck: BLACK, arm: BLACK, hem: BLACK } };
+// the API's FONT_IDS (bibs/text.ts); all SIL Open Font License
 const FONTS = [
-  { id: "block", name: "Block", family: "Anton" },
-  { id: "classic", name: "Classic", family: "Sora" },
-  { id: "thai", name: "ไทย", family: "Noto Sans Thai" },
+  { id: "block", name: "Block", family: "Anton", sample: "10 ABC" },
+  { id: "classic", name: "Classic", family: "Sora", sample: "10 ABC" },
+  { id: "college", name: "College", family: "Graduate", sample: "10 ABC" },
+  { id: "sport", name: "Sport", family: "Teko", sample: "10 ABC" },
+  { id: "italic", name: "Italic", family: "Racing Sans One", sample: "10 ABC" },
+  { id: "thai", name: "ไทย", family: "Noto Sans Thai", sample: "10 ทีม" },
+  { id: "kanit", name: "ไทย Kanit", family: "Kanit", sample: "10 ทีม" },
 ] as const;
+/** opentype on the API reads TTF, OTF and WOFF; WOFF2 would quietly come out in our font */
+const TEAM_FONT_ACCEPT = ".ttf,.otf,.woff";
 type FontId = (typeof FONTS)[number]["id"];
 const SHOW = ["frontNumber", "frontLogo", "frontTeam", "backName", "backNumber"] as const;
 type Show = Record<(typeof SHOW)[number], boolean>;
@@ -63,12 +72,28 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [product, setProduct] = useState<Product>("bib_r");
   const [team, setTeam] = useState("");
   const [font, setFont] = useState<FontId>("block");
+  // the team's own font, uploaded: names and numbers are set in it, `font` fills in what it lacks (Thai, say)
+  const [teamFont, setTeamFont] = useState<{ url: string; name: string; family: string } | null>(null);
+  const [fontBusy, setFontBusy] = useState(false);
+  const [fontErr, setFontErr] = useState("");
+  const fontInput = useRef<HTMLInputElement>(null);
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
+  // the chest logo on the left or right as you look at the front; the front number takes the other side
+  const [logoPos, setLogoPos] = useState<"left" | "center" | "right">("right");
+  const logoLeft = logoPos === "left", logoCenter = logoPos === "center";
+  // the front number beside the logo, or in the middle of the chest
+  const [numberCenter, setNumberCenter] = useState(false);
   const [sides, setSides] = useState<[Side, Side]>([SIDE_A, SIDE_B]);
   const [logo, setLogo] = useState<{ url: string; name: string; data: string; w: number; h: number; svg: boolean } | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoErr, setLogoErr] = useState("");
   const logoInput = useRef<HTMLInputElement>(null);
+  // sponsors' logos: the front's bottom corners, and a row under the back number
+  const [sponsors, setSponsors] = useState<Partial<Record<SponsorSlot, SponsorImg>>>({});
+  const [sponsorBusy, setSponsorBusy] = useState<"" | SponsorSlot>("");
+  const [sponsorErr, setSponsorErr] = useState("");
+  const sponsorInput = useRef<HTMLInputElement>(null);
+  const sponsorSlot = useRef<SponsorSlot>("left");
   const [rosterText, setRosterText] = useState("");
   const [run, setRun] = useState<{ size: BibSize; count: number; from: number }>({ size: "M", count: 10, from: 1 });
   const [prices, setPrices] = useState<Record<string, number>>({});
@@ -85,6 +110,17 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [bd, setBd] = useState<Breakdown | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // one step at a time (the product, the team name, … the delivery); any step can be opened from the bar
+  const [step, setStep] = useState<StepId>("product");
+  const stepBar = useRef<HTMLDivElement>(null);
+  const go = (id: StepId) => {
+    setStep(id);
+    // back up to the bar when the step's top would open out of sight (Next sits at the bottom of a long step)
+    requestAnimationFrame(() => {
+      const top = stepBar.current?.getBoundingClientRect().top;
+      if (top !== undefined && top < 72) window.scrollTo({ top: top + window.scrollY - 96, behavior: "smooth" });
+    });
+  };
 
   const roster = useMemo(() => readRoster(rosterText), [rosterText]);
   const counts = useMemo(() => countBySize(roster.rows), [roster]);
@@ -92,11 +128,13 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const used = product === "bib_r" ? sides : [sides[0]];
 
   const design = useMemo(() => ({
-    product, team: team.trim(), font, show,
+    product, team: team.trim(), font, show, logoLeft, logoCenter, numberCenter,
+    sponsors: Object.fromEntries(Object.entries(sponsors).map(([k, v]) => [k, v!.url])),
+    ...(teamFont ? { fontUrl: teamFont.url } : {}),
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, show, used, roster]);
+  }), [product, team, font, teamFont, show, logoLeft, logoCenter, numberCenter, sponsors, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -168,13 +206,48 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     }
   }
 
+  async function onSponsor(f?: File | null) {
+    const slot = sponsorSlot.current;
+    if (!f || !token) return;
+    setSponsorErr(""); setSponsorBusy(slot);
+    try {
+      const a = await importPrintLogo(f);
+      const url = await uploadAsset({ id: `sponsor-${slot}-${Date.now()}`, kind: "logo", name: a.name, data: a.data, created: Date.now() }, token);
+      setSponsors(v => ({ ...v, [slot]: { url, data: a.data, w: a.w, h: a.h } }));
+    } catch (e: any) {
+      setSponsorErr(lang === "th" ? e?.message || "นำเข้าโลโก้ไม่สำเร็จ" : L("", "Couldn't use this logo — try a PNG with a clear background", "このロゴを使用できませんでした。背景が透明なPNGでお試しください"));
+    } finally {
+      setSponsorBusy("");
+      if (sponsorInput.current) sponsorInput.current.value = "";
+    }
+  }
+
+  async function onFont(f?: File | null) {
+    if (!f || !token) return;
+    setFontErr(""); setFontBusy(true);
+    try {
+      if (/\.woff2$/i.test(f.name)) throw new Error("woff2");
+      const a = await importFont(f);
+      if (/^data:font\/woff2/.test(a.data)) throw new Error("woff2");
+      const url = await uploadAsset(a, token);
+      setTeamFont({ url, name: a.name, family: fontFamilyOf(a.id) });
+    } catch (e: any) {
+      setFontErr(e?.message === "woff2"
+        ? L("ไฟล์ .woff2 ใช้ทำไฟล์งานไม่ได้ — ใช้ .ttf .otf หรือ .woff", "A .woff2 file can't be used for the print files — use .ttf, .otf or .woff", ".woff2はご利用いただけません。.ttf・.otf・.woffをお使いください")
+        : lang === "th" ? e?.message || "นำเข้าฟอนต์ไม่สำเร็จ" : L("", "Couldn't use this font file", "このフォントを使用できませんでした"));
+    } finally {
+      setFontBusy(false);
+      if (fontInput.current) fontInput.current.value = "";
+    }
+  }
+
   const setSide = (i: 0 | 1, s: Side) => setSides(prev => (i === 0 ? [s, prev[1]] : [prev[0], s]));
 
   async function submit() {
     setErr("");
-    if (!totalQty) { setErr(L("ใส่รายชื่อหรือเบอร์อย่างน้อย 1 ตัว", "Add at least one bib to the list", "リストに1枚以上追加してください")); return; }
-    if (roster.errors.length) { setErr(L("มีบรรทัดในรายชื่อที่อ่านไม่ได้ — แก้ก่อนสั่ง", "Some lines in the list couldn't be read — fix them first", "読み取れない行があります。修正してから注文してください")); return; }
-    if (!toAgent && !addrId) { setErr(L("กรุณาเลือกที่อยู่จัดส่ง", "Please choose a shipping address", "お届け先を選択してください")); return; }
+    if (!totalQty) { setErr(L("ใส่รายชื่อหรือเบอร์อย่างน้อย 1 ตัว", "Add at least one bib to the list", "リストに1枚以上追加してください")); go("roster"); return; }
+    if (roster.errors.length) { setErr(L("มีบรรทัดในรายชื่อที่อ่านไม่ได้ — แก้ก่อนสั่ง", "Some lines in the list couldn't be read — fix them first", "読み取れない行があります。修正してから注文してください")); go("roster"); return; }
+    if (!toAgent && !addrId) { setErr(L("กรุณาเลือกที่อยู่จัดส่ง", "Please choose a shipping address", "お届け先を選択してください")); go("delivery"); return; }
     if (!token) return;
     setBusy(true);
     try {
@@ -189,13 +262,14 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
       });
       router.push(`/orders/${res.id}`);
     } catch (e: any) {
-      setErr(lang === "th" ? e?.message || "สั่งผลิตไม่สำเร็จ" : L("", "Couldn't place the order — please try again, or contact us", "注文を作成できませんでした。もう一度お試しいただくか、お問い合わせください"));
+      setErr(isUnverified(e) ? L("กรุณายืนยันอีเมลก่อนสั่งผลิต", "Please confirm your email before ordering", "ご注文の前にメールアドレスを確認してください")
+        : lang === "th" ? e?.message || "สั่งผลิตไม่สำเร็จ" : L("", "Couldn't place the order — please try again, or contact us", "注文を作成できませんでした。もう一度お試しいただくか、お問い合わせください"));
       setBusy(false);
     }
   }
 
   const shell = (children: React.ReactNode, narrow = false) => (
-    <AppShell narrow={narrow} wide={!narrow} lang={lang} onLang={setLang}>{children}</AppShell>
+    <AppShell narrow={narrow} wide={!narrow} station="printing" lang={lang} onLang={setLang}>{children}</AppShell>
   );
   if (loading) return shell(<div className="acard"><p className="asub">{L("กำลังโหลด…", "Loading…", "読み込み中…")}</p></div>, true);
   if (!user)
@@ -210,6 +284,20 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     );
 
   const sizeName = (z: string) => BIB_SIZE_LABEL[z as BibSize] ?? z;
+  const steps: { id: StepId; label: string }[] = [
+    { id: "product", label: L("สินค้า", "Product", "商品") },
+    { id: "team", label: L("ชื่อทีมและฟอนต์", "Team name and font", "チーム名と書体") },
+    { id: "logo", label: L("โลโก้ทีม", "Team logo", "チームロゴ") },
+    { id: "sponsors", label: L("สปอนเซอร์", "Sponsors", "スポンサー") },
+    ...(product === "bib_r"
+      ? [{ id: "sideA" as const, label: L("สีด้าน A", "Side A colours", "A面の色") }, { id: "sideB" as const, label: L("สีด้าน B", "Side B colours", "B面の色") }]
+      : [{ id: "sideA" as const, label: L("สีและลาย", "Colours and pattern", "色と柄") }]),
+    { id: "roster", label: L("รายชื่อ เบอร์ ไซส์", "Names and sizes", "名前・サイズ") },
+    { id: "delivery", label: L("การจัดส่ง", "Delivery", "お届け方法") },
+  ];
+  // side B gone (made an N-bib): back to the start
+  const at = Math.max(0, steps.findIndex(x => x.id === step)), now = steps[at].id;
+  const prev = steps[at - 1], next = steps[at + 1];
   return shell(
     <>
       <Link href="/account" className="asub" style={{ display: "inline-block", marginBottom: 12 }}>{L("← กลับไปบัญชีของฉัน", "← Back to my account", "← マイアカウントへ戻る")}</Link>
@@ -228,165 +316,288 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </p>
           </div>
 
-          <div className="acard">
-            <h2 className="ah2">{L("สินค้า", "Product", "商品")}</h2>
-            <div className="ou-products" role="radiogroup" aria-label={L("สินค้า", "Product", "商品")}>
-              {([["bib_n", "N-bib", L("ด้านเดียว", "Single-sided", "片面")], ["bib_r", "R-bib", L("2 ด้าน กลับด้านได้", "Reversible, 2 sides", "リバーシブル（両面）")]] as const).map(([id, name, sub]) => (
-                <label key={id} className="ou-product" data-on={product === id ? "" : undefined}>
-                  <input type="radio" name="product" checked={product === id} onChange={() => setProduct(id)} />
-                  <b>{name}</b>
-                  <span className="dim">{sub}</span>
-                  {prices[id] !== undefined && <span className="price">{baht(prices[id])}{L("/ตัว", " / piece", "／枚")}</span>}
-                </label>
+          <VerifyEmailNotice lang={lang} />
+          <div className="acard bd-stepbar" ref={stepBar}>
+            <ol className="bd-steps" aria-label={L("ขั้นตอน", "Steps", "ステップ")}>
+              {steps.map((x, i) => (
+                <li key={x.id}>
+                  <button type="button" aria-current={i === at ? "step" : undefined} data-done={i < at ? "" : undefined}
+                    data-warn={x.id === "roster" && roster.errors.length ? "" : undefined} onClick={() => go(x.id)}>
+                    <span className="n">{i < at ? "✓" : i + 1}</span>{x.label}
+                  </button>
+                </li>
               ))}
-            </div>
+            </ol>
           </div>
 
-          <div className="acard">
-            <h2 className="ah2">{L("ชื่อทีมและตัวอักษร", "Team name and lettering", "チーム名と書体")}</h2>
-            <label className="flabel" htmlFor="bd-team">{L("ชื่อทีม (พิมพ์ด้านหน้า)", "Team name (printed on the front)", "チーム名（前面にプリント）")}</label>
-            <input id="bd-team" className="ainput" value={team} maxLength={30} onChange={e => setTeam(e.target.value)} placeholder="SAGINUMA FC" />
-            <span className="flabel">{L("ฟอนต์ ชื่อ-เบอร์", "Font for names and numbers", "名前・番号の書体")}</span>
-            <div className="bd-fonts" role="radiogroup">
-              {FONTS.map(f => (
-                <label key={f.id} className="ou-product" data-on={font === f.id ? "" : undefined}>
-                  <input type="radio" name="font" checked={font === f.id} onChange={() => setFont(f.id)} />
-                  <b style={{ fontFamily: `"${f.family}", sans-serif`, fontSize: 22 }}>10 ABC</b>
-                  <span className="dim">{f.name}</span>
-                </label>
-              ))}
-            </div>
-            <span className="flabel">{L("พิมพ์อะไรบ้าง", "What's printed", "プリント内容")}</span>
-            <div className="bd-checks">
-              {SHOW.map(k => (
-                <label key={k}><input type="checkbox" checked={show[k]} onChange={e => setShow(s => ({ ...s, [k]: e.target.checked }))} />{" "}
-                  {{
-                    frontNumber: L("เบอร์ด้านหน้า (85 มม.)", "Front number (85 mm)", "前面の番号（85mm）"),
-                    frontLogo: L("โลโก้ด้านหน้า (85 มม.)", "Front logo (85 mm)", "前面のロゴ（85mm）"),
-                    frontTeam: L("ชื่อทีมด้านหน้า", "Team name on the front", "前面のチーム名"),
-                    backName: L("ชื่อด้านหลัง (35 มม.)", "Name on the back (35 mm)", "背面の名前（35mm）"),
-                    backNumber: L("เบอร์ด้านหลัง (200 มม.)", "Back number (200 mm)", "背番号（200mm）"),
-                  }[k]}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="acard">
-            <h2 className="ah2">{L("โลโก้ทีม", "Team logo", "チームロゴ")}</h2>
-            <div className="bd-logo">
-              <div className="pic">{logo ? <img src={logo.data} alt="" /> : <span className="dim">{L("ยังไม่มีโลโก้", "No logo yet", "ロゴ未設定")}</span>}</div>
-              <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
-                <button type="button" className="abtn ghost" disabled={logoBusy} onClick={() => logoInput.current?.click()}>
-                  {logoBusy ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : logo ? L("เปลี่ยนโลโก้", "Change logo", "ロゴを変更") : L("เลือกไฟล์โลโก้", "Choose a logo file", "ロゴファイルを選択")}
-                </button>
-                {logo && <button type="button" className="minibtn" onClick={() => setLogo(null)}>{L("ไม่ใส่โลโก้", "No logo", "ロゴなし")}</button>}
-                <span className="dim" style={{ fontSize: 12.5 }}>{L("PNG พื้นใสดีที่สุด · JPG พื้นขาวจะลบพื้นให้ · ไม่เกิน 8MB", "A PNG with a clear background works best · a white JPG background is removed · up to 8 MB", "背景が透明なPNGがおすすめ · JPGの白背景は自動で除去 · 最大8MB")}</span>
+          {now === "product" && (
+            <div className="acard">
+              <h2 className="ah2">{L("สินค้า", "Product", "商品")}</h2>
+              <div className="ou-products" role="radiogroup" aria-label={L("สินค้า", "Product", "商品")}>
+                {([["bib_n", "N-bib", L("ด้านเดียว", "Single-sided", "片面")], ["bib_r", "R-bib", L("2 ด้าน กลับด้านได้", "Reversible, 2 sides", "リバーシブル（両面）")]] as const).map(([id, name, sub]) => (
+                  <label key={id} className="ou-product" data-on={product === id ? "" : undefined}>
+                    <input type="radio" name="product" checked={product === id} onChange={() => setProduct(id)} />
+                    <b>{name}</b>
+                    <span className="dim">{sub}</span>
+                    {prices[id] !== undefined && <span className="price">{baht(prices[id])}{L("/ตัว", " / piece", "／枚")}</span>}
+                  </label>
+                ))}
               </div>
             </div>
-            <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={e => onLogo(e.target.files?.[0])} />
-            {logo && (() => {
-              // how sharp it prints where it prints biggest (the largest size on the list)
-              const q = logoDpi(logo.w, logo.h, roster.rows.map(r => r.size));
-              const tone = q.dpi >= 250 ? "ok" : q.dpi >= 150 ? "soft" : "bad";
-              return (
-                <p className={tone === "bad" ? "ou-warn" : "dim"} style={{ fontSize: 13, margin: "10px 0 0" }}>
-                  {tone === "ok" ? "✓ " : "⚠ "}
-                  {L(
-                    `${logo.w}×${logo.h} px · พิมพ์สูง ${q.mm} มม. (ไซส์ ${q.size}) ≈ ${q.dpi} dpi`,
-                    `${logo.w}×${logo.h} px · printed ${q.mm} mm tall (size ${q.size}) ≈ ${q.dpi} dpi`,
-                    `${logo.w}×${logo.h} px · 印刷時の高さ ${q.mm}mm（${q.size}サイズ）≈ ${q.dpi} dpi`,
-                  )}
-                  {logo.svg ? L(" · SVG คมทุกขนาด", " · SVG, sharp at any size", " · SVGはどのサイズでも鮮明") : ""}
-                  {tone === "soft" && L(" — ใช้ได้ แต่ถ้ามีไฟล์ใหญ่กว่านี้จะคมกว่า", " — fine, but a bigger file would print sharper", " — 使用できますが、より大きいファイルの方が鮮明です")}
-                  {tone === "bad" && L(" — ภาพจะแตกตอนพิมพ์ ใช้ไฟล์ที่ใหญ่กว่านี้หรือ SVG", " — this will print blurry; use a bigger file or an SVG", " — 印刷すると粗くなります。より大きいファイルかSVGをお使いください")}
-                </p>
-              );
-            })()}
-            {logoErr && <p className="ou-warn">⚠ {logoErr}</p>}
-          </div>
+          )}
 
-          {used.map((s, i) => (
+          {now === "team" && (
+            <div className="acard">
+              <h2 className="ah2">{L("ชื่อทีมและตัวอักษร", "Team name and lettering", "チーム名と書体")}</h2>
+              <label className="flabel" htmlFor="bd-team">{L("ชื่อทีม (พิมพ์ด้านหน้า)", "Team name (printed on the front)", "チーム名（前面にプリント）")}</label>
+              <input id="bd-team" className="ainput" value={team} maxLength={30} onChange={e => setTeam(e.target.value)} placeholder="SAGINUMA FC" />
+              <span className="flabel">{L("ฟอนต์ ชื่อ-เบอร์", "Font for names and numbers", "名前・番号の書体")}</span>
+              <div className="bd-fonts" role="radiogroup">
+                {FONTS.map(f => (
+                  <label key={f.id} className="ou-product" data-on={font === f.id ? "" : undefined}>
+                    <input type="radio" name="font" checked={font === f.id} onChange={() => setFont(f.id)} />
+                    <b style={{ fontFamily: `"${f.family}", sans-serif`, fontSize: 22 }}>{f.sample}</b>
+                    <span className="dim">{f.name}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="flabel">{L("ฟอนต์ของทีมเอง (ถ้ามี)", "Your team's own font (optional)", "チーム独自のフォント（任意）")}</span>
+              <div className="bd-teamfont">
+                {teamFont && <span className="sample" style={{ fontFamily: `"${teamFont.family}", sans-serif` }}>10 ABC</span>}
+                <button type="button" className="abtn ghost" disabled={fontBusy} onClick={() => fontInput.current?.click()}>
+                  {fontBusy ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : teamFont ? L("เปลี่ยนฟอนต์", "Change font", "フォントを変更") : L("อัปโหลดฟอนต์ (.ttf .otf .woff)", "Upload a font (.ttf .otf .woff)", "フォントをアップロード（.ttf .otf .woff）")}
+                </button>
+                {teamFont && <button type="button" className="minibtn" onClick={() => setTeamFont(null)}>{L("ไม่ใช้", "Don't use it", "使わない")}</button>}
+              </div>
+              <input ref={fontInput} type="file" accept={TEAM_FONT_ACCEPT} hidden onChange={e => onFont(e.target.files?.[0])} />
+              {teamFont && (
+                <p className="dim" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
+                  {teamFont.name} · {L(
+                    "ชื่อ เบอร์ และชื่อทีมใช้ฟอนต์นี้ ตัวอักษรที่ฟอนต์นี้ไม่มี (เช่น ภาษาไทย) ใช้ฟอนต์ที่เลือกด้านบนแทน",
+                    "names, numbers and the team name are set in it; any letter it lacks (Thai, say) comes from the font picked above",
+                    "名前・番号・チーム名はこのフォントで作成します。含まれない文字（タイ文字など）は上で選んだ書体になります",
+                  )}
+                </p>
+              )}
+              {fontErr && <p className="ou-warn">⚠ {fontErr}</p>}
+              <span className="flabel">{L("พิมพ์อะไรบ้าง", "What's printed", "プリント内容")}</span>
+              <div className="bd-checks">
+                {SHOW.map(k => (
+                  <label key={k}><input type="checkbox" checked={show[k]} onChange={e => setShow(s => ({ ...s, [k]: e.target.checked }))} />{" "}
+                    {{
+                      frontNumber: L("เบอร์ด้านหน้า (85 มม.)", "Front number (85 mm)", "前面の番号（85mm）"),
+                      frontLogo: L("โลโก้ด้านหน้า (85 มม.)", "Front logo (85 mm)", "前面のロゴ（85mm）"),
+                      frontTeam: L("ชื่อทีมด้านหน้า", "Team name on the front", "前面のチーム名"),
+                      backName: L("ชื่อด้านหลัง (35 มม.)", "Name on the back (35 mm)", "背面の名前（35mm）"),
+                      backNumber: L("เบอร์ด้านหลัง (200 มม.)", "Back number (200 mm)", "背番号（200mm）"),
+                    }[k]}
+                  </label>
+                ))}
+              </div>
+              {show.frontNumber && (
+                <>
+                  <span className="flabel">{L("ตำแหน่งเบอร์ด้านหน้า", "Front number position", "前面の番号の位置")}</span>
+                  <div className="bd-seg" role="radiogroup" aria-label={L("ตำแหน่งเบอร์ด้านหน้า", "Front number position", "前面の番号の位置")}>
+                    {([[false, L("ด้านข้าง", "To one side", "片側")], [true, L("กลางตัว", "In the middle", "中央")]] as const).map(([mid, label]) => (
+                      <button key={label} type="button" role="radio" aria-checked={numberCenter === mid} onClick={() => setNumberCenter(mid)}>{label}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {now === "logo" && (
+            <div className="acard">
+              <h2 className="ah2">{L("โลโก้ทีม", "Team logo", "チームロゴ")}</h2>
+              <div className="bd-logo">
+                <div className="pic">{logo ? <img src={logo.data} alt="" /> : <span className="dim">{L("ยังไม่มีโลโก้", "No logo yet", "ロゴ未設定")}</span>}</div>
+                <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+                  <button type="button" className="abtn ghost" disabled={logoBusy} onClick={() => logoInput.current?.click()}>
+                    {logoBusy ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : logo ? L("เปลี่ยนโลโก้", "Change logo", "ロゴを変更") : L("เลือกไฟล์โลโก้", "Choose a logo file", "ロゴファイルを選択")}
+                  </button>
+                  {logo && <button type="button" className="minibtn" onClick={() => setLogo(null)}>{L("ไม่ใส่โลโก้", "No logo", "ロゴなし")}</button>}
+                  <span className="dim" style={{ fontSize: 12.5 }}>{L("PNG พื้นใสดีที่สุด · JPG พื้นขาวจะลบพื้นให้ · ไม่เกิน 8MB", "A PNG with a clear background works best · a white JPG background is removed · up to 8 MB", "背景が透明なPNGがおすすめ · JPGの白背景は自動で除去 · 最大8MB")}</span>
+                </div>
+              </div>
+              <input ref={logoInput} type="file" accept={LOGO_ACCEPT} hidden onChange={e => onLogo(e.target.files?.[0])} />
+              {logo && (() => {
+                // how sharp it prints where it prints biggest (the largest size on the list)
+                // under a middle number the logo prints bigger (the API's LAYOUT.front.stack)
+                const q = logoDpi(logo.w, logo.h, roster.rows.map(r => r.size), logoCenter && numberCenter && show.frontNumber ? { h: 170, maxW: 260 } : undefined);
+                const tone = q.dpi >= 250 ? "ok" : q.dpi >= 150 ? "soft" : "bad";
+                return (
+                  <p className={tone === "bad" ? "ou-warn" : "dim"} style={{ fontSize: 13, margin: "10px 0 0" }}>
+                    {tone === "ok" ? "✓ " : "⚠ "}
+                    {L(
+                      `${logo.w}×${logo.h} px · พิมพ์สูง ${q.mm} มม. (ไซส์ ${q.size}) ≈ ${q.dpi} dpi`,
+                      `${logo.w}×${logo.h} px · printed ${q.mm} mm tall (size ${q.size}) ≈ ${q.dpi} dpi`,
+                      `${logo.w}×${logo.h} px · 印刷時の高さ ${q.mm}mm（${q.size}サイズ）≈ ${q.dpi} dpi`,
+                    )}
+                    {logo.svg ? L(" · SVG คมทุกขนาด", " · SVG, sharp at any size", " · SVGはどのサイズでも鮮明") : ""}
+                    {tone === "soft" && L(" — ใช้ได้ แต่ถ้ามีไฟล์ใหญ่กว่านี้จะคมกว่า", " — fine, but a bigger file would print sharper", " — 使用できますが、より大きいファイルの方が鮮明です")}
+                    {tone === "bad" && L(" — ภาพจะแตกตอนพิมพ์ ใช้ไฟล์ที่ใหญ่กว่านี้หรือ SVG", " — this will print blurry; use a bigger file or an SVG", " — 印刷すると粗くなります。より大きいファイルかSVGをお使いください")}
+                  </p>
+                );
+              })()}
+              {logoErr && <p className="ou-warn">⚠ {logoErr}</p>}
+              {show.frontLogo && (
+                <>
+                  <span className="flabel">{L("ตำแหน่งโลโก้ (มองจากด้านหน้า)", "Logo position (looking at the front)", "ロゴの位置（正面から見て）")}</span>
+                  <div className="bd-seg" role="radiogroup" aria-label={L("ตำแหน่งโลโก้", "Logo position", "ロゴの位置")}>
+                    {([["left", L("ซ้าย", "Left", "左")], ["center", L("กลาง", "Middle", "中央")], ["right", L("ขวา", "Right", "右")]] as const).map(([pos, label]) => (
+                      <button key={pos} type="button" role="radio" aria-checked={logoPos === pos} onClick={() => setLogoPos(pos)}>{label}</button>
+                    ))}
+                  </div>
+                  {show.frontNumber && !numberCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{logoCenter
+                    ? L("เบอร์ด้านหน้าจะอยู่ทางซ้าย และเล็กลงถ้าที่ไม่พอ — เลือกเบอร์ \"กลางตัว\" ได้เบอร์ใหญ่กว่า", "the front number goes on the left, smaller if it doesn't fit — an \"In the middle\" number stays full size", "前面の番号は左側に入り、入らない場合は小さくなります。「中央」の番号なら大きいままです")
+                    : L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
+                  {show.frontNumber && numberCenter && logoCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("ชื่อทีมอยู่เหนือเบอร์ โลโก้อยู่ใต้เบอร์และใหญ่ขึ้น (สูงสุด 170 มม. เล็กลงถ้าชนสปอนเซอร์)", "the team name goes above the number, the logo under it, bigger (up to 170 mm; smaller to clear the sponsors)", "チーム名は番号の上、ロゴは番号の下に大きく入ります（最大170mm、スポンサーに重なる場合は小さく）")}</span>}
+                </>
+              )}
+            </div>
+          )}
+
+          {now === "sponsors" && (
+            <div className="acard">
+              <h2 className="ah2">{L("โลโก้สปอนเซอร์", "Sponsor logos", "スポンサーロゴ")}</h2>
+              <p className="asub">{L(
+                "พิมพ์สีตามไฟล์ ใส่ได้ทุกช่องหรือบางช่อง ขนาดเป็นของไซส์ M (ไซส์อื่นย่อขยายตาม)",
+                "Printed in the file's own colours; fill any of the slots. Sizes are for size M (other sizes scale)",
+                "ファイルの色のまま印刷。どの枠にも入れられます。サイズはMサイズ基準（他のサイズは比例）",
+              )}</p>
+              {([
+                { title: L("ด้านหน้า มุมล่าง (มองจากด้านหน้า)", "Front, bottom corners (looking at the front)", "前面・下の角（正面から見て）"), box: { h: 80, maxW: 170 },
+                  slots: [["left", L("ซ้ายล่าง", "Bottom left", "左下")], ["right", L("ขวาล่าง", "Bottom right", "右下")]] },
+                { title: L("ด้านหลัง ใต้เบอร์ (มองจากด้านหลัง)", "Back, under the number (looking at the back)", "背面・番号の下（背中側から見て）"), box: { h: 65, maxW: 130 },
+                  slots: [["backLeft", L("ซ้าย", "Left", "左")], ["backCenter", L("กลาง", "Middle", "中央")], ["backRight", L("ขวา", "Right", "右")]] },
+              ] as { title: string; box: { h: number; maxW: number }; slots: [SponsorSlot, string][] }[]).map(row => (
+                <div key={row.title} className="bd-sponsor-row">
+                  <span className="flabel">{row.title} · {L("ไม่เกิน", "up to", "最大")} {row.box.maxW}×{row.box.h} {L("มม.", "mm", "mm")}</span>
+                  <div className="bd-sponsors" data-n={row.slots.length}>
+                    {row.slots.map(([slot, name]) => {
+                      const s = sponsors[slot];
+                      const q = s && logoDpi(s.w, s.h, roster.rows.map(r => r.size), row.box);
+                      return (
+                        <div key={slot} className="bd-slot">
+                          <div className="pic">{s ? <img src={s.data} alt="" /> : <span className="dim">{L("ไม่มี", "None", "なし")}</span>}</div>
+                          <strong>{name}</strong>
+                          <div className="acts">
+                            <button type="button" className="minibtn" disabled={!!sponsorBusy} onClick={() => { sponsorSlot.current = slot; sponsorInput.current?.click(); }}>
+                              {sponsorBusy === slot ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : s ? L("เปลี่ยน", "Change", "変更") : L("เลือกไฟล์", "Choose", "選択")}
+                            </button>
+                            {s && <button type="button" className="minibtn" onClick={() => setSponsors(v => { const n = { ...v }; delete n[slot]; return n; })}>{L("เอาออก", "Remove", "削除")}</button>}
+                          </div>
+                          {q && <span className={q.dpi < 150 ? "ou-warn" : "dim"} style={{ fontSize: 11.5 }}>
+                            {q.dpi >= 250 ? "✓ " : "⚠ "}{q.dpi} dpi{q.dpi < 150 ? L(" — ภาพจะแตก", " — blurry", " — 粗い") : ""}
+                          </span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <input ref={sponsorInput} type="file" accept={LOGO_ACCEPT} hidden onChange={e => onSponsor(e.target.files?.[0])} />
+              {sponsorErr && <p className="ou-warn">⚠ {sponsorErr}</p>}
+            </div>
+          )}
+
+          {used.map((s, i) => now === (i ? "sideB" : "sideA") && (
             <SideCard key={i} L={L} title={product === "bib_r" ? (i === 0 ? L("ด้าน A (ด้านหลัก)", "Side A (main side)", "A面（メイン）") : L("ด้าน B (ด้านกลับ)", "Side B (reverse)", "B面（裏面）")) : L("สีและลาย", "Colours and pattern", "色と柄")}
               side={s} onChange={v => setSide(i as 0 | 1, v)} />
           ))}
 
-          <div className="acard">
-            <h2 className="ah2">{L("รายชื่อ เบอร์ และไซส์", "Names, numbers and sizes", "名前・番号・サイズ")}</h2>
-            <p className="asub">
-              {L("หนึ่งบรรทัดต่อหนึ่งตัว: ชื่อ, เบอร์, ไซส์ — วางจาก Excel ได้เลย ไซส์: ", "One bib per line: name, number, size — paste from Excel. Sizes: ", "1行に1枚：名前、番号、サイズ（Excelから貼り付け可）。サイズ：")}
-              {BIB_SIZES.map(z => BIB_SIZE_LABEL[z]).join(" · ")}
-            </p>
-            <textarea className="ainput bd-roster" rows={8} value={rosterText} onChange={e => setRosterText(e.target.value)}
-              placeholder={"TAICHI\t48\tM\nSORA\t10\tL\nKAITO\t7\tXL-2L"} />
-            <div className="bd-run">
-              <span className="dim">{L("หรือเพิ่มเบอร์เรียง ไม่มีชื่อ:", "Or add a numbered run, no names:", "名前なしの連番を追加：")}</span>
-              <select className="ainput" value={run.size} onChange={e => setRun(r => ({ ...r, size: e.target.value as BibSize }))} aria-label={L("ไซส์", "Size", "サイズ")}>
-                {BIB_SIZES.map(z => <option key={z} value={z}>{BIB_SIZE_LABEL[z]}</option>)}
-              </select>
-              <label>{L("จำนวน", "How many", "枚数")} <input className="ainput" type="number" min={1} max={200} value={run.count} onChange={e => setRun(r => ({ ...r, count: Number(e.target.value) || 0 }))} /></label>
-              <label>{L("เริ่มเบอร์", "From no.", "開始番号")} <input className="ainput" type="number" min={0} max={999} value={run.from} onChange={e => setRun(r => ({ ...r, from: Number(e.target.value) || 0 }))} /></label>
-              <button type="button" className="minibtn" onClick={() => setRosterText(t => (t.trim() ? t.trimEnd() + "\n" : "") + numberedLines(run.size, run.count, run.from))}>{L("เพิ่ม", "Add", "追加")}</button>
-            </div>
-            <div className="bd-counts">
-              {totalQty > 0
-                ? <>{BIB_SIZES.filter(z => counts[z]).map(z => <span key={z} className="chip on">{BIB_SIZE_LABEL[z]} × {counts[z]}</span>)}<b>{L(`รวม ${totalQty} ตัว`, `${totalQty} in total`, `合計${totalQty}枚`)}</b></>
-                : <span className="dim">{L("ยังไม่มีรายการ", "Nothing on the list yet", "まだリストがありません")}</span>}
-            </div>
-            {roster.errors.length > 0 && (
-              <div className="ou-warn">
-                ⚠ {L("อ่านไม่ได้", "Couldn't read", "読み取れない行")}:
-                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                  {roster.errors.slice(0, 8).map(e => (
-                    <li key={e.line}>
-                      {L(`บรรทัด ${e.line}`, `line ${e.line}`, `${e.line}行目`)} “{e.text}” — {e.why === "size" ? L("ไม่มีไซส์ที่เราผลิต", "no size we make", "対応サイズがありません")
-                        : e.why === "name" ? L(`ชื่อยาวเกิน ${NAME_MAX} ตัวอักษร`, `name over ${NAME_MAX} characters`, `名前が${NAME_MAX}文字を超えています`)
-                        : L("เบอร์เกิน 3 หลัก", "number over 3 digits", "番号が3桁を超えています")}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          <div className="acard">
-            <h2 className="ah2">{L("การจัดส่ง", "Delivery", "お届け方法")}</h2>
-            {agent && (
-              <div className="ou-delivery" role="radiogroup" aria-label={L("การจัดส่ง", "Delivery", "お届け方法")}>
-                <label className="ou-product" data-on={toAgent ? "" : undefined}>
-                  <input type="radio" name="delivery" checked={toAgent} onChange={() => setDelivery("agent")} />
-                  <b>{L("ส่งรวมให้ตัวแทนในญี่ปุ่น", "Consolidated to our agent in Japan", "日本の代理店へまとめて発送")}</b>
-                  <span className="dim">{agent.name} · {L("ไม่ต้องกรอกที่อยู่", "no address needed", "住所の入力は不要です")}</span>
-                  <span className="price">{L("ค่าส่ง", "Shipping", "送料")} {agent.fee > 0 ? baht(agent.fee) : L("ฟรี", "free", "無料")}{L(" / ออเดอร์", " / order", "／注文")}</span>
-                </label>
-                <label className="ou-product" data-on={!toAgent ? "" : undefined}>
-                  <input type="radio" name="delivery" checked={!toAgent} onChange={() => setDelivery("address")} />
-                  <b>{L("ส่งถึงที่อยู่ของฉัน", "To my address", "指定の住所へ発送")}</b>
-                  <span className="dim">{L("ในประเทศไทย", "in Thailand", "タイ国内")}</span>
-                </label>
-              </div>
-            )}
-            {toAgent ? null : addresses.length === 0 ? (
+          {now === "roster" && (
+            <div className="acard">
+              <h2 className="ah2">{L("รายชื่อ เบอร์ และไซส์", "Names, numbers and sizes", "名前・番号・サイズ")}</h2>
               <p className="asub">
-                {L("ยังไม่มีที่อยู่ — ", "No address yet — ", "お届け先が未登録です。")}
-                <Link className="dlink" href="/account">{L("เพิ่มที่อยู่ในบัญชีของฉัน", "add one in My account", "マイアカウントで追加")}</Link>
+                {L("หนึ่งบรรทัดต่อหนึ่งตัว: ชื่อ, เบอร์, ไซส์ — วางจาก Excel ได้เลย ไซส์: ", "One bib per line: name, number, size — paste from Excel. Sizes: ", "1行に1枚：名前、番号、サイズ（Excelから貼り付け可）。サイズ：")}
+                {BIB_SIZES.map(z => BIB_SIZE_LABEL[z]).join(" · ")}
               </p>
-            ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                {addresses.map(a => (
-                  <label key={a.id} className="addr" style={{ display: "flex", gap: 10, cursor: "pointer", borderColor: addrId === a.id ? "var(--brand)" : undefined }}>
-                    <input type="radio" name="addr" checked={addrId === a.id} onChange={() => setAddrId(a.id)} style={{ marginTop: 3 }} />
-                    <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-                      <b>{a.recipient}</b> · {a.phone}
-                      <div className="dim">{a.line1} {a.line2} {a.district} {a.province} {a.postalCode}</div>
-                    </div>
-                  </label>
-                ))}
+              <textarea className="ainput bd-roster" rows={8} value={rosterText} onChange={e => setRosterText(e.target.value)}
+                placeholder={"TAICHI\t48\tM\nSORA\t10\tL\nKAITO\t7\tXL-2L"} />
+              <div className="bd-run">
+                <span className="dim">{L("หรือเพิ่มเบอร์เรียง ไม่มีชื่อ:", "Or add a numbered run, no names:", "名前なしの連番を追加：")}</span>
+                <select className="ainput" value={run.size} onChange={e => setRun(r => ({ ...r, size: e.target.value as BibSize }))} aria-label={L("ไซส์", "Size", "サイズ")}>
+                  {BIB_SIZES.map(z => <option key={z} value={z}>{BIB_SIZE_LABEL[z]}</option>)}
+                </select>
+                <label>{L("จำนวน", "How many", "枚数")} <input className="ainput" type="number" min={1} max={200} value={run.count} onChange={e => setRun(r => ({ ...r, count: Number(e.target.value) || 0 }))} /></label>
+                <label>{L("เริ่มเบอร์", "From no.", "開始番号")} <input className="ainput" type="number" min={0} max={999} value={run.from} onChange={e => setRun(r => ({ ...r, from: Number(e.target.value) || 0 }))} /></label>
+                <button type="button" className="minibtn" onClick={() => setRosterText(t => (t.trim() ? t.trimEnd() + "\n" : "") + numberedLines(run.size, run.count, run.from))}>{L("เพิ่ม", "Add", "追加")}</button>
               </div>
-            )}
-            <label className="flabel" htmlFor="bd-note">{L("หมายเหตุถึงโรงงาน", "Note to the factory", "工場への備考")}</label>
-            <textarea id="bd-note" className="ainput" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} />
+              <div className="bd-counts">
+                {totalQty > 0
+                  ? <>{BIB_SIZES.filter(z => counts[z]).map(z => <span key={z} className="chip on">{BIB_SIZE_LABEL[z]} × {counts[z]}</span>)}<b>{L(`รวม ${totalQty} ตัว`, `${totalQty} in total`, `合計${totalQty}枚`)}</b></>
+                  : <span className="dim">{L("ยังไม่มีรายการ", "Nothing on the list yet", "まだリストがありません")}</span>}
+              </div>
+              {roster.errors.length > 0 && (
+                <div className="ou-warn">
+                  ⚠ {L("อ่านไม่ได้", "Couldn't read", "読み取れない行")}:
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {roster.errors.slice(0, 8).map(e => (
+                      <li key={e.line}>
+                        {L(`บรรทัด ${e.line}`, `line ${e.line}`, `${e.line}行目`)} “{e.text}” — {e.why === "size" ? L("ไม่มีไซส์ที่เราผลิต", "no size we make", "対応サイズがありません")
+                          : e.why === "name" ? L(`ชื่อยาว ${e.len} ตัวอักษร เกิน ${NAME_MAX} (นับสระและวรรณยุกต์ด้วย)`, `name is ${e.len} characters, over ${NAME_MAX}`, `名前が${e.len}文字で、${NAME_MAX}文字を超えています`)
+                          : L("เบอร์เกิน 3 หลัก", "number over 3 digits", "番号が3桁を超えています")}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {now === "delivery" && (
+            <div className="acard">
+              <h2 className="ah2">{L("การจัดส่ง", "Delivery", "お届け方法")}</h2>
+              {agent && (
+                <div className="ou-delivery" role="radiogroup" aria-label={L("การจัดส่ง", "Delivery", "お届け方法")}>
+                  <label className="ou-product" data-on={toAgent ? "" : undefined}>
+                    <input type="radio" name="delivery" checked={toAgent} onChange={() => setDelivery("agent")} />
+                    <b>{L("ส่งรวมให้ตัวแทนในญี่ปุ่น", "Consolidated to our agent in Japan", "日本の代理店へまとめて発送")}</b>
+                    <span className="dim">{agent.name} · {L("ไม่ต้องกรอกที่อยู่", "no address needed", "住所の入力は不要です")}</span>
+                    <span className="price">{L("ค่าส่ง", "Shipping", "送料")} {agent.fee > 0 ? baht(agent.fee) : L("ฟรี", "free", "無料")}{L(" / ออเดอร์", " / order", "／注文")}</span>
+                  </label>
+                  <label className="ou-product" data-on={!toAgent ? "" : undefined}>
+                    <input type="radio" name="delivery" checked={!toAgent} onChange={() => setDelivery("address")} />
+                    <b>{L("ส่งถึงที่อยู่ของฉัน", "To my address", "指定の住所へ発送")}</b>
+                    <span className="dim">{L("ในประเทศไทย", "in Thailand", "タイ国内")}</span>
+                  </label>
+                </div>
+              )}
+              {toAgent ? null : addresses.length === 0 ? (
+                <p className="asub">
+                  {L("ยังไม่มีที่อยู่ — ", "No address yet — ", "お届け先が未登録です。")}
+                  <Link className="dlink" href="/account">{L("เพิ่มที่อยู่ในบัญชีของฉัน", "add one in My account", "マイアカウントで追加")}</Link>
+                </p>
+              ) : (
+                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  {addresses.map(a => (
+                    <label key={a.id} className="addr" style={{ display: "flex", gap: 10, cursor: "pointer", borderColor: addrId === a.id ? "var(--brand)" : undefined }}>
+                      <input type="radio" name="addr" checked={addrId === a.id} onChange={() => setAddrId(a.id)} style={{ marginTop: 3 }} />
+                      <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+                        <b>{a.recipient}</b> · {a.phone}
+                        <div className="dim">{a.line1} {a.line2} {a.district} {a.province} {a.postalCode}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <label className="flabel" htmlFor="bd-note">{L("หมายเหตุถึงโรงงาน", "Note to the factory", "工場への備考")}</label>
+              <textarea id="bd-note" className="ainput" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} />
+            </div>
+          )}
+
+          <div className="bd-stepnav">
+            {prev ? <button type="button" className="abtn ghost" onClick={() => go(prev.id)}>← {prev.label}</button> : <span />}
+            <span className="dim">{L(`ขั้นที่ ${at + 1} จาก ${steps.length}`, `Step ${at + 1} of ${steps.length}`, `ステップ ${at + 1}／${steps.length}`)}</span>
+            {next
+              ? <button type="button" className="abtn solid" onClick={() => go(next.id)}>{L("ถัดไป", "Next", "次へ")}: {next.label} →</button>
+              : <button type="button" className="abtn solid" disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
+                  {busy ? L("กำลังสร้างออเดอร์…", "Placing the order…", "注文を作成中…") : L("สั่งผลิต", "Place the order", "注文する")}
+                </button>}
           </div>
+          {!next && err && <p className="ou-warn" role="alert">⚠ {err}</p>}
         </div>
 
         <div className="acard ou-summary">
@@ -423,7 +634,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </>
           )}
           {err && <p className="ou-warn" role="alert">⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId)} onClick={submit}>
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
             {busy ? L("กำลังสร้างออเดอร์และไฟล์งาน…", "Placing the order and making the files…", "注文と入稿データを作成中…") : L("สั่งผลิต", "Place the order", "注文する")}
           </button>
           <p className="dim" style={{ marginTop: 10 }}>
@@ -438,6 +649,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
 function SideCard({ L, title, side, onChange }: { L: ReturnType<typeof tri>; title: string; side: Side; onChange: (s: Side) => void }) {
   const set = (p: Partial<Side>) => onChange({ ...side, ...p });
   const setRib = (z: keyof Side["rib"], c: string) => onChange({ ...side, rib: { ...side.rib, [z]: c } });
+  // a name / number colour that melts into the body or the pattern (blue on blue stripes)
+  const clash = inkClashes({ body: side.body, pattern: side.pattern, patternColor: side.patternColor, ink: side.ink, inkOutline: side.outline ? side.inkOutline : null });
   return (
     <div className="acard">
       <h2 className="ah2">{title}</h2>
@@ -456,6 +669,13 @@ function SideCard({ L, title, side, onChange }: { L: ReturnType<typeof tri>; tit
       {side.pattern !== "plain" && <SwatchPicker label={L("สีลาย", "Pattern colour", "柄の色")} value={side.patternColor} onChange={c => set({ patternColor: c })} />}
       <label className="bd-toggle"><input type="checkbox" checked={side.outline} onChange={e => set({ outline: e.target.checked })} /> {L("ขอบรอบชื่อ-เบอร์", "Keyline round names and numbers", "名前・番号のフチ取り")}</label>
       {side.outline && <SwatchPicker label={L("สีขอบ", "Keyline colour", "フチの色")} value={side.inkOutline} onChange={c => set({ inkOutline: c })} />}
+      {clash.length > 0 && (
+        <p className="ou-warn" role="status" style={{ fontSize: 13, margin: "8px 0 0" }}>
+          ⚠ {clash.includes("body")
+            ? L("สีชื่อ-เบอร์ใกล้กับสีพื้นมาก จะอ่านแทบไม่ออก — เปลี่ยนสี หรือเปิดขอบรอบชื่อ-เบอร์สีที่ตัดกัน", "The name and number colour is too close to the body colour to read — change it, or add a keyline that stands out", "名前・番号の色が地色に近く、ほとんど読めません。色を変えるか、目立つ色のフチ取りを付けてください")
+            : L("สีชื่อ-เบอร์ใกล้กับสีลาย ตรงที่ทับลายจะมองไม่เห็น — เปลี่ยนสี หรือเปิดขอบรอบชื่อ-เบอร์สีที่ตัดกับลาย", "The name and number colour is too close to the pattern colour: where they cross it they disappear — change it, or add a keyline that stands out", "名前・番号の色が柄の色に近く、柄に重なる部分が見えなくなります。色を変えるか、柄と区別できるフチ取りを付けてください")}
+        </p>
+      )}
       <label className="bd-toggle"><input type="checkbox" checked={side.ribs} onChange={e => set({ ribs: e.target.checked })} /> {L("แถบกุ้น คอ · วงแขน · ชายล่าง", "Rib bands: neck · armholes · hem", "リブ：衿・袖ぐり・裾")}</label>
       {side.ribs && (
         <div className="bd-pickers three">
@@ -476,10 +696,18 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+/** the designer's steps, in order (sideB on an R-bib only) */
+type StepId = "product" | "team" | "logo" | "sponsors" | "sideA" | "sideB" | "roster" | "delivery";
+
+/** a sponsor's logo as uploaded: its stored URL, the picture to show, its pixel size */
+type SponsorImg = { url: string; data: string; w: number; h: number };
+/** where sponsors go (the API's bibs/design.ts SPONSOR_SLOTS): the front's bottom corners, the back's row under the number */
+type SponsorSlot = "left" | "right" | "backLeft" | "backCenter" | "backRight";
+
 export default function OrderBibPage() {
   const [lang, setLang] = useLang();
   return (
-    <Suspense fallback={<AppShell narrow><div className="acard"><p className="asub">…</p></div></AppShell>}>
+    <Suspense fallback={<AppShell narrow station="printing"><div className="acard"><p className="asub">…</p></div></AppShell>}>
       <BibDesigner lang={lang} setLang={setLang} />
     </Suspense>
   );

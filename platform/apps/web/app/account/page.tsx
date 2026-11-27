@@ -10,6 +10,7 @@ import SecurityCard from "../../components/SecurityCard";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 import { tri, locale, useLang } from "../../lib/i18n";
 import { orderStatus, summaryIn } from "../../lib/order-text";
+import SoonTag from "../../components/SoonTag";
 
 interface Address {
   id: string;
@@ -25,11 +26,18 @@ interface Address {
   isDefault: boolean;
 }
 
-interface DesignItem { id: string; name: string; previewUrl?: string | null; mode: string; updatedAt: string; }
+/** kit: saved in the 3D studio (/shop/<kit>) — opens there; none: the advanced designer's (/design) */
+interface DesignItem { id: string; name: string; previewUrl?: string | null; mode: string; updatedAt: string; kit?: string | null; }
 
 const emptyAddr = {
   label: "", recipient: "", phone: "", line1: "", line2: "",
   district: "", province: "", postalCode: "", country: "TH", isDefault: false,
+};
+
+/** the countries a delivery address can be in, as [Thai, English, Japanese] */
+const COUNTRY: Record<string, [string, string, string]> = {
+  TH: ["ไทย", "Thailand", "タイ"],
+  JP: ["ญี่ปุ่น", "Japan", "日本"],
 };
 
 type AccTab = "orders" | "designs" | "purchases" | "shop" | "profile" | "address" | "security";
@@ -37,10 +45,13 @@ const ACC_TABS: AccTab[] = ["orders", "designs", "purchases", "shop", "profile",
 
 export default function AccountPage() {
   const { user, token, loading, setUser } = useAuth(); // logout lives in the header user menu
-  // the frame and the orders are in Thai / English / Japanese (teams in Japan order by zip);
-  // the designer tabs (designs, shop, profile, addresses, security) are in Thai
+  // every tab is in Thai / English / Japanese (teams in Japan order by zip)
   const [lang, setLang] = useLang();
   const L = tri(lang);
+  /** the API answers in Thai: in the other languages, say it by what kind of failure it was */
+  const apiErr = (e: any) => lang === "th" ? e.message
+    : e.status === 400 ? L("", "Please check the details — a required field is empty or too long", "入力内容をご確認ください（必須項目が空欄、または長すぎます）")
+    : L("", "Couldn't save — please try again", "保存できませんでした。もう一度お試しください");
   // ?tab=address etc. opens a section directly (checkout links here to add an address)
   const [tab, setTabState] = useState<AccTab>("orders");
   useEffect(() => {
@@ -79,7 +90,7 @@ export default function AccountPage() {
   }
   useEffect(() => { if (token) loadDesigns(); /* eslint-disable-next-line */ }, [token]);
   async function delDesign(id: string) {
-    if (!confirm("ลบดีไซน์นี้?")) return;
+    if (!confirm(L("ลบดีไซน์นี้?", "Delete this design?", "このデザインを削除しますか？"))) return;
     try { await apiFetch(`/designs/${id}`, { method: "DELETE", token }); loadDesigns(); } catch { /* ignore */ }
   }
 
@@ -93,7 +104,7 @@ export default function AccountPage() {
   // ---------- marketplace ----------
   const [purchases, setPurchases] = useState<any[]>([]);
   const [listings, setListings] = useState<{ items: any[]; earnings: { total: number; sales: number; commissionPct: number } } | null>(null);
-  const baht = (n: number) => (n === 0 ? "ฟรี" : "฿" + Number(n).toLocaleString("th-TH"));
+  const baht = (n: number) => (n === 0 ? L("ฟรี", "Free", "無料") : "฿" + Number(n).toLocaleString(locale(lang)));
   async function loadMarket() {
     if (!token) return;
     try { setPurchases(await apiFetch<any[]>("/templates/me/purchases", { token })); } catch { /* ignore */ }
@@ -101,25 +112,41 @@ export default function AccountPage() {
   }
   useEffect(() => { if (token) loadMarket(); /* eslint-disable-next-line */ }, [token]);
   async function publishDesign(d: DesignItem) {
-    if (!confirm(
+    if (!confirm(L(
       "⚠️ ข้อตกลง & ลิขสิทธิ์\n\n" +
       "เทมเพลตต้องเป็นผลงานที่คุณออกแบบเอง หรือมีสิทธิ์ใช้ถูกต้องตามกฎหมายเท่านั้น — ห้ามนำรูป/ลวดลาย/โลโก้/ตัวการ์ตูนที่มีลิขสิทธิ์หรือเครื่องหมายการค้าของผู้อื่นมาขายโดยไม่ได้รับอนุญาต\n\n" +
       "หากตรวจพบการละเมิด (แม้จะขายไปแล้ว) ทางเว็บไซต์ไม่มีส่วนรับผิดชอบต่อความเสียหาย/ค่าปรับ/คดีใดๆ ความรับผิดทั้งหมดเป็นของผู้เผยแพร่ และเว็บไซต์ขอสงวนสิทธิ์ถอดเทมเพลต ระงับบัญชี และยึด/อายัดรายได้ทั้งหมดที่เกิดจากการขายที่ผิดกฎหมาย\n\n" +
-      "ยืนยันว่าคุณมีสิทธิ์ในผลงานนี้และยอมรับข้อตกลง?"
-    )) return;
-    const priceStr = prompt(`ตั้งราคาขายเทมเพลต "${d.name}" (บาท) — ใส่ 0 = แจกฟรี`, "199");
+      "ยืนยันว่าคุณมีสิทธิ์ในผลงานนี้และยอมรับข้อตกลง?",
+      "⚠️ Terms & copyright\n\n" +
+      "Only sell work you designed yourself or have the legal right to use. Don't sell pictures, patterns, logos or characters that are someone else's copyright or trademark without their permission.\n\n" +
+      "If a template is found to infringe (even after it has sold), the site takes no responsibility for any damages, fines or claims; all liability is the publisher's. The site may remove the template, suspend the account, and withhold all earnings from unlawful sales.\n\n" +
+      "Do you confirm you hold the rights to this work and accept these terms?",
+      "⚠️ 規約と著作権\n\n" +
+      "販売できるのは、ご自身でデザインした作品、または正当な使用権をお持ちの作品のみです。他者の著作権・商標にあたる画像・柄・ロゴ・キャラクターを許可なく販売することはできません。\n\n" +
+      "権利侵害が判明した場合（販売後であっても）、当サイトは損害・罰金・訴訟について一切責任を負わず、すべての責任は出品者にあります。当サイトはテンプレートの削除、アカウントの停止、違法な販売による収益の差し止めを行うことがあります。\n\n" +
+      "この作品の権利をお持ちであり、規約に同意しますか？",
+    ))) return;
+    const priceStr = prompt(L(
+      `ตั้งราคาขายเทมเพลต "${d.name}" (บาท) — ใส่ 0 = แจกฟรี`,
+      `Price for the template "${d.name}" (baht) — 0 = free`,
+      `テンプレート「${d.name}」の価格（バーツ）— 0 = 無料`,
+    ), "199");
     if (priceStr === null) return;
     const price = Math.max(0, parseInt(priceStr, 10) || 0);
-    const category = prompt("หมวด/กีฬา (เช่น ฟุตบอล, บาสเกตบอล, วิ่ง) — เว้นว่างได้", "") || undefined;
+    const category = prompt(L(
+      "หมวด/กีฬา (เช่น ฟุตบอล, บาสเกตบอล, วิ่ง) — เว้นว่างได้",
+      "Category / sport (e.g. football, basketball, running) — optional",
+      "カテゴリー／競技（例：サッカー、バスケットボール、ランニング）— 空欄可",
+    ), "") || undefined;
     try {
       const full = await apiFetch<{ stateJson: any; name: string }>(`/designs/${d.id}`, { token });
       await apiFetch("/templates", { method: "POST", token, body: JSON.stringify({ name: d.name, price, category, previewUrl: d.previewUrl, stateJson: full.stateJson, status: "published", agreedTerms: true }) });
-      alert("เผยแพร่ขายในตลาดแล้ว ✓");
+      alert(L("เผยแพร่ขายในตลาดแล้ว ✓", "Listed in the marketplace ✓", "マーケットに出品しました ✓"));
       loadMarket();
-    } catch (e: any) { alert("เผยแพร่ไม่สำเร็จ: " + e.message); }
+    } catch (e: any) { alert(L("เผยแพร่ไม่สำเร็จ: ", "Couldn't list it: ", "出品できませんでした：") + apiErr(e)); }
   }
   async function unpublish(id: string) {
-    if (!confirm("เอาเทมเพลตนี้ออกจากตลาด?")) return;
+    if (!confirm(L("เอาเทมเพลตนี้ออกจากตลาด?", "Take this template off the marketplace?", "このテンプレートをマーケットから取り下げますか？"))) return;
     try { await apiFetch(`/templates/${id}`, { method: "DELETE", token }); loadMarket(); } catch { /* ignore */ }
   }
 
@@ -129,8 +156,8 @@ export default function AccountPage() {
     try {
       const u = await apiFetch<User>("/auth/profile", { method: "PATCH", token, body: JSON.stringify(pf) });
       setUser(u);
-      setPmsg("บันทึกข้อมูลแล้ว ✓");
-    } catch (e: any) { setPerr(e.message); } finally { setPsaving(false); }
+      setPmsg(L("บันทึกข้อมูลแล้ว ✓", "Saved ✓", "保存しました ✓"));
+    } catch (e: any) { setPerr(apiErr(e)); } finally { setPsaving(false); }
   }
 
   function startNew() { setAf({ ...emptyAddr }); setAerr(""); setEditing("new"); }
@@ -150,11 +177,11 @@ export default function AccountPage() {
       else await apiFetch(`/auth/addresses/${editing}`, { method: "PATCH", token, body: JSON.stringify(af) });
       setEditing(null);
       await loadAddrs();
-    } catch (e: any) { setAerr(e.message); }
+    } catch (e: any) { setAerr(apiErr(e)); }
   }
 
   async function delAddr(id: string) {
-    if (!confirm("ลบที่อยู่นี้?")) return;
+    if (!confirm(L("ลบที่อยู่นี้?", "Delete this address?", "この住所を削除しますか？"))) return;
     try { await apiFetch(`/auth/addresses/${id}`, { method: "DELETE", token }); await loadAddrs(); } catch { /* ignore */ }
   }
   async function makeDefault(id: string) {
@@ -261,29 +288,29 @@ export default function AccountPage() {
       {/* my designs */}
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="eyebrow">ดีไซน์ของฉัน</div>
-          <Link href="/design" className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>+ ออกแบบใหม่</Link>
+          <div className="eyebrow">{L("ดีไซน์ของฉัน", "My designs", "マイデザイン")}</div>
+          <Link href="/design" className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>{L("+ ออกแบบใหม่", "+ New design", "+ 新しくデザイン")}<SoonTag href="/design" /></Link>
         </div>
         {designs.length === 0 ? (
-          <p className="asub" style={{ marginTop: 12 }}>ยังไม่มีดีไซน์ที่บันทึก — กด "ออกแบบใหม่" แล้วกดเซฟในหน้าดีไซเนอร์</p>
+          <p className="asub" style={{ marginTop: 12 }}>{L("ยังไม่มีดีไซน์ที่บันทึก — กด \"ออกแบบใหม่\" แล้วกดเซฟในหน้าดีไซเนอร์", "No saved designs yet — press \"New design\", then save in the designer.", "保存したデザインはまだありません。「新しくデザイン」を押し、デザイナーで保存してください。")}</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>
             {designs.map((d) => (
               <div key={d.id} style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--soft)" }}>
                 <div style={{ position: "relative", background: "#fff", aspectRatio: "4 / 3", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   {/\(\d+\s*ตัว\)/.test(d.name) && (
-                    <span style={{ position: "absolute", top: 6, left: 6, background: "var(--brand)", color: "var(--on-brand)", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>🧾 ออเดอร์ทีม</span>
+                    <span style={{ position: "absolute", top: 6, left: 6, background: "var(--brand)", color: "var(--on-brand)", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{L("🧾 ออเดอร์ทีม", "🧾 Team order", "🧾 チーム注文")}</span>
                   )}
-                  {d.previewUrl ? <img src={d.previewUrl} alt={d.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: "#94a3b8", fontSize: 12 }}>ไม่มีตัวอย่าง</span>}
+                  {d.previewUrl ? <img src={d.previewUrl} alt={d.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ color: "#94a3b8", fontSize: 12 }}>{L("ไม่มีตัวอย่าง", "No preview", "プレビューなし")}</span>}
                 </div>
                 <div style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</div>
-                  <div className="asub" style={{ fontSize: 11 }}>{d.mode === "reversible" ? "สองด้าน" : "ธรรมดา"} · {new Date(d.updatedAt).toLocaleDateString("th-TH")}</div>
+                  <div className="asub" style={{ fontSize: 11 }}>{d.kit ? L("ออกแบบเสื้อ", "3D studio", "3Dスタジオ") : L("ขั้นสูง", "Advanced", "上級")} · {d.mode === "reversible" ? L("สองด้าน", "Reversible", "リバーシブル") : L("ธรรมดา", "Standard", "通常")} · {new Date(d.updatedAt).toLocaleDateString(locale(lang))}</div>
                   <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                    <Link href={`/design?design=${d.id}`} className="linkbtn">เปิด</Link>
-                    <Link href={`/checkout?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>🧵 สั่งผลิต</Link>
-                    <button onClick={() => publishDesign(d)} className="linkbtn" style={{ color: "var(--brand)" }}>ขายในตลาด</button>
-                    <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>ลบ</button>
+                    <Link href={d.kit ? `/shop/${d.kit}?design=${d.id}` : `/design?design=${d.id}`} className="linkbtn">{L("เปิด", "Open", "開く")}</Link>
+                    <Link href={`/checkout?design=${d.id}`} className="linkbtn" style={{ color: "var(--brand)" }}>{L("🧵 สั่งผลิต", "🧵 Order", "🧵 注文する")}</Link>
+                    <button onClick={() => publishDesign(d)} className="linkbtn" style={{ color: "var(--brand)" }}>{L("ขายในตลาด", "Sell", "出品する")}</button>
+                    <button onClick={() => delDesign(d.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>{L("ลบ", "Delete", "削除")}</button>
                   </div>
                 </div>
               </div>
@@ -297,12 +324,12 @@ export default function AccountPage() {
       {/* purchased templates (owned assets) */}
       {(
         <div className="acard">
-          <div className="eyebrow">เทมเพลตที่ซื้อไว้</div>
+          <div className="eyebrow">{L("เทมเพลตที่ซื้อไว้", "Bought designs", "購入したデザイン")}</div>
           {purchases.length === 0 && (
             <div className="ax-acc-empty">
-              <b>ยังไม่มีลายที่ซื้อ</b>
-              <span>ลายจากดีไซเนอร์ ซื้อครั้งเดียวใช้กับทีมได้ตลอด</span>
-              <Link href="/templates" className="abtn ghost">ไปที่ตลาดลาย</Link>
+              <b>{L("ยังไม่มีลายที่ซื้อ", "No bought designs yet", "購入したデザインはまだありません")}</b>
+              <span>{L("ลายจากดีไซเนอร์ ซื้อครั้งเดียวใช้กับทีมได้ตลอด", "Buy a designer's pattern once and use it for your team for good.", "デザイナーの柄は一度購入すれば、チームでずっと使えます。")}</span>
+              <Link href="/templates" className="abtn ghost">{L("ไปที่ตลาดลาย", "Browse the marketplace", "マーケットを見る")}<SoonTag href="/templates" /></Link>
             </div>
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>
@@ -314,7 +341,7 @@ export default function AccountPage() {
                 <div style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                   <div className="asub" style={{ fontSize: 11 }}>{baht(p.price)}</div>
-                  <Link href={`/design?template=${p.id}`} className="linkbtn" style={{ display: "inline-block", marginTop: 6 }}>เปิดใช้</Link>
+                  <Link href={`/design?template=${p.id}`} className="linkbtn" style={{ display: "inline-block", marginTop: 6 }}>{L("เปิดใช้", "Use", "使う")}</Link>
                 </div>
               </div>
             ))}
@@ -328,8 +355,8 @@ export default function AccountPage() {
       {listings && listings.items.length > 0 ? (
         <div className="acard">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <div className="eyebrow">เทมเพลตที่ฉันขาย</div>
-            <div className="asub" style={{ fontSize: 12.5 }}>รายได้สะสม <b style={{ color: "var(--brand)" }}>{baht(listings.earnings.total)}</b> · ขายแล้ว {listings.earnings.sales} ครั้ง · หัก {listings.earnings.commissionPct}%</div>
+            <div className="eyebrow">{L("เทมเพลตที่ฉันขาย", "Templates I sell", "出品中のテンプレート")}</div>
+            <div className="asub" style={{ fontSize: 12.5 }}>{L("รายได้สะสม", "Earned so far", "累計収益")} <b style={{ color: "var(--brand)" }}>{baht(listings.earnings.total)}</b> · {L(`ขายแล้ว ${listings.earnings.sales} ครั้ง`, `${listings.earnings.sales} sold`, `販売数 ${listings.earnings.sales}`)} · {L(`หัก ${listings.earnings.commissionPct}%`, `${listings.earnings.commissionPct}% fee`, `手数料 ${listings.earnings.commissionPct}%`)}</div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginTop: 12 }}>
             {listings.items.map((t) => (
@@ -339,8 +366,8 @@ export default function AccountPage() {
                 </div>
                 <div style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
-                  <div className="asub" style={{ fontSize: 11 }}>{baht(t.price)} · {t.status === "published" ? "กำลังขาย" : t.status} · ขาย {t.salesCount}</div>
-                  <button onClick={() => unpublish(t.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)", marginTop: 6 }}>เอาออก</button>
+                  <div className="asub" style={{ fontSize: 11 }}>{baht(t.price)} · {t.status === "published" ? L("กำลังขาย", "On sale", "販売中") : t.status} · {L(`ขาย ${t.salesCount}`, `${t.salesCount} sold`, `販売 ${t.salesCount}`)}</div>
+                  <button onClick={() => unpublish(t.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)", marginTop: 6 }}>{L("เอาออก", "Remove", "取り下げる")}</button>
                 </div>
               </div>
             ))}
@@ -348,10 +375,10 @@ export default function AccountPage() {
         </div>
       ) : (
         <div className="acard">
-          <div className="eyebrow">เทมเพลตที่ฉันขาย</div>
+          <div className="eyebrow">{L("เทมเพลตที่ฉันขาย", "Templates I sell", "出品中のテンプレート")}</div>
           <div className="ax-acc-empty">
-            <b>ยังไม่ได้วางขายลาย</b>
-            <span>เปิดแท็บ "ดีไซน์ของฉัน" แล้วกด "ขายในตลาด" ที่ดีไซน์ที่ต้องการ</span>
+            <b>{L("ยังไม่ได้วางขายลาย", "Nothing on sale yet", "まだ出品していません")}</b>
+            <span>{L("เปิดแท็บ \"ดีไซน์ของฉัน\" แล้วกด \"ขายในตลาด\" ที่ดีไซน์ที่ต้องการ", "Open \"My designs\" and press \"Sell\" on the design you want to list.", "「マイデザイン」を開き、出品したいデザインの「出品する」を押してください。")}</span>
           </div>
         </div>
       )}
@@ -359,30 +386,32 @@ export default function AccountPage() {
 {tab === "profile" && (<>
       {/* profile edit */}
       <form className="acard" onSubmit={saveProfile}>
-        <div className="eyebrow">ข้อมูลส่วนตัว</div>
-        <label className="flabel">ชื่อ-นามสกุล</label>
+        <div className="eyebrow">{L("ข้อมูลส่วนตัว", "Your details", "プロフィール")}</div>
+        <label className="flabel">{L("ชื่อ-นามสกุล", "Full name", "お名前")}</label>
         <input className="ainput" value={pf.fullName} onChange={(e) => setPf({ ...pf, fullName: e.target.value })} />
         <div className="row2">
           <div>
-            <label className="flabel">เบอร์โทร</label>
+            <label className="flabel">{L("เบอร์โทร", "Phone", "電話番号")}</label>
             <input className="ainput" value={pf.phone} onChange={(e) => setPf({ ...pf, phone: e.target.value })} />
           </div>
           <div>
-            <label className="flabel">ภาษา</label>
+            {/* the language of their emails and notifications */}
+            <label className="flabel">{L("ภาษาของอีเมลและการแจ้งเตือน", "Language of emails and notices", "メール・通知の言語")}</label>
             <select className="aselect" value={pf.locale} onChange={(e) => setPf({ ...pf, locale: e.target.value })}>
               <option value="th">ไทย</option>
               <option value="en">English</option>
+              <option value="ja">日本語</option>
             </select>
           </div>
         </div>
-        <label className="flabel">ชื่อบริษัท / ทีม</label>
+        <label className="flabel">{L("ชื่อบริษัท / ทีม", "Team / company", "チーム名・会社名")}</label>
         <input className="ainput" value={pf.companyName} onChange={(e) => setPf({ ...pf, companyName: e.target.value })} />
-        <label className="flabel">แนะนำตัว (แสดงบนหน้าโปรไฟล์ดีไซเนอร์ของคุณ)</label>
-        <textarea className="ainput" rows={3} maxLength={500} placeholder="เช่น ออกแบบชุดกีฬาสไตล์มินิมอล ประสบการณ์ 5 ปี"
+        <label className="flabel">{L("แนะนำตัว (แสดงบนหน้าโปรไฟล์ดีไซเนอร์ของคุณ)", "About you (shown on your designer profile)", "自己紹介（デザイナープロフィールに表示）")}</label>
+        <textarea className="ainput" rows={3} maxLength={500} placeholder={L("เช่น ออกแบบชุดกีฬาสไตล์มินิมอล ประสบการณ์ 5 ปี", "e.g. Minimal sportswear designs, 5 years' experience", "例：ミニマルなスポーツウェアのデザイン、経験5年")}
           value={pf.bio} onChange={(e) => setPf({ ...pf, bio: e.target.value })} />
         {perr && <div className="err">{perr}</div>}
         {pmsg && <div className="ok">{pmsg}</div>}
-        <button className="abtn solid" style={{ marginTop: 18 }} disabled={psaving}>{psaving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}</button>
+        <button className="abtn solid" style={{ marginTop: 18 }} disabled={psaving}>{psaving ? L("กำลังบันทึก...", "Saving…", "保存中…") : L("บันทึกข้อมูล", "Save", "保存する")}</button>
       </form>
 
 </>)}
@@ -390,28 +419,28 @@ export default function AccountPage() {
       {/* addresses */}
       <div className="acard">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="eyebrow">ที่อยู่จัดส่ง</div>
-          {editing === null && <button onClick={startNew} className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>+ เพิ่มที่อยู่</button>}
+          <div className="eyebrow">{L("ที่อยู่จัดส่ง", "Delivery addresses", "お届け先")}</div>
+          {editing === null && <button onClick={startNew} className="abtn ghost" style={{ padding: "8px 16px", fontSize: 13 }}>+ {L("เพิ่มที่อยู่", "Add an address", "住所を追加")}</button>}
         </div>
 
-        {addrs.length === 0 && editing === null && <p className="asub" style={{ marginTop: 12 }}>ยังไม่มีที่อยู่จัดส่ง</p>}
+        {addrs.length === 0 && editing === null && <p className="asub" style={{ marginTop: 12 }}>{L("ยังไม่มีที่อยู่จัดส่ง", "No delivery address yet", "お届け先はまだありません")}</p>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
           {addrs.map((a) => (
             <div key={a.id} className="addr">
               <div style={{ fontWeight: 700, fontSize: 14 }}>
                 {a.recipient}{a.label ? <span className="asub" style={{ fontWeight: 400 }}> · {a.label}</span> : null}
-                {a.isDefault && <span className="chip on" style={{ marginLeft: 8 }}>ค่าเริ่มต้น</span>}
+                {a.isDefault && <span className="chip on" style={{ marginLeft: 8 }}>{L("ค่าเริ่มต้น", "Default", "既定")}</span>}
               </div>
               <div className="asub" style={{ marginTop: 4 }}>
                 {a.phone}<br />
                 {a.line1}{a.line2 ? ` ${a.line2}` : ""}<br />
-                {[a.district, a.province, a.postalCode].filter(Boolean).join(" ")} {a.country}
+                {[a.district, a.province, a.postalCode].filter(Boolean).join(" ")} {COUNTRY[a.country] ? L(...COUNTRY[a.country]) : a.country}
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-                {!a.isDefault && <button onClick={() => makeDefault(a.id)} className="linkbtn">ตั้งเป็นค่าเริ่มต้น</button>}
-                <button onClick={() => startEdit(a)} className="linkbtn">แก้ไข</button>
-                <button onClick={() => delAddr(a.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>ลบ</button>
+                {!a.isDefault && <button onClick={() => makeDefault(a.id)} className="linkbtn">{L("ตั้งเป็นค่าเริ่มต้น", "Make default", "既定にする")}</button>}
+                <button onClick={() => startEdit(a)} className="linkbtn">{L("แก้ไข", "Edit", "編集")}</button>
+                <button onClick={() => delAddr(a.id)} className="linkbtn" style={{ color: "var(--err, #ef4444)" }}>{L("ลบ", "Delete", "削除")}</button>
               </div>
             </div>
           ))}
@@ -419,49 +448,53 @@ export default function AccountPage() {
 
         {editing !== null && (
           <form onSubmit={saveAddr} style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{editing === "new" ? "เพิ่มที่อยู่ใหม่" : "แก้ไขที่อยู่"}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{editing === "new" ? L("เพิ่มที่อยู่ใหม่", "New address", "新しい住所") : L("แก้ไขที่อยู่", "Edit address", "住所を編集")}</div>
             <div className="row2">
               <div>
-                <label className="flabel">ชื่อผู้รับ *</label>
+                <label className="flabel">{L("ชื่อผู้รับ *", "Recipient *", "受取人 *")}</label>
                 <input className="ainput" required value={af.recipient} onChange={setA("recipient")} />
               </div>
               <div>
-                <label className="flabel">เบอร์โทร *</label>
+                <label className="flabel">{L("เบอร์โทร *", "Phone *", "電話番号 *")}</label>
                 <input className="ainput" required value={af.phone} onChange={setA("phone")} />
               </div>
             </div>
-            <label className="flabel">ที่อยู่ (บ้านเลขที่ ถนน) *</label>
+            <label className="flabel">{L("ที่อยู่ (บ้านเลขที่ ถนน) *", "Address (number, street) *", "住所（番地・通り）*")}</label>
             <input className="ainput" required value={af.line1} onChange={setA("line1")} />
-            <label className="flabel">ที่อยู่ (เพิ่มเติม)</label>
+            <label className="flabel">{L("ที่อยู่ (เพิ่มเติม)", "Address (more)", "住所（建物名など）")}</label>
             <input className="ainput" value={af.line2} onChange={setA("line2")} />
             <div className="row2">
               <div>
-                <label className="flabel">อำเภอ/เขต</label>
+                <label className="flabel">{L("อำเภอ/เขต", "District / city", "市区町村")}</label>
                 <input className="ainput" value={af.district} onChange={setA("district")} />
               </div>
               <div>
-                <label className="flabel">จังหวัด</label>
+                <label className="flabel">{L("จังหวัด", "Province / prefecture", "都道府県")}</label>
                 <input className="ainput" value={af.province} onChange={setA("province")} />
               </div>
             </div>
             <div className="row2">
               <div>
-                <label className="flabel">รหัสไปรษณีย์ *</label>
+                <label className="flabel">{L("รหัสไปรษณีย์ *", "Postcode *", "郵便番号 *")}</label>
                 <input className="ainput" required value={af.postalCode} onChange={setA("postalCode")} />
               </div>
               <div>
-                <label className="flabel">ป้ายกำกับ (บ้าน/ออฟฟิศ)</label>
+                <label className="flabel">{L("ป้ายกำกับ (บ้าน/ออฟฟิศ)", "Label (home / office)", "ラベル（自宅・勤務先）")}</label>
                 <input className="ainput" value={af.label} onChange={setA("label")} />
               </div>
             </div>
+            <label className="flabel">{L("ประเทศ", "Country", "国")}</label>
+            <select className="aselect" value={af.country} onChange={(e) => setAf({ ...af, country: e.target.value })}>
+              {Object.entries(COUNTRY).map(([c, names]) => <option key={c} value={c}>{L(...names)}</option>)}
+            </select>
             <label className="flabel" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={af.isDefault} onChange={(e) => setAf({ ...af, isDefault: e.target.checked })} />
-              ตั้งเป็นที่อยู่เริ่มต้น
+              {L("ตั้งเป็นที่อยู่เริ่มต้น", "Make this my default address", "既定のお届け先にする")}
             </label>
             {aerr && <div className="err">{aerr}</div>}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-              <button className="abtn solid">บันทึกที่อยู่</button>
-              <button type="button" onClick={() => setEditing(null)} className="abtn ghost">ยกเลิก</button>
+              <button className="abtn solid">{L("บันทึกที่อยู่", "Save address", "住所を保存")}</button>
+              <button type="button" onClick={() => setEditing(null)} className="abtn ghost">{L("ยกเลิก", "Cancel", "キャンセル")}</button>
             </div>
           </form>
         )}
@@ -469,8 +502,8 @@ export default function AccountPage() {
 
 </>)}
           {tab === "security" && (<>
-            <SecurityCard />
-            <TwoFactorCard />
+            <SecurityCard lang={lang} />
+            <TwoFactorCard lang={lang} />
           </>)}
         </div>
       </div>

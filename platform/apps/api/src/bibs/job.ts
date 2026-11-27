@@ -1,14 +1,17 @@
 import { zipSync } from "fflate";
 import { jobFolderName, safeName } from "../orders/nas-export";
-import { BibDesignSchema, type BibDesign, type RosterRow } from "./design";
-import { drawPiece, moveShapes, pngSize, CUT_COLOR, type Art, type Shape } from "./draw";
+import { BibDesignSchema, SPONSOR_SLOTS, type BibDesign, type RosterRow, type SponsorSlot } from "./design";
+import { drawPiece, moveShapes, pngSize, type Art, type Shape } from "./draw";
 import { orderSheetJpeg, orderSheetSvg, type SheetMeta } from "./order-sheet";
 import { printPdf } from "./print-pdf";
 import { BIB_SIZES, layoutFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Side } from "./template";
-import { parseFont, textShape, type FontRef } from "./text";
+import { FONT_NAMES, parseFont, type FontRef } from "./text";
 import { xlsx } from "./xlsx";
 import { fitPng, PRINT_LOGO_PX } from "./raster";
 import { AXIOM_MARK_PNG } from "./axiom-mark";
+
+/** a big job takes seconds of CPU: between bibs, the API answers its other customers */
+export const yieldToOthers = () => new Promise<void>(r => setImmediate(r));
 
 /** the Axiom mark beside a team logo, as the kit studio sizes them (0.12 against 0.15) */
 const MARK_SCALE = 0.8;
@@ -19,6 +22,17 @@ export function logoArt(d: BibDesign, png?: Uint8Array): Art["logo"] {
   if (d.axiomMark) { const mark = new Uint8Array(AXIOM_MARK_PNG); return { png: mark, ...pngSize(mark), tint: true, scale: MARK_SCALE }; }
   return undefined;
 }
+
+/** the sponsors' logos, scaled down to `maxPx` (print or preview) */
+export function sponsorArt(pngs: SponsorPngs | undefined, maxPx: number): Art["sponsors"] {
+  const out: NonNullable<Art["sponsors"]> = {};
+  for (const slot of SPONSOR_SLOTS) {
+    const b = pngs?.[slot];
+    if (b) { const png = fitPng(b, maxPx); out[slot] = { png, ...pngSize(png) }; }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+export type SponsorPngs = Partial<Record<SponsorSlot, Uint8Array>>;
 
 /**
  * A web-designed bib order as the same job package the graphics team makes:
@@ -53,20 +67,19 @@ const bySize = (roster: RosterRow[]) => {
   return [...m].filter(([, rows]) => rows.length) as [BibSize, RosterRow[]][];
 };
 
-const artFor = (d: BibDesign, r: RosterRow, logo?: Art["logo"], font?: FontRef): Art => ({
-  font: font ?? d.font, team: d.team, name: r.name, number: r.number, logo, show: d.show, logoLeft: d.logoLeft,
+const artFor = (d: BibDesign, r: RosterRow, logo?: Art["logo"], font?: FontRef, sponsors?: Art["sponsors"]): Art => ({
+  font: font ?? d.font, team: d.team, name: r.name, number: r.number, logo, show: d.show, logoLeft: d.logoLeft, logoCenter: d.logoCenter, numberCenter: d.numberCenter, sponsors,
 });
 
 /** one bib's print file */
-async function bibFile(d: BibDesign, size: BibSize, r: RosterRow, tag: string, logo: Art["logo"], font: FontRef | undefined, title: string) {
+async function bibFile(d: BibDesign, size: BibSize, r: RosterRow, logo: Art["logo"], font: FontRef | undefined, sponsors: Art["sponsors"], title: string) {
   const sides: Side[] = d.product === "bib_r" ? ["A", "B"] : ["A"];
   const { page, pieces } = layoutFor(size, sides);
   const shapes: Shape[] = [];
-  const t = textShape(tag, "label", { h: 4.5 }, { x: 10, top: 2.5 }, 1);
-  if (t) shapes.push({ kind: "path", segs: t.segs, fill: CUT_COLOR });
+  // no job label (order no, team, name, n/N) on the page: it ended up beside a piece in the print file
   for (const { side, part, piece } of pieces) {
     const look = d.sides[side === "A" ? 0 : 1];
-    shapes.push(...moveShapes(drawPiece(piece, part, look, artFor(d, r, logo, font), { ribs: ribsFor(size, part), cutLine: true, sizeMark: SIZE_NAME[size] }), piece.x, piece.y));
+    shapes.push(...moveShapes(drawPiece(piece, part, look, artFor(d, r, logo, font, sponsors), { ribs: ribsFor(size, part), cutLine: true, sizeMark: SIZE_NAME[size] }), piece.x, piece.y));
   }
   return printPdf(shapes, page.w, page.h, { title });
 }
@@ -77,15 +90,16 @@ export function teamFont(d: BibDesign, data?: Uint8Array): { font?: FontRef; not
   const f = data ? parseFont(data) : null;
   if (f) return { font: { font: f, fallback: d.font } };
   const ext = d.fontUrl.split(".").pop()!.toUpperCase();
-  return { note: `Team font (${ext}) could not be read: names and numbers are set in ${d.font === "block" ? "Anton" : d.font === "classic" ? "Sora" : "Noto Sans Thai"} - set them in the team's font` };
+  return { note: `Team font (${ext}) could not be read: names and numbers are set in ${FONT_NAMES[d.font]} - set them in the team's font` };
 }
 
-export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array; fontData?: Uint8Array }): Promise<BuiltJob> {
+export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array; fontData?: Uint8Array; sponsorPngs?: SponsorPngs }): Promise<BuiltJob> {
   const d = BibDesignSchema.parse(input);
   const tf = teamFont(d, meta.fontData);
   const sheetMeta: SheetMeta = { ...meta, notes: [...(meta.notes ?? []), ...(tf.note ? [tf.note] : [])] };
   const png = meta.logoPng ? fitPng(meta.logoPng, PRINT_LOGO_PX) : undefined;
   const logo = logoArt(d, png);
+  const sponsors = sponsorArt(meta.sponsorPngs, PRINT_LOGO_PX);
   const groups = bySize(d.roster);
   const counts = Object.fromEntries(groups.map(([z, rows]) => [z, rows.length])) as Partial<Record<BibSize, number>>;
   const name = jobFolderName({ orderNo: meta.ref, product: d.kit ? d.kit.code : d.product, sizes: groups.map(([z]) => z), team: d.team || null });
@@ -101,12 +115,12 @@ export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: 
       let file = safeName([nn, r.number && `No.${r.number}`, r.name].filter(Boolean).join(" "), 80);
       while (used.has(file)) file += "_";
       used.add(file);
-      const tag = [meta.ref, d.team, r.number && `No.${r.number}`, r.name, SIZE_NAME[size], `${i + 1}/${rows.length}`].filter(Boolean).join("   ");
-      const out = await bibFile(d, size, r, tag, logo, tf.font, `${name} ${SIZE_NAME[size]} ${file}`);
+      const out = await bibFile(d, size, r, logo, tf.font, sponsors, `${name} ${SIZE_NAME[size]} ${file}`);
       out.offChart.forEach(c => offChart.add(c));
       files[`${folder}/${file}_ol.pdf`] = out.pdf;
+      await yieldToOthers();
     }
-    const { svg } = orderSheetSvg(d, artFor(d, rows[0], logo, tf.font), size, counts, sheetMeta);
+    const { svg } = orderSheetSvg(d, artFor(d, rows[0], logo, tf.font, sponsors), size, counts, sheetMeta);
     const jpg = orderSheetJpeg(svg);
     files[`${name}/${name}_${safeName(SIZE_NAME[size])}.jpg`] = jpg;
     preview ??= jpg;

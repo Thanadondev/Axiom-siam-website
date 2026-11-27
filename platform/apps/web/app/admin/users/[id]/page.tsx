@@ -39,6 +39,10 @@ export default function AdminUserDetail() {
     if (reason === null) return;
     return patch({ suspended: true, suspendReason: reason });
   }
+  function confirmEmail() {
+    if (!confirm(`ยืนยันอีเมล ${u.email} ให้ลูกค้า?\n\nใช้เมื่อลูกค้าไม่ได้รับอีเมลยืนยัน และทีมงานแน่ใจแล้วว่าอีเมลนี้เป็นของลูกค้าจริง (เช่น โทรคุยแล้ว)`)) return;
+    return patch({ verified: true });
+  }
 
   if (loading || (!u && !err)) return <AppShell narrow><div className="acard"><p className="asub">กำลังโหลด…</p></div></AppShell>;
   if (me?.role !== "admin") return <AppShell narrow><div className="acard"><div className="eyebrow">403</div><h1 className="atitle">ไม่มีสิทธิ์เข้าถึง</h1></div></AppShell>;
@@ -70,6 +74,7 @@ export default function AdminUserDetail() {
             <select className="ainput" value={u.role} disabled={busy || isSelf} onChange={e => patch({ role: e.target.value })}>
               {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
+            {!u.isVerified && <button className="minibtn" disabled={busy} onClick={confirmEmail}>ยืนยันอีเมลให้ลูกค้า</button>}
             <button className={`minibtn${u.suspendedAt ? "" : " danger"}`} disabled={busy || isSelf} onClick={toggleSuspend}>
               {u.suspendedAt ? "ปลดระงับบัญชี" : "ระงับบัญชี"}
             </button>

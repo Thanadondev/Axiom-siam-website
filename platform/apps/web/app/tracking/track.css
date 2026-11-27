@@ -1,0 +1,129 @@
+/* /tracking: the factory picture with the line and a pin (components/FactoryTrack.tsx), the order card beside it */
+
+.tk { width: min(1480px, calc(100vw - 2 * clamp(16px, 3vw, 40px))); margin: 0 auto; padding: clamp(18px, 3vw, 36px) 0 clamp(36px, 5vw, 64px); }
+.tk-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 32px; margin-bottom: 18px; }
+.tk-title { margin: 6px 0 0; font-size: clamp(26px, 3.2vw, 44px); font-weight: 800; line-height: 1.15; letter-spacing: -.01em; }
+.tk-form { display: flex; gap: 8px; width: min(520px, 100%); }
+.tk-form .ax-field { flex: 1; min-width: 0; font-family: var(--ax-mono); letter-spacing: .02em; }
+.tk-form .ax-btn { flex: none; }
+.tk-err { margin: -6px 0 14px; }
+
+.tk-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+
+/* --- the map ------------------------------------------------------------------------------------------- */
+.tk-map { min-width: 0; }
+.tk-scroll { overflow-x: auto; overflow-y: hidden; border-radius: 14px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+.tk-scene { position: relative; width: 100%; min-width: 900px; aspect-ratio: 2560 / 1081; overflow: hidden; background: #cfd8e3; }
+.tk-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; user-select: none; }
+
+.tk-route { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.tk-route polyline { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.tk-route .done { stroke: var(--ax-accent); stroke-width: 6; opacity: .9; filter: drop-shadow(0 0 6px rgba(242, 101, 34, .8)); }
+
+/* the numbered signs are in the picture; these are their hit areas (and a ✓ once passed) */
+.tk-stop {
+  position: absolute; width: 3.2%; aspect-ratio: 1; translate: -50% -50%; padding: 0; border-radius: 50%; z-index: 2;
+  background: transparent; border: 2px solid transparent; cursor: zoom-in; transition: border-color .15s, box-shadow .15s;
+}
+.tk-stop:hover, .tk-stop:focus-visible, .tk-stop.hot { border-color: #fff; box-shadow: 0 0 0 4px rgba(242, 101, 34, .55); z-index: 4; }
+.tk-stop[data-state="now"] { cursor: zoom-in; }
+.tk-tick {
+  position: absolute; right: -6px; top: -6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  font: 800 12px/1 var(--ax-mono); color: var(--ax-accent-ink); background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.tk-stop[data-state="todo"]::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; background: rgba(13, 14, 16, .35); }
+.tk-tip {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; translate: -50% 0; padding: 5px 9px; border-radius: 8px; white-space: nowrap;
+  font: 600 12px/1.2 var(--ax-sans, inherit); font-style: normal; color: #fff; background: rgba(13, 14, 16, .92); pointer-events: none;
+  opacity: 0; transition: opacity .15s;
+}
+.tk-stop:hover .tk-tip, .tk-stop:focus-visible .tk-tip, .tk-stop.hot .tk-tip { opacity: 1; }
+
+/* the pin on the order's step: a pulsing dot with its label above */
+.tk-pin { position: absolute; z-index: 3; pointer-events: none; }
+.tk-pin { width: 3.6%; aspect-ratio: 1; translate: -50% -50%; }
+.tk-pin::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--ax-accent), 0 4px 14px rgba(0, 0, 0, .5); }
+.tk-pin::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--ax-accent); animation: tk-ping 1.8s ease-out infinite; }
+@keyframes tk-ping { from { transform: scale(1); opacity: .9; } to { transform: scale(2.2); opacity: 0; } }
+.tk-pill {
+  position: absolute; bottom: calc(100% + 12px); left: 50%; translate: -50% 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 14px 9px;
+  border-radius: 12px; white-space: nowrap; background: var(--ax-accent); color: var(--ax-accent-ink); box-shadow: 0 10px 24px rgba(0, 0, 0, .4);
+}
+.tk-pill::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -7px; border: 7px solid transparent; border-top-color: var(--ax-accent); }
+.tk-pin[data-right] .tk-pill { translate: -84% 0; }
+.tk-pin[data-right] .tk-pill::after { left: 84%; }
+.tk-pill small { font-family: var(--ax-mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+.tk-pill b { font-size: clamp(13px, 1.1vw, 16px); font-weight: 800; }
+
+/* up close */
+.tk-fly, .tk-near { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; opacity: 0; pointer-events: none; transition: opacity .35s ease; z-index: 5; cursor: zoom-out; }
+.tk-fly.on, .tk-near.on { opacity: 1; pointer-events: auto; }
+.tk-fly.on { transition: none; }
+.tk-map.near .tk-stop, .tk-map.near .tk-pin { opacity: 0; pointer-events: none; }
+
+.tk-mapbar { display: flex; justify-content: flex-end; min-height: 40px; align-items: center; padding: 8px 2px 0; font-size: 13.5px; color: var(--ax-mute); }
+.tk-back { border: 0; background: none; padding: 6px 0; color: var(--ax-ink); font: inherit; font-weight: 600; cursor: pointer; }
+.tk-back:hover { color: var(--ax-accent); }
+
+/* what happens at the step: under the map */
+.tk-left { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.tk-about { display: flex; flex-direction: column; gap: 4px; max-width: 760px; padding: 4px 2px; }
+.tk-about small { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ax-accent); }
+.tk-about b { font-size: clamp(20px, 2vw, 26px); font-weight: 800; line-height: 1.25; }
+.tk-about p { margin: 0; font-size: 15px; line-height: 1.7; color: var(--ax-ink-2); }
+.tk-legend { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 22px; font-size: 13.5px; color: var(--ax-ink-2); }
+.tk-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.tk-legend i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: rgba(13, 14, 16, .6); }
+.tk-legend i[data-k="done"] { background: var(--ax-accent); }
+.tk-legend i[data-k="now"] { background: var(--ax-accent); box-shadow: 0 0 0 4px rgba(242, 101, 34, .35); }
+.tk-legend p { flex-basis: 100%; margin: 0; font-size: 14px; color: var(--ax-mute); }
+
+/* --- the card ------------------------------------------------------------------------------------------ */
+.tk-card { display: flex; flex-direction: column; gap: 12px; padding: 18px 18px 16px; border-radius: 16px; background: var(--ax-panel); border: 1px solid var(--ax-line); }
+.tk-order { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--ax-mute); }
+.tk-order b { font-size: 15px; font-weight: 600; color: var(--ax-ink); }
+.tk-now { font-size: 21px; font-weight: 800; line-height: 1.3; color: var(--ax-accent); }
+.tk-now[data-closed] { color: var(--ax-ink-2); }
+.tk-bar { height: 6px; border-radius: 6px; background: var(--ax-line-2); overflow: hidden; }
+.tk-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ax-accent); transition: width .6s ease; }
+.tk-intro { margin: 0; font-size: 14.5px; line-height: 1.65; color: var(--ax-ink-2); }
+
+.tk-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tk-steps li { display: flex; align-items: baseline; gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--ax-line); font-size: 14px; color: var(--ax-ink-2); border-radius: 6px; transition: background .15s; }
+.tk-steps li:last-child { border-bottom: 0; }
+.tk-steps li.hot { background: rgba(255, 255, 255, .05); }
+.tk-steps .mark { flex: none; width: 22px; font-size: 12px; color: var(--ax-mute); }
+.tk-steps .name { flex: 1; min-width: 0; color: var(--ax-ink); }
+.tk-steps .when { flex: none; font-size: 12.5px; text-align: right; color: var(--ax-mute); }
+.tk-steps li[data-state="done"] .mark { color: var(--ax-accent); }
+.tk-steps li[data-state="now"] { background: rgba(242, 101, 34, .1); }
+.tk-steps li[data-state="now"] .mark, .tk-steps li[data-state="now"] .name, .tk-steps li[data-state="now"] .when { color: var(--ax-accent); font-weight: 700; }
+.tk-steps li[data-state="todo"] { opacity: .55; }
+
+.tk-ship { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--ax-line-2); font-size: 13px; color: var(--ax-ink-2); }
+.tk-ship .lbl { font-size: 12px; color: var(--ax-mute); }
+.tk-ship .state { font-size: 14px; font-weight: 700; color: var(--ax-ink); }
+.tk-ship[data-state="sent"] { border-color: var(--ax-accent); }
+.tk-ship[data-state="sent"] .state { color: var(--ax-accent); }
+.tk-ship[data-state="arrived"] .state::before { content: "✓ "; color: var(--ax-accent); }
+.tk-ship .parcel { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; }
+.tk-ship .parcel b { font-weight: 500; color: var(--ax-ink); }
+.tk-ship .parcel a { color: var(--ax-ink); text-decoration: underline; text-underline-offset: 3px; }
+.tk-ship .copy { min-height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--ax-line-2); background: none; color: var(--ax-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.tk-ship .copy:hover { border-color: var(--ax-accent); }
+.tk-meta { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ax-mute); }
+.tk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 1100px) {
+  .tk-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .tk { width: 100%; padding-top: 16px; }
+  .tk-top, .tk-err, .tk-card, .tk-mapbar, .tk-about { margin-left: 16px; margin-right: 16px; }
+  .tk-scroll { border-radius: 0; }
+  .tk-form { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-pin::after { animation: none; }
+  .tk-stop, .tk-tip, .tk-fly, .tk-near, .tk-bar i, .tk-steps li { transition: none; }
+}

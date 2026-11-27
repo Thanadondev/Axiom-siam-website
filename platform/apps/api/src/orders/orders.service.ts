@@ -2,7 +2,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { NotifyService } from "../notify/notify.service";
-import { priceOrder, priceTable, garmentOf, GARMENT_LABEL } from "./pricing";
+import { priceOrder, priceTable, garmentOf, fromDesigner, GARMENT_LABEL } from "./pricing";
+import { launchBlock, designerBlock } from "./launch";
 import { NEXT_STATUS as NEXT, canTransition, requiresTracking, STATUS_TH } from "./status";
 import type { CreateOrderDto, PriceQueryDto, UpdateOrderStatusDto, OrderListQueryDto, ProductionStepDto } from "./orders.dto";
 import { planStep, stepForStatus, stepName, SHIP_STEP } from "./production-steps";
@@ -13,7 +14,7 @@ import { ErpSyncService } from "../erp/erp-sync.service";
 import { snapshot as erpSnapshot } from "../erp/production-status";
 import { orderFileView } from "./order-files.service";
 import { tri, statusTitle, stepTitle } from "../notify/text";
-import { BibJobService, madeOnWeb as madeByWebsite, type BibSnapshot } from "../bibs/bib-jobs.service";
+import { BibJobService, madeOnWeb as madeByWebsite, designerPrintId, type BibSnapshot } from "../bibs/bib-jobs.service";
 import { kitOnBib } from "../bibs/kit";
 import { BIB_SIZES } from "../bibs/template";
 
@@ -33,6 +34,14 @@ function makeOrderNo() {
 @Injectable()
 export class OrdersService {
   private readonly log = new Logger("Orders");
+  /** print jobs being built after an order was placed, by order id */
+  private readonly building = new Map<string, Promise<void>>();
+
+  /** waits for an order's print job, if one is still being built (tests; a shutdown could too) */
+  async built(orderId: string): Promise<void> {
+    await this.building.get(orderId);
+  }
+
   constructor(
     private prisma: PrismaService,
     private settings: SettingsService,
@@ -67,12 +76,16 @@ export class OrdersService {
 
   // ---------- create ----------
   async create(userId: string, dto: CreateOrderDto) {
+    // an order only from an account whose email is confirmed: it's where the order's news and the slip go
+    const who = await this.prisma.user.findUnique({ where: { id: userId }, select: { isVerified: true } });
+    if (!who?.isVerified) throw new ForbiddenException({ code: "email_unverified", message: "กรุณายืนยันอีเมลก่อนสั่งผลิต" });
     const cfg = await this.settings.pricing();
     // a bib designed on the web: one piece per name on its list, counted by size
     const bib = dto.bib ?? null;
     const bibLines = bib ? BIB_SIZES.map(size => ({ size, qty: bib.roster.filter(r => r.size === size).length })) : null;
     if (bib && !this.bibs) throw new ServiceUnavailableException("ยังสั่งเอี๊ยมที่ออกแบบบนเว็บไม่ได้ในขณะนี้");
     if (bib && dto.logoUrl) await this.bibs!.logo(dto.logoUrl); // there, and a PNG, before anything is made
+    if (bib) await this.bibs!.sponsors(bib); // and the sponsors' logos
     const lines: { size: string; qty: number }[] = (bibLines ?? dto.lines ?? []).filter(l => l.qty > 0);
     if (lines.length === 0) throw new BadRequestException("กรุณาระบุจำนวนอย่างน้อย 1 ไซส์");
     const totalQty = lines.reduce((s, l) => s + l.qty, 0);
@@ -103,7 +116,23 @@ export class OrdersService {
     // the garment is read from the design itself, never taken from the request
     // (a file order says what it's for: the team checks the file before production)
     const garment = bib ? bib.product : file && dto.product ? dto.product : garmentOf(snapshot);
+    // an advanced design is made by the website once it carries its print data (the designer sends it on "สั่งผลิต")
+    const designerPrint = !bib && !file ? designerPrintId(snapshot) : null;
+    const closed = launchBlock(garment) ?? designerBlock(!bib && !file && !!fromDesigner(snapshot) && !designerPrint);
+    if (closed) throw new BadRequestException(closed);
+    // XXL (3L) is cut only on the bib's pattern
+    if (garment !== "bib_n" && garment !== "bib_r" && (lines.some(l => l.size === "XXL") || dto.roster?.some(r => r.size === "XXL"))) {
+      throw new BadRequestException("ไซซ์ XXL มีเฉพาะเอี๊ยม");
+    }
     // the schema requires fabric and trim unless it's a bib (file or web-designed), whose set price ignores them
+    // every name on the order must be one the designer drew: checked now, not when the job is built
+    if (designerPrint) {
+      if (!this.bibs) throw new ServiceUnavailableException("ยังสร้างไฟล์งานไม่ได้ ลองใหม่อีกครั้ง");
+      await this.bibs.checkDesigner(snapshot, lines.map(l => ({
+        size: l.size, qty: l.qty,
+        roster: (dto.roster ?? []).filter(r => r.size === l.size).map(r => ({ playerName: r.playerName ?? null, number: r.number ?? null, qty: r.qty ?? 1 })),
+      })));
+    }
     const p = priceOrder({ totalQty, fabric: dto.fabric ?? "mesh", trim: dto.trim ?? "none", reversible: dto.reversible, garment, shippingFee: agent?.fee }, cfg);
     const fabricSummary = file
       ? `${GARMENT_LABEL[garment]} · ไฟล์ลูกค้า`
@@ -156,26 +185,35 @@ export class OrdersService {
       if (rows.length) await this.prisma.orderRoster.createMany({ data: rows });
     }
 
-    // a web-designed bib: build its print files now, so the team (and the NAS, once paid) gets them like an upload.
+    // a web-designed bib: its print files are built, so the team (and the NAS, once paid) gets them like an upload.
+    // So is a kit from the kit studio cut on the bib template, and an advanced design with its print data.
+    // Built after the customer has their answer (200 bibs take ~10 s); the team is told once it's done.
     // A failure doesn't lose the order: the team is told, and builds it again from the order board.
-    // So is a kit from the kit studio that is cut on the bib template (the basketball singlet).
     const kitBib = !bib && !file && kitOnBib(snapshot) && !!this.bibs;
-    let built = true;
-    if (bib || kitBib) {
-      try { await this.bibs!.attach(order.id); } catch (e: any) {
-        built = false;
-        this.log.error(`${order.orderNo}: building the ${bib ? "bib" : "kit"} job failed: ${e?.message ?? e}`);
-      }
-    }
-
-    await this.notify.pushAdmins(
+    const designerBib = !!designerPrint && !!this.bibs;
+    const tellTeam = (built: boolean) => this.notify.pushAdmins(
       file ? `ออเดอร์ใหม่ ${order.orderNo} · ไฟล์ลูกค้า (ต้องตรวจไฟล์)`
         : bib ? `ออเดอร์ใหม่ ${order.orderNo} · เอี๊ยมออกแบบบนเว็บ${built ? "" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : kitBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบบนเว็บ (${(snapshot as { kit: string }).kit})${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
+        : designerBib ? `ออเดอร์ใหม่ ${order.orderNo} · ออกแบบขั้นสูง${built ? " · สร้างไฟล์งานแล้ว" : " (สร้างไฟล์งานไม่สำเร็จ — กดสร้างใหม่)"}`
         : `ออเดอร์ใหม่ ${order.orderNo}`,
       `${totalQty} ตัว · ${fabricSummary} · ฿${p.total.toLocaleString()}`,
       `/orders/${order.id}`,
     );
+    if (bib || kitBib || designerBib) {
+      const job = (async () => {
+        let built = true;
+        try { await this.bibs!.attach(order.id); } catch (e: any) {
+          built = false;
+          this.log.error(`${order.orderNo}: building the ${bib ? "bib" : designerBib ? "advanced design" : "kit"} job failed: ${e?.message ?? e}`);
+        }
+        await tellTeam(built).catch(e => this.log.warn(`${order.orderNo}: telling the team failed: ${e?.message ?? e}`));
+      })();
+      this.building.set(order.id, job);
+      void job.finally(() => this.building.delete(order.id));
+    } else {
+      await tellTeam(true);
+    }
 
     return { ...order, items: undefined, breakdown: p, message: `สร้างออเดอร์ ${order.orderNo} แล้ว` };
   }
@@ -407,9 +445,11 @@ export class OrdersService {
         })
       : [];
     const look = new Map(snaps.map(s => [s.orderId, kitLook(s.designSnapshot)]));
+    // whose print files: the website's (a design made on the site) or the customer's own zip
+    const web = new Set(snaps.filter(s => madeByWebsite(s.designSnapshot)).map(s => s.orderId));
     return {
       items: items.map(({ payments, refunds, files, ...o }) => ({
-        ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null,
+        ...o, balance: ledger(o, payments, refunds), look: look.get(o.id) ?? null, webMade: web.has(o.id),
         // a bib order by file: the board shows the job's picture and the zip instead of a 3D shirt
         file: files?.[0] ? orderFileView(files[0], Date.now(), true) : null,
       })),

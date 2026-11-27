@@ -15,6 +15,8 @@ export const UpdateUserSchema = z.object({
   role: z.enum(["guest", "customer", "staff", "production", "admin"]).optional(),
   suspended: z.boolean().optional(),
   suspendReason: z.preprocess(emptyToUndef, z.string().max(300).optional()),
+  // the customer's email confirmed by the team (the link didn't reach them); never undone from here
+  verified: z.literal(true).optional(),
 });
 export type UpdateUserDto = z.infer<typeof UpdateUserSchema>;
 

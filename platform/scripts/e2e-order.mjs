@@ -15,6 +15,8 @@
  *   KEEP=1                               → don't cancel the order at the end
  */
 
+import { confirmEmail, bibsOnlyRefusal, OPEN_ALL_HINT } from "./e2e-confirm.mjs";
+
 const API = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "") + "/api/v1";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -95,6 +97,8 @@ async function main() {
   const login = await api("/auth/login", { method: "POST", body: { email, password } });
   if (!check("เข้าสู่ระบบ", login.ok && !!login.data.accessToken, `HTTP ${login.status}: ${JSON.stringify(login.data)}`)) return finish();
   const token = login.data.accessToken;
+  // orders need a confirmed email
+  try { ok("ยืนยันอีเมล", await confirmEmail(api, email)); } catch (e) { check("ยืนยันอีเมล", false, e.message); return finish(); }
 
   // ---------- 2. pricing is public ----------
   section("2. ราคา (public)");
@@ -119,8 +123,13 @@ async function main() {
   eq("60 ตัว → ขั้น ฿295", big.data.tierPrice, 295);
   eq("60 ตัว → ส่งฟรี", big.data.shippingFee, 0);
 
+  // the design below comes from the designer, which makes bibs: one side = an N-bib, one price
+  const bibQuote = await api(`/orders/quote?totalQty=${totalQty}&fabric=${SPEC.fabric}&trim=${SPEC.trim}&reversible=false&garment=bib_n`);
+  eq("N-bib ราคา/ตัว (ราคาเดียว)", bibQuote.data.unitPrice, 252);
+  eq("N-bib ยอดรวม 5 ตัว + ค่าส่ง", bibQuote.data.total, 5 * 252 + bibQuote.data.shippingFee);
+
   // ---------- 3. design ----------
-  section("3. ดีไซน์ (จำลองปุ่ม 'สั่งผลิตเลย')");
+  section("3. ดีไซน์ (จำลองปุ่ม 'สั่งผลิตเลย') — แบบจากหน้าออกแบบ = เอี๊ยม N-bib");
   const design = await api("/designs", {
     method: "POST", token,
     body: {
@@ -147,8 +156,8 @@ async function main() {
   const noLines = await api("/orders", { method: "POST", token, body: { designId, ...SPEC, lines: [], roster: [], shippingAddressId: addressId } });
   check("ไม่มีไซส์ → ถูกปฏิเสธ", noLines.status === 400, `ได้ HTTP ${noLines.status}`);
 
-  const badSize = await api("/orders", { method: "POST", token, body: { designId, ...SPEC, lines: [{ size: "XXL", qty: 1 }], shippingAddressId: addressId } });
-  check("ไซส์ที่ไม่มีจริง (XXL) → ถูกปฏิเสธ", badSize.status === 400, `ได้ HTTP ${badSize.status}`);
+  const badSize = await api("/orders", { method: "POST", token, body: { designId, ...SPEC, lines: [{ size: "XXXL", qty: 1 }], shippingAddressId: addressId } });
+  check("ไซส์ที่ไม่มีจริง (XXXL) → ถูกปฏิเสธ", badSize.status === 400, `ได้ HTTP ${badSize.status}`);
 
   const stolenAddr = await api("/orders", { method: "POST", token, body: { designId, ...SPEC, lines: LINES, shippingAddressId: "11111111-2222-4333-8444-555555555555" } });
   check("ที่อยู่ของคนอื่น → ถูกปฏิเสธ", stolenAddr.status === 400, `ได้ HTTP ${stolenAddr.status}`);
@@ -162,10 +171,15 @@ async function main() {
     method: "POST", token,
     body: { designId, ...SPEC, lines: LINES, roster: ROSTER.map(r => ({ ...r, qty: 1 })), shippingAddressId: addressId, note: "ทดสอบอัตโนมัติ" },
   });
+  if (bibsOnlyRefusal(order)) {
+    ok("ช่วงเปิดเฉพาะ Bib: API ไม่รับออเดอร์นี้ (ถูกต้อง)", order.data.message);
+    results.push(`  \x1b[33m⚠ ${OPEN_ALL_HINT}\x1b[0m`);
+    return finish();
+  }
   if (!check("สร้างออเดอร์", order.ok, JSON.stringify(order.data))) return finish();
   const orderId = order.data.id;
   ok("เลขออเดอร์", order.data.orderNo);
-  eq("ยอดรวมตรงกับที่เสนอราคาไว้", order.data.total, quote.data.total);
+  eq("ยอดรวมตรงกับที่เสนอราคาไว้ (N-bib)", order.data.total, bibQuote.data.total);
   eq("สถานะเริ่มต้น", order.data.status, "pending");
 
   // ---------- 7. read it back ----------
@@ -190,40 +204,24 @@ async function main() {
   check("ออเดอร์โผล่ในรายการของฉัน", mine.ok && mine.data.some(x => x.id === orderId));
 
   // ---------- 7b. payments ----------
-  section("7b. ชำระเงิน (Stripe)");
+  // a bank transfer (PromptPay QR or the account number), then a slip the team checks; no slip is
+  // uploaded here, so nothing is written to disk
+  section("7b. ชำระเงิน (โอนเงิน + สลิป)");
   const payStatus = await api("/payments/status");
-  check("ถามสถานะระบบชำระเงินได้", payStatus.ok);
+  check("ถามสถานะระบบชำระเงินได้", payStatus.ok && payStatus.data.method === "bank_transfer", JSON.stringify(payStatus.data));
+  const st = await api(`/payments/orders/${orderId}/state`, { token });
+  eq("ออเดอร์ยังไม่จ่าย", st.data.orderStatus, "pending");
+  eq("ยังไม่มีสลิป", st.data.paymentStatus, "none");
+  eq("ยอดที่ต้องจ่าย = ยอดออเดอร์", st.data.due, order.data.total);
+  const stealState = await api(`/payments/orders/${orderId}/state`, { token: "not.a.valid.token" });
+  check("token ปลอมดูสถานะการชำระเงินไม่ได้", stealState.status === 401, `ได้ HTTP ${stealState.status}`);
   if (!payStatus.data.enabled) {
-    results.push("  \x1b[33m⚠ ข้าม — ยังไม่ได้ตั้ง STRIPE_SECRET_KEY ใน .env\x1b[0m");
+    results.push("  \x1b[33m⚠ ข้าม QR/บัญชี — ยังไม่ได้ตั้งบัญชีรับเงินในหน้าแอดมิน\x1b[0m");
   } else {
-    ok("Stripe พร้อมใช้งาน", payStatus.data.livemode ? "\x1b[31mLIVE MODE\x1b[0m" : "test mode");
-    if (payStatus.data.livemode) {
-      results.push("  \x1b[31m✗ หยุด: กำลังใช้คีย์ LIVE — อย่ารัน e2e กับเงินจริง\x1b[0m");
-      return finish();
-    }
-    const co = await api(`/payments/orders/${orderId}/checkout`, { method: "POST", token });
-    check("สร้าง Checkout Session", co.ok, JSON.stringify(co.data));
-    check("ได้ URL หน้าชำระเงินของ Stripe", /^https:\/\/checkout\.stripe\.com\//.test(co.data.url ?? ""), `url = ${co.data.url}`);
-    eq("ยอดที่ส่งไป Stripe = ยอดออเดอร์", co.data.amount, quote.data.total);
-
-    const st = await api(`/payments/orders/${orderId}/state`, { token });
-    eq("ออเดอร์ยังไม่ถูกทำเป็น paid ก่อนจ่ายจริง", st.data.orderStatus, "pending");
-    eq("มี payment รอชำระ", st.data.paymentStatus, "pending");
-
-    const stealState = await api(`/payments/orders/${orderId}/state`, { token: "not.a.valid.token" });
-    check("token ปลอมดูสถานะการชำระเงินไม่ได้", stealState.status === 401, `ได้ HTTP ${stealState.status}`);
-
-    const badSig = await fetch(API + "/payments/webhook", {
-      method: "POST", headers: { "Content-Type": "application/json", "stripe-signature": "t=1,v1=deadbeef" },
-      body: JSON.stringify({ type: "checkout.session.completed" }),
-    });
-    check("webhook ที่ลายเซ็นผิด → ถูกปฏิเสธ", badSig.status === 400, `ได้ HTTP ${badSig.status}`);
-
-    const noSig = await api("/payments/webhook", { method: "POST", body: { type: "checkout.session.completed" } });
-    check("webhook ที่ไม่มีลายเซ็น → ถูกปฏิเสธ", noSig.status === 400, `ได้ HTTP ${noSig.status}`);
-
-    const stillPending = await api(`/orders/${orderId}`, { token });
-    eq("ออเดอร์ยัง pending หลัง webhook ปลอม", stillPending.data.status, "pending");
+    const how = await api(`/payments/orders/${orderId}/methods`, { token });
+    check("ได้ข้อมูลโอนเงิน (QR หรือเลขบัญชี)", how.ok && (!!how.data.qrPayload || !!how.data.bank?.accountNo), JSON.stringify(how.data));
+    eq("ยอดใน QR = ยอดออเดอร์", how.data.amount, order.data.total);
+    eq("เลขออเดอร์ตรงกัน", how.data.orderNo, order.data.orderNo);
   }
 
   // ---------- 8. other users cannot read it ----------

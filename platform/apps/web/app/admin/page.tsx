@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
 import SlipReview from "../../components/SlipReview";
+import AiAdmin from "../../components/AiAdmin";
 import { useAuth } from "../../lib/auth-context";
 import { apiFetch } from "../../lib/api";
 import { STEPS, SHIP_STEP } from "../../lib/production-steps";
@@ -11,7 +12,7 @@ import { STEPS, SHIP_STEP } from "../../lib/production-steps";
 const baht = (n: number) => "฿" + (n ?? 0).toLocaleString("th-TH");
 const dt = (s: string) => new Date(s).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" });
 
-type Tab = "dash" | "payments" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "settings";
+type Tab = "dash" | "payments" | "orders" | "market" | "reports" | "users" | "payouts" | "quotes" | "terms" | "catalog" | "analytics" | "audit" | "ai" | "settings";
 const TABS: { id: Tab; label: string }[] = [
   { id: "dash", label: "📊 ภาพรวม" },
   { id: "payments", label: "🧾 ตรวจสลิป" },
@@ -25,6 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "catalog", label: "🎨 ผ้า/ไซส์/สี" },
   { id: "analytics", label: "📈 วิเคราะห์เชิงลึก" },
   { id: "audit", label: "🕵️ Audit trail" },
+  { id: "ai", label: "✨ AI" },
   { id: "settings", label: "⚙️ ตั้งค่า" },
 ];
 
@@ -414,6 +416,15 @@ export default function AdminPage() {
       {/* ---------------- DASHBOARD ---------------- */}
       {tab === "dash" && stats && (
         <>
+          {stats.mail?.warnings?.length > 0 && (
+            <div className="acard verify-note" role="alert">
+              <b>⚠ ระบบอีเมลยังใช้งานไม่ได้ — ลูกค้าใหม่ยืนยันอีเมลและสั่งผลิตไม่ได้</b>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {stats.mail.warnings.map((w: string) => <li key={w}>{w}</li>)}
+              </ul>
+              <p className="dim">ระหว่างนี้ยืนยันอีเมลให้ลูกค้าได้ที่หน้าสมาชิก (ปุ่ม &quot;ยืนยันอีเมลให้ลูกค้า&quot;)</p>
+            </div>
+          )}
           <div className="acard">
             <h2 className="ah2">ภาพรวม</h2>
             <div className="kpigrid">
@@ -504,6 +515,8 @@ export default function AdminPage() {
       {/* ---------------- SLIP REVIEW ---------------- */}
       {/* approving a slip changes revenue, so refresh the dashboard's numbers too */}
       {tab === "payments" && token && <SlipReview token={token} onChange={() => loadTab("dash")} />}
+
+      {tab === "ai" && token && <AiAdmin token={token} />}
 
       {tab === "orders" && (
         <div className="acard">

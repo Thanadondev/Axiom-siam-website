@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, type OnModuleInit, type OnModuleDestroy } from "@nestjs/common";
-import { createWriteStream, promises as fs } from "fs";
+import { createHash } from "crypto";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
 import { join } from "path";
 import { pipeline } from "stream/promises";
 import { PrismaService } from "../prisma/prisma.service";
@@ -17,7 +18,38 @@ import { KITS_ON_BIB, kitOnBib } from "../bibs/kit";
  * The zip as it came (not unzipped). Written as ".part" then renamed, so the team
  * never opens half a file. When the NAS is away, it's tried again every couple of
  * minutes; the production board can also send it now. Off when NAS_JOBS_DIR is unset.
+ *
+ * A web-designed job built again after it went (POST /admin/orders/:id/bib-job) has
+ * the same name: its zip replaces the one in the folder, and the print manager sees
+ * the new zip and makes the print files again.
+ *
+ * An order that ships to the agent in Japan also gets a note beside its zip
+ * (AGENT_NOTE), so whoever packs it from the job folder sees where it goes.
  */
+
+/** the note in an agent order's job folder; the print manager reads only the zips */
+export const AGENT_NOTE = "ส่งถึง - ตัวแทนญี่ปุ่น.txt";
+
+export function agentNote(orderNo: string, d: { name?: string; phone?: string; address?: string }) {
+  return [
+    `${orderNo} — ส่งรวมผ่านตัวแทนในญี่ปุ่น (ไม่ส่งถึงลูกค้าโดยตรง)`,
+    `日本の代理店へまとめて発送`,
+    "",
+    [d.name, d.phone].filter(Boolean).join(" · "),
+    d.address ?? "",
+    "",
+  ].join("\r\n"); // Windows line ends: it is opened in Notepad on the team's PCs
+}
+
+/** the file at `path` already holds these bytes (same size and SHA-256) */
+async function sameFile(path: string, f: { bytes: number; sha256: string | null }) {
+  const st = await fs.stat(path).catch(() => null);
+  if (!st?.isFile() || st.size !== f.bytes) return false;
+  if (!f.sha256) return true;
+  const h = createHash("sha256");
+  await pipeline(createReadStream(path), h);
+  return h.digest("hex") === f.sha256;
+}
 
 /** sizes as the team writes them in job names: "S", "ML", "SML XL", "XL"; then XXL and the specials (SPM, SPL) */
 export function sizeLabel(sizes: string[]) {
@@ -89,10 +121,10 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     const o = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: {
-        orderNo: true, status: true,
+        orderNo: true, status: true, delivery: true,
         user: { select: { fullName: true, companyName: true } },
         items: { select: { size: true, qty: true, designSnapshot: true } },
-        files: { select: { id: true, name: true, path: true, nasAt: true, nasPath: true }, orderBy: { createdAt: "asc" } },
+        files: { select: { id: true, name: true, path: true, bytes: true, sha256: true, createdAt: true, nasAt: true, nasPath: true }, orderBy: { createdAt: "asc" } },
       },
     });
     if (!o) throw new NotFoundException("ไม่พบออเดอร์");
@@ -100,7 +132,10 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
     if (!o.files.length) return { ok: false, error: "ออเดอร์นี้ไม่มีไฟล์งาน" };
 
     const snap = o.items[0]?.designSnapshot as { product?: string; team?: string } | null;
-    const folder = jobFolderName({
+    // a job the website built ("AX-… R-bib (M) team") names its own folder: an advanced design keeps
+    // its product and team in its print data, not in the order, which only knew the customer's company
+    const built = [...o.files].reverse().find(f => f.name.startsWith(`${o.orderNo} `) && /\.zip$/i.test(f.name));
+    const folder = built ? safeName(built.name.replace(/\.zip$/i, "")) : jobFolderName({
       orderNo: o.orderNo,
       // a kit from the kit studio cut on the bib template is named by its code ("BK-03")
       product: snap?.product ?? (kitOnBib(snap) ? KITS_ON_BIB[snap.kit.toLowerCase()].code : null),
@@ -114,23 +149,40 @@ export class NasExportService implements OnModuleInit, OnModuleDestroy {
       const dir = join(this.root, folder);
       await fs.mkdir(dir, { recursive: true });
       let copied = 0;
+      const sent = o.files.filter(f => f.nasAt);
       for (const f of o.files) {
         if (f.nasAt) continue;
-        const name = safeName(f.name, 150).replace(/(\.zip)?$/i, ".zip");
+        const base = safeName(f.name, 150).replace(/(\.zip)?$/i, ".zip");
+        // a name one of this order's files already went under: a build made after that one
+        // went replaces it; a file that came with it (two uploads, one name) goes beside it
+        let name = base;
+        for (let n = 2; ; n++) {
+          const holder = sent.find(x => x.nasPath === join(folder, name));
+          if (!holder || holder.nasAt! < f.createdAt) break;
+          name = base.replace(/\.zip$/i, ` (${n}).zip`);
+        }
         const dest = join(dir, name);
-        const exists = await fs.stat(dest).then(s => s.isFile(), () => false);
-        if (!exists) {
+        if (!(await sameFile(dest, f))) {
+          const replacing = await fs.stat(dest).then(s => s.isFile(), () => false);
           const part = `${dest}.part`;
           try {
             await pipeline(await this.files.openStored(f.path), createWriteStream(part));
-            await fs.rename(part, dest);
+            await fs.rename(part, dest); // over the old zip, if there is one
           } catch (e) {
             await fs.rm(part, { force: true });
             throw e;
           }
+          if (replacing) this.log.log(`${o.orderNo}: ${name} replaced with a newer build`);
           copied++;
         }
-        await this.prisma.orderFile.update({ where: { id: f.id }, data: { nasPath: join(folder, name), nasAt: new Date() } });
+        const nasAt = new Date(), nasPath = join(folder, name);
+        await this.prisma.orderFile.update({ where: { id: f.id }, data: { nasPath, nasAt } });
+        sent.push({ ...f, nasPath, nasAt });
+      }
+      const d = o.delivery as { mode?: string; name?: string; phone?: string; address?: string } | null;
+      if (d?.mode === "agent") {
+        const note = join(dir, AGENT_NOTE), text = agentNote(o.orderNo, d);
+        if ((await fs.readFile(note, "utf8").catch(() => "")) !== text) await fs.writeFile(note, text, "utf8");
       }
       this.log.log(`${o.orderNo} → ${folder} (${copied} file${copied === 1 ? "" : "s"})`);
       return { ok: true, folder, copied };

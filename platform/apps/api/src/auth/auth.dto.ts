@@ -8,6 +8,8 @@ export const RegisterSchema = z.object({
   fullName: z.preprocess(emptyToUndef, z.string().min(1, "กรุณากรอกชื่อ-นามสกุล").max(120)),
   phone: z.preprocess(emptyToUndef, z.string().max(40).optional()),
   companyName: z.preprocess(emptyToUndef, z.string().max(160).optional()),
+  // the language they signed up in: their emails and notifications come in it
+  locale: z.enum(["th", "en", "ja"]).optional(),
 });
 export type RegisterDto = z.infer<typeof RegisterSchema>;
 
@@ -25,7 +27,7 @@ export const TotpCodeSchema = z.object({
 export type TotpCodeDto = z.infer<typeof TotpCodeSchema>;
 
 export const TotpDisableSchema = z.object({
-  // optional: Google-only accounts have no password, the code alone is proof
+  // optional: an account without a password has the code alone as proof
   password: z.string().optional().default(""),
   code: z.string().min(6).max(20),
 });
@@ -39,11 +41,10 @@ export type SetPasswordDto = z.infer<typeof SetPasswordSchema>;
 
 export const VerifyEmailSchema = z.object({ token: z.string().min(10) });
 
-export const GoogleSignInSchema = z.object({ credential: z.string().min(20, "credential ไม่ถูกต้อง") });
-export type GoogleSignInDto = z.infer<typeof GoogleSignInSchema>;
 export type VerifyEmailDto = z.infer<typeof VerifyEmailSchema>;
 
-export const RequestResetSchema = z.object({ email: z.string().email() });
+// locale: the language of the page they asked from, so the email reads the same as the page
+export const RequestResetSchema = z.object({ email: z.string().email(), locale: z.enum(["th", "en", "ja"]).optional() });
 export type RequestResetDto = z.infer<typeof RequestResetSchema>;
 
 export const ResetPasswordSchema = z.object({

@@ -10,6 +10,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <!-- All Google Fonts (SIL Open Font License) — free for commercial use, incl. printing on garments. -->
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Oswald:wght@400;600;700&family=Teko:wght@500;700&family=Montserrat:wght@600;800&family=Kanit:wght@400;600;700&family=Prompt:wght@400;600;700&family=Sarabun:wght@400;700&family=Pridi:wght@600;700&family=Chakra+Petch:wght@600;700&family=Sora:wght@400;600;700;800&family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet" />
+<!-- script / hand-lettered team names -->
+<link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Yellowtail&family=Lobster&family=Pacifico&family=Permanent+Marker&family=Damion&display=swap" rel="stylesheet" />
 <!-- athletic / varsity display faces -->
 <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Black+Ops+One&family=Russo+One&family=Staatliches&family=Squada+One&family=Archivo+Black&family=Fjalla+One&family=Bungee&family=Big+Shoulders+Display:wght@700;800&family=Saira+Condensed:wght@600;700;800&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <!-- more Thai faces -->
@@ -71,6 +73,12 @@
   .railsep{width:26px;height:1px;background:var(--line2);margin:4px 0}
 
   /* canvas center */
+  .ruler{position:absolute;z-index:5;background:#141619;cursor:default}
+  #rulerX{left:18px;top:0;height:18px;cursor:s-resize}
+  #rulerY{left:0;top:18px;width:18px;cursor:e-resize}
+  #rulerCorner{left:0;top:0;width:18px;height:18px;border-right:1px solid #2a2d31;border-bottom:1px solid #2a2d31;cursor:pointer}
+  html.norulers .ruler{display:none}
+  html.previewmode .ruler{display:none}
   .stage{flex:1;position:relative;overflow:hidden;background:
     repeating-conic-gradient(#131417 0% 25%, #17191c 0% 50%) 50%/22px 22px}
   #c{position:absolute;top:0;left:0}
@@ -95,7 +103,19 @@
   .btnrow{display:flex;gap:6px;flex-wrap:wrap}
   .mini{background:var(--tool);border:1px solid var(--line2);border-radius:6px;padding:7px;font-size:13px;flex:1;display:flex;align-items:center;justify-content:center;min-width:34px}
   .mini:hover{background:var(--toolhover)}
-  .mini.danger:hover{background:var(--danger);border-color:var(--danger)}
+  .mini.on{border-color:var(--accent);color:var(--accent2)}
+.aibox{background:linear-gradient(135deg,rgba(242,101,34,.12),rgba(124,58,237,.12));border:1px solid var(--line2);border-radius:9px;padding:9px;margin-bottom:10px}
+.aichip{background:var(--panel2);border:1px solid var(--line2);border-radius:20px;padding:3px 9px;font-size:11px;color:var(--muted);cursor:pointer}
+.aichip:hover{color:var(--txt);border-color:var(--accent)}
+.airef{display:flex;align-items:center;gap:7px;margin:0 0 7px;border-radius:7px}
+.airef.drop{outline:2px dashed var(--accent);outline-offset:2px}
+.airef img{width:44px;height:44px;object-fit:cover;border-radius:5px;border:1px solid var(--line2);flex:none}
+.aithumb{width:100%;aspect-ratio:5/6;border-radius:6px;border:1px solid var(--line2);cursor:pointer;display:block;object-fit:cover;background:#fff}
+.aithumb:hover{outline:2px solid var(--accent);outline-offset:-1px}
+.ck{width:100%;min-width:0;padding:6px 4px!important;text-align:center}
+.gstop{position:absolute;top:24px;width:12px;height:14px;margin-left:-6px;border:2px solid var(--line2);border-radius:3px 3px 6px 6px;cursor:pointer}
+.gstop.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(242,101,34,.35)}
+.mini.danger:hover{background:var(--danger);border-color:var(--danger)}
 
   /* swatches */
   .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;max-height:150px;overflow-y:auto;padding-right:2px}
@@ -168,7 +188,7 @@
 <body>
 <div class="app">
   <div class="topbar">
-    <a class="brand" href="/" title="กลับหน้าหลัก"><img src="/models/axiom-logo-white.png" alt="Axiom" /><span class="brandtxt"><b>Axiom Siam</b><i>Designer</i></span></a>
+    <a class="brand" href="/" target="_top" title="กลับหน้าหลัก"><img src="/models/axiom-logo-white.png" alt="Axiom" /><span class="brandtxt"><b>Axiom Siam</b><i>Designer</i></span></a>
     <span class="sep"></span>
     <button class="tb icon" id="btnNew" title="ใหม่">📄</button>
     <button class="tb icon" id="btnOpen" title="เปิดไฟล์ (.axiom)">📂</button>
@@ -192,7 +212,7 @@
       <option value="2">แบบ 2 · สองด้าน (หน้า·หลัง·นอก·ใน)</option>
     </select>
     <select class="tbsel" id="sizeSel" title="เลือกไซซ์">
-      <option>S</option><option selected>M</option><option>L</option><option>XL</option>
+      <option>S</option><option selected>M</option><option>L</option><option>XL</option><option value="XXL">XXL (3L)</option>
     </select>
     <select class="tbsel" id="fabricSel" title="ชนิดผ้า">
       <option value="mesh">ผ้า mesh</option>
@@ -229,12 +249,16 @@
       <button class="tool" data-tool="poly" title="หลายเหลี่ยม (Y)">⬠<small>Y</small></button>
       <button class="tool" data-tool="line" title="เส้น (\\)">╱<small>\\</small></button>
       <button class="tool" data-tool="text" title="ข้อความ (T)">T<small>T</small></button>
+      <button class="tool" data-tool="gradient" title="ไล่สี (G): เลือกชิ้นงาน แล้วลากบนชิ้นนั้นเพื่อกำหนดทิศ/จุดเริ่ม-จุดจบของไล่สี">◐<small>G</small></button>
       <div class="railsep"></div>
       <button class="tool" data-tool="image" title="นำเข้ารูป/SVG">🖼<small></small></button>
       <button class="tool" data-tool="hand" title="เลื่อนมือ (H / Space)">✋<small>H</small></button>
     </div>
 
     <div class="stage" id="stage">
+      <canvas id="rulerX" class="ruler" title="ไม้บรรทัด (มม. จากขอบตัวเสื้อ) — ลากลงมาเพื่อวางเส้นไกด์แนวนอน"></canvas>
+      <canvas id="rulerY" class="ruler" title="ไม้บรรทัด (มม. จากขอบตัวเสื้อ) — ลากออกมาเพื่อวางเส้นไกด์แนวตั้ง"></canvas>
+      <div id="rulerCorner" class="ruler" title="Ctrl+R ซ่อน/แสดงไม้บรรทัด · Ctrl+; ซ่อน/แสดงไกด์ · ดับเบิลคลิก = ลบไกด์ทั้งหมด"></div>
       <canvas id="c"></canvas>
       <div class="hint" id="hint"></div>
     </div>
@@ -287,6 +311,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="palette.js"></script>
+<script src="factory-rgb.js"></script>
+<script src="ai-patterns.js"></script>
 <script src="sizes.js"></script>
 <script src="editor.js"></script>
 </body>

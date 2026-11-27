@@ -11,6 +11,9 @@ const PALETTE = (window.AXIOM_PALETTE || []).map(p => p.c);
 const PALINFO = window.AXIOM_PALETTE || [];
 
 let canvas, curTool = "select", fillTarget = "fill";
+let customInks = {}; // screen colour → [c, m, y, k] the customer typed
+const cmykText = c => `C${c[0]} M${c[1]} Y${c[2]} K${c[3]}`;
+function parseCmykText(s) { const m = /C\s*([\d.]+)\s+M\s*([\d.]+)\s+Y\s*([\d.]+)\s+K\s*([\d.]+)/i.exec(s || ""); return m ? m.slice(1).map(Number) : null; }
 let history = [], hIndex = -1, restoring = false;
 
 const $ = s => document.querySelector(s);
@@ -97,6 +100,30 @@ $("#right").innerHTML = `
           <input type="range" id="txArc" min="-100" max="100" step="1" value="0" style="flex:1">
           <span id="txArcV" style="min-width:34px;font-size:11px;color:var(--muted)">0</span>
         </div>
+        <div class="row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px" title="ดัดรูปข้อความ (Warp) แบบใน Illustrator">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ดัดรูป</label>
+          <select id="txWarp" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 6px;color:var(--txt);font-size:12px;font-family:inherit">
+            <option value="none">ไม่ดัด</option>
+            <option value="arc">โค้งทั้งคำ (Arc)</option>
+            <option value="arcUpper">โค้งด้านบน (Arc Upper)</option>
+            <option value="arcLower">โค้งด้านล่าง (Arc Lower)</option>
+            <option value="arch">สะพาน (Arch)</option>
+            <option value="bulge">พองกลาง (Bulge)</option>
+            <option value="flag">ธงพลิ้ว (Flag)</option>
+            <option value="rise">ไต่ขึ้น (Rise)</option>
+          </select>
+        </div>
+        <div class="row" id="txBendRow" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ระดับดัด</label>
+          <input type="range" id="txBend" min="-100" max="100" step="1" value="50" style="flex:1">
+          <span id="txBendV" style="min-width:34px;font-size:11px;color:var(--muted)">50</span>
+        </div>
+        <div class="row" id="txPathRow" style="display:none;align-items:center;gap:6px;margin-bottom:6px">
+          <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ตามเส้น</label>
+          <input type="range" id="txPathOff" min="-100" max="100" step="1" value="0" style="flex:1" title="เลื่อนข้อความไปตามเส้น (0 = กึ่งกลาง)">
+          <button class="mini" id="txPathFlip" title="ข้อความไปอีกด้านของเส้น (Flip)" style="flex:none;min-width:0;padding:5px 7px">⇅</button>
+          <button class="mini" id="txPathOut" title="ถอดข้อความออกจากเส้น (ได้ข้อความกับเส้นคืน)" style="flex:none;min-width:0;padding:5px 7px">✂</button>
+        </div>
         <div class="row" id="txEditRow" style="display:none;align-items:center;gap:8px;margin-bottom:4px">
           <label style="min-width:52px;font-size:11.5px;color:var(--muted)">ข้อความ</label>
           <input type="text" id="txText" placeholder="แก้ข้อความโค้ง" style="flex:1">
@@ -108,17 +135,72 @@ $("#right").innerHTML = `
         <button class="swbtn" id="strokeBtn"><span class="chip" id="strokeChip"></span>Stroke</button>
       </div>
       <div class="row"><label>เส้นขอบ</label><div class="num" style="flex:1"><input type="range" id="swRange" min="0" max="40" step="0.5" value="0"><span id="swVal" style="min-width:26px">0</span></div></div>
+      <div class="row" title="มุมของเส้นขอบ (Corner) แบบ Stroke panel ใน Illustrator — ใช้กับขอบนอก (Offset) ด้วย">
+        <label>มุมขอบ</label>
+        <div class="btnrow" style="flex:1">
+          <button class="mini" data-join="round" title="มุมมน (Round Join)">◜ มน</button>
+          <button class="mini" data-join="miter" title="มุมแหลม (Miter Join)">◸ แหลม</button>
+          <button class="mini" data-join="bevel" title="มุมตัด (Bevel Join)">⬠ ตัด</button>
+        </div>
+      </div>
       <div class="row"><label>ความทึบ</label><div class="num" style="flex:1"><input type="range" id="opRange" min="0" max="100" value="100"><span id="opVal" style="min-width:26px">100</span></div></div>
+      <div class="row" title="Blending Mode: วิธีผสมสีกับสิ่งที่อยู่ข้างใต้ เช่น Multiply ทำเงา/ลายผ้า, Screen ทำแสง">
+        <label>ผสมสี</label>
+        <select id="bmSel" style="flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:5px 6px;color:var(--txt);font-size:12px;font-family:inherit">
+          <option value="source-over">ปกติ (Normal)</option>
+          <option value="multiply">คูณ (Multiply) · เงา ลายผ้า</option>
+          <option value="screen">สว่าง (Screen) · แสง</option>
+          <option value="overlay">ซ้อน (Overlay)</option>
+          <option value="soft-light">แสงนุ่ม (Soft Light)</option>
+          <option value="hard-light">แสงแข็ง (Hard Light)</option>
+          <option value="darken">เข้มกว่า (Darken)</option>
+          <option value="lighten">อ่อนกว่า (Lighten)</option>
+          <option value="color-dodge">Color Dodge</option>
+          <option value="color-burn">Color Burn</option>
+          <option value="difference">ต่างสี (Difference)</option>
+          <option value="exclusion">Exclusion</option>
+        </select>
+      </div>
+      <div class="row" title="Offset Path: ขอบนอกรอบตัวอักษร/รูปทรง เป็นชั้นใหม่ด้านหลัง (ทำซ้ำได้หลายชั้น)">
+        <label>ขอบนอก</label>
+        <input type="number" id="offMm" value="3" min="0.5" max="50" step="0.5" style="width:58px">
+        <span style="font-size:10.5px;color:var(--muted)">มม.</span>
+        <button class="mini" id="btnOffset">＋ Offset</button>
+      </div>
+    </div>
+  </div>
+  <div class="panel" id="gradPanel">
+    <div class="phead">Gradient · ไล่สี <span id="gradFor" style="font-weight:500;color:var(--muted)"></span></div>
+    <div class="pbody">
+      <div class="btnrow" style="margin-bottom:8px">
+        <button class="mini" data-gtype="none" title="สีเดียว">■ สีเดียว</button>
+        <button class="mini" data-gtype="linear" title="ไล่สีเส้นตรง (Linear)">▤ เส้นตรง</button>
+        <button class="mini" data-gtype="radial" title="ไล่สีวงกลม (Radial)">◎ วงกลม</button>
+      </div>
+      <div id="gradEdit" style="display:none">
+        <div id="gradBar" title="คลิกบนแถบเพื่อเพิ่มจุดสี" style="position:relative;height:22px;border-radius:5px;border:1px solid var(--line2);margin:2px 7px 26px;cursor:copy"></div>
+        <div class="row"><label>มุม</label><input type="number" id="gAngle" step="15" style="width:64px"><button class="mini" id="gRev" title="กลับด้านไล่สี">⇄ กลับด้าน</button><button class="mini" id="gDel" title="ลบจุดสีที่เลือก">− จุดสี</button></div>
+        <div class="row"><label>ตำแหน่ง</label><div class="num" style="flex:1"><input type="range" id="gPos" min="0" max="100"><span id="gPosV" style="min-width:30px"></span></div></div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5">เลือกจุดสีใต้แถบ แล้วคลิกสีใน Swatches · คลิกแถบเพื่อเพิ่มจุดสี · ลากจุดสีเพื่อเลื่อน · สลับ พื้น/เส้นขอบ ที่ Fill/Stroke · พิมพ์ออกเป็นไล่สี CMYK แบบใน Illustrator</div>
+      </div>
     </div>
   </div>
   <div class="panel">
     <div class="phead">Transform</div>
     <div class="pbody">
-      <div class="grid2" style="margin-bottom:7px">
-        <div class="num"><span>W</span><input type="number" id="tW"></div>
-        <div class="num"><span>H</span><input type="number" id="tH"></div>
+      <div class="grid2" style="margin-bottom:7px" title="ตำแหน่งกึ่งกลางชิ้นงาน วัดจากมุมซ้ายบนของตัวเสื้อ (มม.)">
+        <div class="num"><span>X</span><input type="number" id="tX" step="1"></div>
+        <div class="num"><span>Y</span><input type="number" id="tY" step="1"></div>
       </div>
-      <div class="num" style="margin-bottom:9px"><span>∠</span><input type="number" id="tR" placeholder="องศา"></div>
+      <div class="grid2" style="margin-bottom:7px" title="ขนาดจริงตอนพิมพ์ (มม.)">
+        <div class="num"><span>W</span><input type="number" id="tW" step="1"></div>
+        <div class="num"><span>H</span><input type="number" id="tH" step="1"></div>
+      </div>
+      <div class="row" style="margin-bottom:9px">
+        <div class="num" style="flex:1"><span>∠</span><input type="number" id="tR" placeholder="องศา"></div>
+        <label style="min-width:0;display:flex;align-items:center;gap:4px;cursor:pointer" title="ล็อกสัดส่วน กว้าง-สูง"><input type="checkbox" id="tLock" checked>🔗</label>
+        <span style="font-size:10.5px;color:var(--muted)">มม.</span>
+      </div>
       <div class="btnrow" style="margin-bottom:7px">
         <button class="mini" data-align="left" title="ชิดซ้าย">⬅</button>
         <button class="mini" data-align="cx" title="กึ่งกลางแนวนอน">↔</button>
@@ -133,17 +215,64 @@ $("#right").innerHTML = `
         <button class="mini" data-arrange="backward" title="ลงหนึ่งชั้น">↓</button>
         <button class="mini" data-arrange="back" title="ล่างสุด">⤓</button>
       </div>
+      <div class="btnrow" style="margin-top:7px">
+        <button class="mini" data-flip="x" title="สะท้อนซ้าย-ขวา (Reflect)">⇋</button>
+        <button class="mini" data-flip="y" title="สะท้อนบน-ล่าง (Reflect)">⇵</button>
+        <button class="mini" data-dist="h" title="เว้นระยะห่างเท่ากัน แนวนอน (เลือก 3 ชิ้นขึ้นไป)">↔⋯</button>
+        <button class="mini" data-dist="v" title="เว้นระยะห่างเท่ากัน แนวตั้ง (เลือก 3 ชิ้นขึ้นไป)">↕⋮</button>
+      </div>
+      <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line)" title="Step and Repeat: ทำซ้ำชิ้นที่เลือกเป็นแถว/ตาราง ระยะเป็น มม. (นับชิ้นเดิมเป็นช่องแรก)">
+        <div class="grid2" style="margin-bottom:6px">
+          <div class="num"><span title="คอลัมน์">↔</span><input type="number" id="repCols" value="3" min="1" max="50"></div>
+          <div class="num"><span title="แถว">↕</span><input type="number" id="repRows" value="1" min="1" max="50"></div>
+          <div class="num"><span title="ระยะ X (มม.) — จากจุดกึ่งกลางถึงจุดกึ่งกลาง">X</span><input type="number" id="repDx" value="60" step="1"></div>
+          <div class="num"><span title="ระยะ Y (มม.)">Y</span><input type="number" id="repDy" value="60" step="1"></div>
+        </div>
+        <div class="row" style="margin-bottom:0;gap:6px">
+          <div class="num" style="flex:1"><span title="หมุนเพิ่มทีละ (องศา)">∠</span><input type="number" id="repRot" value="0" step="5"></div>
+          <button class="mini" id="btnRepeat" style="flex:none">⧉ ทำซ้ำ</button>
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">จัดชิด: ชิ้นเดียว = เทียบกับตัวเสื้อ · หลายชิ้น = เทียบกันเอง</div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="phead">Pathfinder</div>
+    <div class="pbody">
+      <div class="btnrow">
+        <button class="mini" data-pf="unite" title="รวมรูปทรง (Unite) — ใช้สีของชิ้นบนสุด">⊕ รวม</button>
+        <button class="mini" data-pf="minus" title="ลบด้านหน้า (Minus Front) — ชิ้นล่างสุดถูกเจาะด้วยชิ้นที่อยู่บน">⊖ เจาะ</button>
+        <button class="mini" data-pf="intersect" title="เหลือส่วนที่ซ้อนกัน (Intersect)">⊗ ซ้อน</button>
+        <button class="mini" data-pf="exclude" title="ตัดส่วนที่ซ้อนกันออก (Exclude)">⊘ ตัดซ้อน</button>
+      </div>
+      <div class="btnrow" style="margin-top:6px">
+        <button class="mini" id="btnTextPath" title="Type on a Path: เลือกข้อความ 1 ชิ้น + เส้นที่วาด (ปากกา/เส้น/วงกลม) 1 ชิ้น — ข้อความจะวิ่งตามเส้น">〰 ข้อความตามเส้น</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-top:6px">เลือก 2 ชิ้นขึ้นไป (Shift+คลิก) · ข้อความจะถูกแปลงเป็นเส้นก่อน</div>
     </div>
   </div>
   <div class="panel">
     <div class="phead">🎽 สีตัวเสื้อ</div>
     <div class="pbody">
+      <div class="btnrow" id="sideRow" style="display:none;margin-bottom:8px" title="เสื้อสองด้าน: สีและลายเต็มตัวใส่ทั้งสองด้าน หรือแยกด้านนอก/ด้านใน">
+        <button class="mini on" data-bside="both">ทั้ง 2 ด้าน</button>
+        <button class="mini" data-bside="A">ด้านนอก</button>
+        <button class="mini" data-bside="B">ด้านใน</button>
+      </div>
       <div class="btnrow" style="margin-bottom:7px">
         <input type="color" id="bodyPick" style="width:40px;height:30px;border:0;background:none;padding:0" title="เลือกสีเอง">
         <button class="mini" id="bodyWhite" title="ขาว">ขาว</button>
         <span class="swcode" id="bodyCode" style="align-self:center"></span>
       </div>
       <div class="swatches" id="bodyGrid"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" data-ck="body" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" data-ckapply="body" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
@@ -154,17 +283,62 @@ $("#right").innerHTML = `
         <span class="swcode" id="trimCode" style="align-self:center"></span>
       </div>
       <div class="swatches" id="trimGrid"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" data-ck="trim" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" data-ckapply="trim" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
     <div class="phead">ลายเต็มตัว (Sublimation)</div>
     <div class="pbody">
+      <div class="aibox">
+        <div style="font-weight:700;font-size:12.5px;margin-bottom:6px">✨ ให้ AI ออกแบบลาย</div>
+        <textarea id="aiPrompt" rows="2" maxlength="300" placeholder="บอกลายที่อยากได้ เช่น สายฟ้าเหลือง-ดำ ดุๆ แบบทีมบาส" style="width:100%;box-sizing:border-box;resize:vertical;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:7px 8px;color:var(--txt);font-size:12px;font-family:inherit;line-height:1.5"></textarea>
+        <div id="aiChips" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0"></div>
+        <div id="aiRef" class="airef" title="วางรูป (Ctrl+V) หรือลากรูปมาวางในกล่องนี้ก็ได้">
+          <button class="mini" id="aiRefBtn" style="flex:none">📷 แนบรูปลายที่ชอบ</button>
+          <input type="file" id="aiRefFile" accept="image/jpeg,image/png,image/webp" hidden>
+          <img id="aiRefImg" alt="รูปตัวอย่าง" style="display:none">
+          <span id="aiRefNote" style="flex:1;font-size:10.5px;color:var(--muted);line-height:1.4">AI ออกแบบตามแนวรูป (ไม่ต้องพิมพ์ก็ได้)</span>
+          <button class="mini" id="aiRefDel" title="เอารูปออก" style="display:none;flex:none;min-width:0;padding:4px 8px">✕</button>
+        </div>
+        <div class="btnrow">
+          <button class="mini" id="aiGo" style="flex:2;font-weight:700;background:var(--accent);color:var(--oninv);border-color:transparent">✨ ออกแบบ</button>
+          <button class="mini" id="aiDemo" title="ลองสูตรลายตัวอย่าง (ไม่ใช้ AI)">🎲 ตัวอย่าง</button>
+        </div>
+        <div id="aiMsg" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5"></div>
+        <div class="patgrid" id="aiResults" style="grid-template-columns:repeat(4,1fr)"></div>
+        <div id="aiTweak" style="display:none;margin-top:8px;padding-top:7px;border-top:1px solid var(--line2)">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:5px">ปรับลายที่ใส่อยู่ (ไม่ต้องเรียก AI ใหม่)</div>
+          <div class="btnrow">
+            <button class="mini" data-aitw="smaller" title="ลายเล็กลง">− ขนาด</button>
+            <button class="mini" data-aitw="bigger" title="ลายใหญ่ขึ้น">＋ ขนาด</button>
+            <button class="mini" data-aitw="fainter" title="ลายจางลง (อ่านเบอร์/ชื่อง่ายขึ้น)">จางลง</button>
+            <button class="mini" data-aitw="stronger" title="ลายเข้มขึ้น">เข้มขึ้น</button>
+          </div>
+          <div class="btnrow" style="margin-top:5px">
+            <button class="mini" data-aitw="shuffle" title="สุ่มตำแหน่งลายใหม่ (สีและแบบเดิม)">🎲 สุ่มใหม่</button>
+            <button class="mini" data-aitw="swap" title="สลับสีพื้นกับสีลาย">⇄ สลับสี</button>
+            <button class="mini" data-aitw="turn" title="หมุนลาย 45°">↻ 45°</button>
+          </div>
+        </div>
+      </div>
       <div class="btnrow">
         <button class="mini" id="patUp" title="อัปโหลดลาย (คลิปเข้าทรงเสื้อ)">⬆ อัปโหลดลาย</button>
         <button class="mini" id="patClr" title="ล้างลาย">✕ ล้างลาย</button>
       </div>
       <div class="row" style="margin-top:8px;display:flex;align-items:center;gap:8px"><label style="min-width:52px;font-size:11.5px;color:var(--muted)">ขนาดลาย</label><input type="range" id="patSize" min="0.4" max="2.4" step="0.1" value="1" style="flex:1"><span id="patSizeV" style="min-width:28px;font-size:11px;color:var(--muted)">1.0×</span></div>
       <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);margin:2px 0 6px"><input type="checkbox" id="patBrand"> ใช้สีแบรนด์ (ตามสีตัวเสื้อ/ขลิบ)</label>
+      <div class="row" style="margin:0 0 6px;gap:6px" title="เปลี่ยนสีลายสำเร็จรูป: สีเข้ม → สีอ่อน (ลายที่มีหลายสีจะไล่ระหว่างสองสีนี้)">
+        <label style="display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;color:var(--muted)"><input type="checkbox" id="patOwn"> สีลายเอง</label>
+        <input type="color" id="patC1" value="#e0a800" style="width:34px;height:26px;border:0;background:none;padding:0" title="สีเข้ม">
+        <input type="color" id="patC2" value="#fff35c" style="width:34px;height:26px;border:0;background:none;padding:0" title="สีอ่อน">
+      </div>
       <div class="patgrid" id="patGrid"></div>
     </div>
   </div>
@@ -177,10 +351,19 @@ $("#right").innerHTML = `
       </div>
       <div class="btnrow" style="margin-bottom:8px">
         <button class="mini" id="swNone" title="ไม่มีสี">∅ None</button>
+        <button class="mini" id="btnEyedrop" title="ดูดสี (Eyedropper): คลิกวัตถุอื่นเพื่อคัดลอกสีพื้น เส้นขอบ และไล่สีมาใส่ชิ้นที่เลือก">💧 ดูดสี</button>
         <input type="color" id="swPick" style="width:38px;height:32px;border:0;background:none;padding:0" title="เลือกสีเอง">
       </div>
       <div class="swatches" id="swGrid"></div>
       <div class="swcode" id="swCode"></div>
+      <div class="row" style="margin:8px 0 0;gap:4px" title="ใส่ค่า CMYK เอง (0–100) — โรงงานพิมพ์ค่านี้ตรงๆ บนจอแสดงตามค่าสีของโรงงาน">
+        <label style="min-width:36px">CMYK</label>
+        <input type="number" class="ck" id="ckC" min="0" max="100" step="0.5" placeholder="C">
+        <input type="number" class="ck" id="ckM" min="0" max="100" step="0.5" placeholder="M">
+        <input type="number" class="ck" id="ckY" min="0" max="100" step="0.5" placeholder="Y">
+        <input type="number" class="ck" id="ckK" min="0" max="100" step="0.5" placeholder="K">
+        <button class="mini" id="ckApply" style="flex:none;min-width:0;padding:6px 8px">ใช้</button>
+      </div>
     </div>
   </div>
   <div class="panel">
@@ -194,6 +377,8 @@ $("#right").innerHTML = `
       <div class="btnrow" style="margin-bottom:8px">
         <button class="mini" id="btnGroup" title="จัดกลุ่ม (Ctrl+G)">▣ Group</button>
         <button class="mini" id="btnUngroup" title="ยกเลิกกลุ่ม">▢ Ungroup</button>
+        <button class="mini" id="btnClipMake" title="Clipping Mask (Ctrl+7): ชิ้นบนสุดเป็นกรอบ ชิ้นที่อยู่ใต้มันแสดงเฉพาะในกรอบ — เช่น ลาย/รูปในตัวเบอร์">◩ Clip</button>
+        <button class="mini" id="btnClipRelease" title="ยกเลิก Clipping Mask (Ctrl+Alt+7)">◪ Release</button>
         <button class="mini danger" id="btnDel" title="ลบ (Del)">🗑 ลบ</button>
       </div>
       <div class="layers" id="layersList"></div>
@@ -202,8 +387,25 @@ $("#right").innerHTML = `
   </div>
 `;
 
+/* Fabric splits text into characters with no regard for marks: a Thai upper vowel and tone
+   mark became letters of their own, so letter spacing pushed them off their consonant (ที่นี่
+   showed and printed without its tone marks) and the cursor stopped inside a syllable.
+   A letter and its marks are one character here. */
+function keepMarksOnLetters() {
+  const split = fabric.util.string.graphemeSplit;
+  fabric.util.string.graphemeSplit = function (text) {
+    const out = [];
+    for (const g of split.call(this, text)) {
+      if (out.length && /^\p{M}+$/u.test(g) && out[out.length - 1] !== "\n") out[out.length - 1] += g;
+      else out.push(g);
+    }
+    return out;
+  };
+}
+
 /* ---------- canvas init ---------- */
 function initCanvas() {
+  keepMarksOnLetters();
   // selection handles in the Axiom accent, readable on the dark stage
   fabric.Object.prototype.set({
     borderColor: "#f26522", cornerColor: "#f26522", cornerStrokeColor: "#0d0e10",
@@ -300,6 +502,8 @@ let bodyColor = "#ffffff";
 let trimColor = "#e6ecf5";
 let bodyPattern = null;
 let bodyPatternSrc = null;
+let sideB = null;          // an R-bib's inside, when it differs: { color, pat }
+let bodySide = "both";     // where the colour / pattern pickers go: "both" | "A" | "B"
 
 function fitScale(w, h) { const s = Math.min((ART.w * 0.9) / w, (ART.h * 0.92) / h); return isFinite(s) && s > 0 ? s : 1; }
 function garmentAspect() {
@@ -339,15 +543,26 @@ function computeLayout() {
     panels.push({ id: it[0], side: it[1], tpl: it[2], group: g.label, w: gW, h: gH, x, y, cx: x + gW / 2, cy: y + gH / 2, angle });
   }));
 }
-const SVG_HEAD = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 470" width="400" height="470">`;
+// the pieces sit centred on (200, 235) in a 400×470 frame; one wider than that (XXL, with its cut line)
+// widens the frame evenly, so the centre stays put and fabric's group cache doesn't cut the edges off
+function svgFrame(bodyD) {
+  const bb = pathBBox(bodyD), m = cutMm / MM_PER_UNIT + 2;
+  const hw = bb ? Math.max(200, 200 - bb.x + m, bb.x + bb.w - 200 + m) : 200;
+  const hh = bb ? Math.max(235, 235 - bb.y + m, bb.y + bb.h - 235 + m) : 235;
+  return { x: 200 - hw, y: 235 - hh, w: 2 * hw, h: 2 * hh };
+}
+const svgHead = f => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" width="${f.w}" height="${f.h}">`;
 // BODY layer — the shirt fill/pattern (sits BELOW user objects; also used as the clip shape)
-function garmentSVG(tpl) {
+function garmentSVG(tpl, inside) {
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
   const bodyD = sz ? (tpl === "front" ? sz.front : sz.back) : TPL[tpl];
   const cid = "clip" + Math.random().toString(36).slice(2);
-  const base = `<path d="${bodyD}" fill="${bodyColor}"/>`;
-  const pat = bodyPatternSrc ? `<g clip-path="url(#${cid})"><image href="${bodyPatternSrc}" xlink:href="${bodyPatternSrc}" x="0" y="0" width="400" height="470" preserveAspectRatio="xMidYMid slice"/></g>` : "";
-  return `${SVG_HEAD}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs>${base}${pat}</svg>`;
+  const own = inside && sideB && curStyle === 2 ? sideB : null;
+  const color = own ? own.color : bodyColor, src = own ? own.pat : bodyPatternSrc;
+  const base = `<path d="${bodyD}" fill="${color}"/>`;
+  const f = svgFrame(bodyD);
+  const pat = src ? `<g clip-path="url(#${cid})"><image href="${src}" xlink:href="${src}" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" preserveAspectRatio="xMidYMid slice"/></g>` : "";
+  return `${svgHead(f)}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs>${base}${pat}</svg>`;
 }
 // OVERLAY layer — ขลิบ (trim/hem) + cut outline + size mark; rendered ABOVE user objects so ขลิบ ไม่โดนลายบัง
 function garmentOverlaySVG(tpl) {
@@ -359,9 +574,12 @@ function garmentOverlaySVG(tpl) {
   const hasNeck = curTrim !== "none";
   const hasArm = curTrim === "neckarm" || curTrim === "full";
   const hasHem = curTrim === "full";
-  const parts = (hasNeck || hasArm) ? splitTrim(trimD) : { neck: "", arms: "" };
-  const trimNeck = hasNeck && parts.neck ? `<path d="${parts.neck}" fill="${trimColor}"/>` : "";
-  const trimArm = hasArm && parts.arms ? `<path d="${parts.arms}" fill="${trimColor}"/>` : "";
+  // S–XL: the trim drawn as filled shapes; XXL: strokes along the cut line {zone, d, w}, clipped to it like the print file
+  const strokes = Array.isArray(trimD) ? trimD : null;
+  const band = z => strokes.filter(t => t.zone === z).map(t => `<path d="${t.d}" fill="none" stroke="${trimColor}" stroke-width="${t.w}" stroke-linejoin="round"/>`).join("");
+  const parts = strokes || !(hasNeck || hasArm) ? { neck: "", arms: "" } : splitTrim(trimD);
+  const trimNeck = !hasNeck ? "" : strokes ? band("neck") : parts.neck ? `<path d="${parts.neck}" fill="${trimColor}"/>` : "";
+  const trimArm = !hasArm ? "" : strokes ? band("arm") : parts.arms ? `<path d="${parts.arms}" fill="${trimColor}"/>` : "";
   const trimSVG = trimNeck + trimArm;
   const hemSVG = !hasHem ? "" : Array.isArray(hemD)
     ? `<rect x="${hemD[0]}" y="${hemD[1]}" width="${hemD[2]}" height="${hemD[3]}" fill="${trimColor}"/>`
@@ -376,9 +594,11 @@ function garmentOverlaySVG(tpl) {
     const b2 = `x="${tx}" y="${ty}" font-family="Arial, sans-serif" font-size="6" font-weight="700" text-anchor="end"`;
     sizeLbl = `<text ${b2} fill="none" stroke="#000000" stroke-width="1.2" stroke-linejoin="round">${TPL_SIZE}</text><text ${b2} fill="#ffffff">${TPL_SIZE}</text>`;
   }
-  return `${SVG_HEAD}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs><g clip-path="url(#${cid})">${trimSVG}${hemSVG}</g>${outline}${cut}${sizeLbl}</svg>`;
+  return `${svgHead(svgFrame(bodyD))}<defs><clipPath id="${cid}"><path d="${bodyD}"/></clipPath></defs><g clip-path="url(#${cid})">${trimSVG}${hemSVG}</g>${outline}${cut}${sizeLbl}</svg>`;
 }
+let garmentGen = 0;
 function placeGarment(p) {
+  const gen = garmentGen;
   const sz = window.AXIOM_SIZES && window.AXIOM_SIZES[TPL_SIZE];
   const dims = sz && sz.dims ? (p.tpl === "front" ? sz.dims.front : sz.dims.back) : null;
   const idx = panels.indexOf(p);
@@ -390,13 +610,15 @@ function placeGarment(p) {
     if (p.angle) g.angle = p.angle;
     g.set({ selectable: false, evented: false, excludeFromExport: false, hoverCursor: "default" });
   };
-  fabric.loadSVGFromString(garmentSVG(p.tpl), (objs, opts) => {
-    if (!objs || !objs.length) return;
+  fabric.loadSVGFromString(garmentSVG(p.tpl, String(p.id).startsWith("inner")), (objs, opts) => {
+    if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; bgObjects.push(g); panelGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
+    // an AI pattern on this piece: inside it, now that its shape is here
+    userObjects().filter(o => o._aiPattern && o._aiPanel === p.id).forEach(applyClip);
   });
   fabric.loadSVGFromString(garmentOverlaySVG(p.tpl), (objs, opts) => {
-    if (!objs || !objs.length) return;
+    if (!objs || !objs.length || gen !== garmentGen) return;
     const g = fabric.util.groupSVGElements(objs, opts); setup(g);
     g._bg = true; g._overlay = true; overlayGroups[idx] = g; canvas.add(g); fixBackOrder(); canvas.requestRenderAll();
   });
@@ -425,6 +647,7 @@ function buildTemplate() {
   overlayGroups.forEach(o => o && canvas.remove(o));
   if (artboardRect) canvas.remove(artboardRect);
   bgObjects = []; panelGroups = []; overlayGroups = [];
+  garmentGen++; // garments still loading from an earlier rebuild are dropped
   computeLayout();
   artboardRect = new fabric.Rect({ left: 0, top: 0, width: ART.w, height: ART.h, fill: "#ffffff", selectable: false, evented: false, hoverCursor: "default", rx: 6, ry: 6 });
   artboardRect._bg = true; canvas.add(artboardRect);
@@ -552,7 +775,8 @@ function userObjects() { return canvas.getObjects().filter(o => !o._bg && !o._te
 function hint(msg) { $("#hint").textContent = msg || ""; }
 
 /* ---------- history (undo/redo) ---------- */
-function serialize() { return JSON.stringify(userObjects().map(o => o.toObject(["name", "rosterTag"]))); }
+// undo keeps what a saved design keeps: a warp's or a path's text, a clip group, an AI pattern
+function serialize() { return JSON.stringify(userObjects().map(o => o.toObject(ARC_PROPS))); }
 function pushHistory() {
   if (restoring) return;
   history = history.slice(0, hIndex + 1);
@@ -564,7 +788,7 @@ function restore(json) {
   restoring = true;
   userObjects().forEach(o => canvas.remove(o));
   let arr = []; try { arr = JSON.parse(json); } catch (e) {}
-  fabric.util.enlivenObjects(arr, objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); restoring = false; canvas.requestRenderAll(); refreshLayers(); syncProps(); }, "fabric");
+  fabric.util.enlivenObjects(arr, objs => { objs.forEach(o => { lockAi(o); canvas.add(o); }); fixBackOrder(); restoring = false; canvas.requestRenderAll(); refreshLayers(); syncProps(); }, "fabric");
 }
 function undo() { if (hIndex > 0) { hIndex--; restore(history[hIndex]); } }
 function redo() { if (hIndex < history.length - 1) { hIndex++; restore(history[hIndex]); } }
@@ -572,14 +796,18 @@ $("#btnUndo").onclick = undo;
 $("#btnRedo").onclick = redo;
 
 /* ---------- tool switching ---------- */
-const cursors = { select: "default", node: "default", pen: "crosshair", rect: "crosshair", ellipse: "crosshair", poly: "crosshair", line: "crosshair", text: "text", image: "copy", hand: "grab" };
+const cursors = { gradient: "crosshair", select: "default", node: "default", pen: "crosshair", rect: "crosshair", ellipse: "crosshair", poly: "crosshair", line: "crosshair", text: "text", image: "copy", hand: "grab" };
 function setTool(name) {
   if (name === "image") { importMode = null; $("#fileImg").click(); return; }
+  if (name === "gradient") {
+    gradToolFor = gradTarget();
+    if (!gradToolFor) { toast("เลือกรูปทรงหรือข้อความ 1 ชิ้นก่อน แล้วกด G", "info"); return; }
+  } else gradToolFor = null;
   curTool = name;
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("on", b.dataset.tool === name));
   const drawing = ["rect", "ellipse", "poly", "line", "pen", "text", "hand"].includes(name);
   canvas.selection = name === "select";
-  userObjects().forEach(o => { o.selectable = name === "select" || name === "node"; o.evented = name === "select" || name === "node"; });
+  userObjects().forEach(o => { const on = (name === "select" || name === "node") && !o.lockMovementX; o.selectable = on; o.evented = on; });
   canvas.defaultCursor = cursors[name] || "default";
   canvas.setCursor(cursors[name] || "default");
   if (name !== "node") clearNodeHandles();
@@ -589,10 +817,11 @@ function setTool(name) {
   hint(HINTS[name] || "");
 }
 const HINTS = {
-  select: "ลากเลือก/ย้าย · ดับเบิลคลิกข้อความเพื่อแก้ไข",
+  select: "ลากเลือก/ย้าย (จับเส้นกึ่งกลางตัวเสื้อ/ขอบชิ้นอื่นให้เอง) · ลูกศร 1 มม. Shift 10 มม. · Ctrl+F/B วางซ้อนหน้า/หลังที่เดิม · Ctrl+2 ล็อก · Ctrl+3 ซ่อน · Ctrl+7 Clip · ลากจากไม้บรรทัด = เส้นไกด์ (Ctrl+R ไม้บรรทัด, Ctrl+; ไกด์)",
   node: "เลือกเส้น/รูปที่วาดด้วยปากกา แล้วลากจุด (◯) และแกน (▫) เพื่อดัด",
   pen: "คลิกวางจุด · คลิกค้างแล้วลาก = จุดโค้ง · คลิกจุดแรกเพื่อปิด · Enter จบ · Esc ยกเลิก",
   rect: "ลากเพื่อวาดสี่เหลี่ยม", ellipse: "ลากเพื่อวาดวงกลม/วงรี", poly: "ลากเพื่อวาดรูปหลายเหลี่ยม",
+  gradient: "ลากบนชิ้นที่เลือก: จุดเริ่ม → จุดจบของไล่สี (วงกลม: จากจุดกลางออกไป) · Shift = ล็อกมุม 45°",
   line: "ลากเพื่อวาดเส้น", text: "คลิกเพื่อพิมพ์ข้อความ", hand: "ลากเพื่อเลื่อนมุมมอง (หรือกด Space ค้าง)",
 };
 document.querySelectorAll(".tool").forEach(b => b.onclick = () => setTool(b.dataset.tool));
@@ -628,6 +857,7 @@ function bindCanvasEvents() {
       isPanning = true; lastPan = { x: e.clientX, y: e.clientY }; canvas.setCursor("grabbing"); return;
     }
     const p = canvas.getPointer(e);
+    if (curTool === "gradient") { gradDragStart(p); return; }
     if (curTool === "pen") { penDown(p, opt); return; }
     if (curTool === "text") {
       const t = new fabric.IText("ข้อความ", { left: p.x, top: p.y, fill: curFill(), fontFamily: fontStack(curFont), fontSize: 40 });
@@ -649,6 +879,7 @@ function bindCanvasEvents() {
       canvas.setViewportTransform(vpt); lastPan = { x: e.clientX, y: e.clientY }; return;
     }
     const p = canvas.getPointer(e);
+    if (curTool === "gradient") { gradDragMove(p, e.shiftKey); return; }
     if (curTool === "pen") { penMove(p); return; }
     if (drawing && tempObj) {
       canvas.remove(tempObj);
@@ -658,6 +889,7 @@ function bindCanvasEvents() {
   });
 
   canvas.on("mouse:up", opt => {
+    if (curTool === "gradient" && gradDrag) { gradDragEnd(canvas.getPointer(opt.e), opt.e.shiftKey); return; }
     if (isPanning) { isPanning = false; lastPan = null; canvas.setCursor(curTool === "hand" ? "grab" : "default"); return; }
     if (drawing && tempObj) {
       drawing = false;
@@ -825,21 +1057,40 @@ function startNodeEdit() {
 /* ---------- snapping + guides ---------- */
 let guides = [];
 function clearGuides() { if (guides.length) { guides = []; canvas.requestRenderAll(); } }
+/* Smart Guides, as Illustrator's: the object's edges and middle snap to each garment
+   piece's centre line (a number or a name centred on the back) and to the other
+   objects' edges and middles, with the line shown while it holds. */
 function snapMove(opt) {
   const o = opt.target; if (!o || o._temp || o._bg) return;
   guides = [];
   const th = 6 / canvas.getZoom();
-  const c = o.getCenterPoint();
-  const targetsX = [ART.w / 2], targetsY = [ART.h / 2];
-  userObjects().forEach(u => { if (u === o) return; const uc = u.getCenterPoint(); targetsX.push(uc.x); targetsY.push(uc.y); });
-  for (const tx of targetsX) if (Math.abs(c.x - tx) < th) { o.setPositionByOrigin(new fabric.Point(tx, c.y), "center", "center"); guides.push({ x: tx, vert: true }); break; }
-  const c2 = o.getCenterPoint();
-  for (const ty of targetsY) if (Math.abs(c2.y - ty) < th) { o.setPositionByOrigin(new fabric.Point(c2.x, ty), "center", "center"); guides.push({ y: ty, vert: false }); break; }
+  const inSel = o._objects || [];
+  const xs = [], ys = [];
+  panels.forEach(p => { if (p.angle) ys.push(p.cy); else xs.push(p.cx); });
+  if (guidesShown) userGuides.forEach(q => (q.axis === "x" ? xs : ys).push(q.v));
+  userObjects().forEach(u => {
+    if (u === o || inSel.includes(u) || u.visible === false) return;
+    const b = u.getBoundingRect(true, true);
+    xs.push(b.left, b.left + b.width / 2, b.left + b.width); ys.push(b.top, b.top + b.height / 2, b.top + b.height);
+  });
+  const b = o.getBoundingRect(true, true);
+  const best = (mine, lines) => {
+    let d = null, at = null;
+    for (const m of mine) for (const t of lines) if (Math.abs(t - m) < th && (d === null || Math.abs(t - m) < Math.abs(d))) { d = t - m; at = t; }
+    return { d, at };
+  };
+  const bx = best([b.left, b.left + b.width / 2, b.left + b.width], xs);
+  const by = best([b.top, b.top + b.height / 2, b.top + b.height], ys);
+  if (bx.d !== null) { o.set("left", o.left + bx.d); guides.push({ x: bx.at, vert: true }); }
+  if (by.d !== null) { o.set("top", o.top + by.d); guides.push({ y: by.at, vert: false }); }
+  if (bx.d !== null || by.d !== null) o.setCoords();
 }
 canvas ? null : 0;
 function bindExtra() {
+  setTimeout(bindRulers, 0);
   canvas.on("mouse:up", () => { if (curTool === "pen") penDragging = false; });
   canvas.on("object:moving", opt => snapMove(opt));
+  canvas.on("mouse:up", () => { if (guides.length) { guides = []; canvas.requestRenderAll(); } });
   canvas.on("mouse:dblclick", () => { if (curTool === "pen" && penActive) finishPen(false); });
   canvas.on("after:render", () => {
     if (!guides.length) return;
@@ -858,13 +1109,54 @@ function setTarget(t) {
   $("#tgtStroke").classList.toggle("on", t === "stroke");
   $("#fillBtn").classList.toggle("on", t === "fill");
   $("#strokeBtn").classList.toggle("on", t === "stroke");
+  // the Gradient panel works on the fill or the stroke, whichever is chosen here
+  gradStop = 0;
+  if (canvas) { renderGradPanel(); syncProps(); }
 }
 $("#tgtFill").onclick = () => setTarget("fill");
 $("#tgtStroke").onclick = () => setTarget("stroke");
 $("#fillBtn").onclick = () => setTarget("fill");
 $("#strokeBtn").onclick = () => setTarget("stroke");
-function garmentCode(id, c) { const i = PALINFO.find(p => p.c.toLowerCase() === String(c).toLowerCase()); const el = document.getElementById(id); if (el) el.textContent = i ? i.k : c; }
-function setBodyColor(c) { bodyColor = c; bodyPattern = null; bodyPatternSrc = null; applyGarment(); garmentCode("bodyCode", c); }
+function garmentCode(id, c) {
+  const h = String(c).toLowerCase(), i = PALINFO.find(p => p.c.toLowerCase() === h), own = customInks[h];
+  const el = document.getElementById(id); if (el) el.textContent = own ? `CMYK ที่ใส่เอง: ${cmykText(own)}` : i ? i.k : c;
+  // the CMYK boxes under it show what prints
+  const pre = id === "bodyCode" ? "body" : "trim", v = own || (i && parseCmykText(i.k));
+  document.querySelectorAll(`[data-ck="${pre}"]`).forEach((b, j) => { if (document.activeElement !== b) b.value = v ? v[j] : ""; });
+}
+// the garment's own CMYK boxes (body, trim): the colour prints exactly that CMYK
+document.querySelectorAll("[data-ckapply]").forEach(btn => {
+  const pre = btn.dataset.ckapply, boxes = [...document.querySelectorAll(`[data-ck="${pre}"]`)];
+  const go = () => {
+    const c = boxes.map(b => { const v = parseFloat(b.value); return isNaN(v) ? 0 : Math.round(Math.min(100, Math.max(0, v)) * 10) / 10; });
+    const h = inkHex(c);
+    if (pre === "body") setBodyColor(h); else setTrimColor(h);
+    pushHistory();
+  };
+  btn.onclick = go;
+  boxes.forEach(b => b.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); go(); } }));
+});
+/** before side A changes alone, side B keeps what it showed */
+function splitSides() { if (!sideB) sideB = { color: bodyColor, pat: bodyPatternSrc }; }
+function setBodyColor(c) {
+  if (bodySide === "B" && curStyle === 2) { splitSides(); sideB.color = c; sideB.pat = null; }
+  else { if (bodySide === "A" && curStyle === 2) splitSides(); else sideB = null; bodyColor = c; bodyPattern = null; bodyPatternSrc = null; }
+  applyGarment(); garmentCode("bodyCode", c);
+}
+/** a pattern picture on the side chosen (null: none) */
+function setPattern(src) {
+  if (bodySide === "B" && curStyle === 2) { splitSides(); sideB.pat = src; }
+  else { if (bodySide === "A" && curStyle === 2) splitSides(); else sideB = null; bodyPatternSrc = src; bodyPattern = null; }
+  applyGarment();
+}
+function showBodySide() {
+  if (typeof aiShowTweak === "function") setTimeout(aiShowTweak, 0);
+  const row = document.getElementById("sideRow"); if (!row) return;
+  row.style.display = curStyle === 2 ? "flex" : "none";
+  document.querySelectorAll("[data-bside]").forEach(b => b.classList.toggle("on", b.dataset.bside === bodySide));
+  garmentCode("bodyCode", bodySide === "B" && sideB ? sideB.color : bodyColor);
+}
+document.querySelectorAll("[data-bside]").forEach(b => b.onclick = () => { bodySide = b.dataset.bside; showBodySide(); });
 function setTrimColor(c) { trimColor = c; applyGarment(); garmentCode("trimCode", c); }
 function buildGarmentGrid(gridId, fn) {
   const g = document.getElementById(gridId); if (!g) return; g.innerHTML = "";
@@ -874,17 +1166,24 @@ const bodyPickEl = document.getElementById("bodyPick"); if (bodyPickEl) bodyPick
 const trimPickEl = document.getElementById("trimPick"); if (trimPickEl) trimPickEl.oninput = e => setTrimColor(e.target.value);
 const bodyWhiteEl = document.getElementById("bodyWhite"); if (bodyWhiteEl) bodyWhiteEl.onclick = () => setBodyColor("#ffffff");
 $("#patUp").onclick = () => document.getElementById("filePat").click();
-$("#patClr").onclick = () => { bodyPattern = null; bodyPatternSrc = null; lastPat = null; applyGarment(); toast("ล้างลายแล้ว"); };
+$("#patClr").onclick = () => { lastPat = null; setPattern(null); aiTargets().forEach(i => aiOnPanel(i).forEach(o => canvas.remove(o))); canvas.requestRenderAll(); refreshLayers(); aiShowTweak(); toast("ล้างลายแล้ว"); };
 document.getElementById("filePat").addEventListener("change", ev => {
   const f = ev.target.files[0]; if (!f) return;
   const r = new FileReader();
-  r.onload = () => { bodyPatternSrc = r.result; applyGarment(); toast("ใส่ลายเต็มตัวแล้ว"); };
+  r.onload = () => { setPattern(r.result); toast("ใส่ลายเต็มตัวแล้ว"); };
   r.readAsDataURL(f); ev.target.value = "";
 });
 
 /* ---------- apply color ---------- */
-function showCode(color) { const info = PALINFO.find(p => p.c.toLowerCase() === String(color).toLowerCase()); $("#swCode").textContent = info ? info.k : (color === "none" ? "ไม่มีสี" : color); }
+function showCode(color) {
+  const h = String(color).toLowerCase(), info = PALINFO.find(p => p.c.toLowerCase() === h), own = customInks[h];
+  $("#swCode").textContent = own ? `CMYK ที่ใส่เอง: ${cmykText(own)}` : info ? `${info.n || ""} ${info.k}`.trim()
+    : color === "none" || color === "rgba(0,0,0,0)" ? "ไม่มีสี" : /^#[0-9a-f]{6}$/.test(h) ? `${h} · นอกชาร์ต (โรงงานแปลงเป็น CMYK ให้)` : "";
+  const c = own || (info && parseCmykText(info.k));
+  ["ckC", "ckM", "ckY", "ckK"].forEach((id, i) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = c ? c[i] : ""; });
+}
 function applyColor(color) {
+  if (color !== "none" && gradColor(color)) return;
   const val = color === "none" ? "rgba(0,0,0,0)" : color;
   const objs = canvas.getActiveObjects();
   if (fillTarget === "fill") fillState.fill = val; else fillState.stroke = val;
@@ -913,18 +1212,47 @@ $("#swRange").oninput = e => { const v = +e.target.value; $("#swVal").textConten
 $("#swRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
 $("#opRange").oninput = e => { const v = +e.target.value; $("#opVal").textContent = v; canvas.getActiveObjects().forEach(o => o.set("opacity", v / 100)); canvas.requestRenderAll(); };
 $("#opRange").onchange = () => canvas.getActiveObjects().length && pushHistory();
-$("#tW").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; const w = +e.target.value; if (w > 0) { o.scaleX = w / o.width; canvas.requestRenderAll(); pushHistory(); } };
-$("#tH").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; const h = +e.target.value; if (h > 0) { o.scaleY = h / o.height; canvas.requestRenderAll(); pushHistory(); } };
+$("#bmSel").onchange = e => {
+  const objs = canvas.getActiveObjects(); if (!objs.length) return;
+  objs.forEach(o => o.set("globalCompositeOperation", e.target.value));
+  canvas.requestRenderAll(); pushHistory();
+};
+/** sizes typed in mm, as printed; with the lock on, the other side follows (Illustrator's constrain proportions) */
+function setSizeMm(o, axis, mm) {
+  if (!(mm > 0)) return;
+  const c = o.getCenterPoint(), u = mm / MM_PER_UNIT;
+  const k = axis === "x" ? u / o.getScaledWidth() : u / o.getScaledHeight();
+  if ($("#tLock").checked) o.set({ scaleX: o.scaleX * k, scaleY: o.scaleY * k });
+  else if (axis === "x") o.set({ scaleX: o.scaleX * k }); else o.set({ scaleY: o.scaleY * k });
+  o.setPositionByOrigin(c, "center", "center"); o.setCoords();
+  if (clipOn) (o._objects || [o]).forEach(applyClip);
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+$("#tW").onchange = e => { const o = canvas.getActiveObject(); if (o) setSizeMm(o, "x", +e.target.value); };
+$("#tH").onchange = e => { const o = canvas.getActiveObject(); if (o) setSizeMm(o, "y", +e.target.value); };
+/** an object's centre in mm on its piece, from the piece's top-left (what the print measures) */
+function invM(m) { const d = m[0] * m[3] - m[1] * m[2]; return [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d, (m[2] * m[5] - m[3] * m[4]) / d, (m[1] * m[4] - m[0] * m[5]) / d]; }
+function centreMm(o) { const p = panels[panelOf(o)], c = o.getCenterPoint(); return p ? applyM(panelToMm(p), c.x, c.y) : [c.x * MM_PER_UNIT, c.y * MM_PER_UNIT]; }
+function setCentreMm(o, x, y) {
+  const p = panels[panelOf(o)]; if (!p) return;
+  const [cx, cy] = applyM(invM(panelToMm(p)), x, y);
+  const was = o.getCenterPoint();
+  moveBy(o, cx - was.x, cy - was.y);
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+$("#tX").onchange = e => { const o = canvas.getActiveObject(); if (o && e.target.value !== "") setCentreMm(o, +e.target.value, centreMm(o)[1]); };
+$("#tY").onchange = e => { const o = canvas.getActiveObject(); if (o && e.target.value !== "") setCentreMm(o, centreMm(o)[0], +e.target.value); };
 $("#tR").onchange = e => { const o = canvas.getActiveObject(); if (!o) return; o.rotate(+e.target.value || 0); canvas.requestRenderAll(); pushHistory(); };
 
 function syncProps() {
+  renderGradPanel();
   const o = canvas.getActiveObject();
   const fs = document.getElementById("fontSel");
   const textish = o && isTextish(o);
   // the font row stays visible even with nothing selected: it also sets the
   // font used for the NEXT text you create, and it holds the import button
   if (textish && fs) {
-    const fam = isArc(o) ? o.arcMeta.fontFamily : o.fontFamily;
+    const fam = isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily;
     const m = /^"?([^",]+)/.exec(fam || "");
     fs.value = (m && FONTS.includes(m[1])) ? m[1] : curFont;
   } else if (fs) {
@@ -942,33 +1270,817 @@ function syncProps() {
       set("txSize", Math.round(m.fontSize));
       set("txSpace", m.charSpacing || 0); lbl("txSpaceV", m.charSpacing || 0);
       set("txArc", m.curve || 0); lbl("txArcV", m.curve || 0);
+      const w = m.warp && m.warp.style !== "none" ? m.warp : null;
+      set("txWarp", w ? w.style : "none");
+      set("txBend", w ? w.bend : 50); lbl("txBendV", w ? w.bend : 50);
+      const br = document.getElementById("txBendRow"); if (br) br.style.display = w ? "flex" : "none";
+      const pr = document.getElementById("txPathRow"); if (pr) pr.style.display = m.onPath ? "flex" : "none";
+      if (m.onPath) set("txPathOff", m.onPath.shift || 0);
       set("txText", m.text);
       const er = document.getElementById("txEditRow");
       if (er) er.style.display = isArc(o) ? "flex" : "none"; // arcs can't be double-click edited
     }
   }
-  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; return; }
+  if (!o) { $("#fillChip").style.background = "transparent"; $("#strokeChip").style.background = "transparent"; $("#swVal").textContent = "0"; $("#swRange").value = 0; $("#opRange").value = 100; $("#opVal").textContent = "100"; $("#bmSel").value = "source-over"; $("#tW").value = ""; $("#tH").value = ""; $("#tR").value = ""; $("#tX").value = ""; $("#tY").value = ""; return; }
   const first = o._objects ? o._objects[0] : o;
-  $("#fillChip").style.background = first.fill || "transparent";
-  $("#strokeChip").style.background = first.stroke || "transparent";
+  $("#fillChip").style.background = isGrad(first.fill) ? gradCss(first.fill) : (first.fill || "transparent");
+  { const p = first[fillTarget], g = isGrad(p) ? sortedStops(p)[Math.min(gradStop, p.colorStops.length - 1)].color : null;
+    const cur = g || p; if (typeof cur === "string") showCode(cur); }
+  $("#strokeChip").style.background = isGrad(first.stroke) ? gradCss(first.stroke) : (first.stroke || "transparent");
   $("#swRange").value = first.strokeWidth || 0; $("#swVal").textContent = first.strokeWidth || 0;
+  showJoin(first.strokeLineJoin);
   $("#opRange").value = Math.round((o.opacity ?? 1) * 100); $("#opVal").textContent = Math.round((o.opacity ?? 1) * 100);
-  $("#tW").value = Math.round(o.getScaledWidth()); $("#tH").value = Math.round(o.getScaledHeight()); $("#tR").value = Math.round(o.angle || 0);
+  $("#bmSel").value = PRINT_BLENDS.includes(o.globalCompositeOperation) ? o.globalCompositeOperation : "source-over";
+  $("#tW").value = Math.round(o.getScaledWidth() * MM_PER_UNIT); $("#tH").value = Math.round(o.getScaledHeight() * MM_PER_UNIT); $("#tR").value = Math.round(o.angle || 0);
+  try { const [x, y] = centreMm(o); $("#tX").value = Math.round(x); $("#tY").value = Math.round(y); } catch (e) { $("#tX").value = ""; $("#tY").value = ""; }
 }
+
+/* ---------- gradient, as Illustrator's Gradient panel ---------- */
+let gradStop = 0; // the stop the swatches colour
+const isGrad = f => !!f && typeof f === "object" && Array.isArray(f.colorStops);
+/** the one shape a gradient can go on (not a group, a picture or a curved name) */
+function gradTarget() {
+  const o = canvas.getActiveObject();
+  return o && !o._objects && o.type !== "image" && !isArc(o) ? o : null;
+}
+const sortedStops = g => g.colorStops.map(s => ({ offset: s.offset, color: colorHex(s.color) || "#000000" })).sort((a, b) => a.offset - b.offset);
+const gradCss = g => `linear-gradient(90deg,${sortedStops(g).map(s => `${s.color} ${Math.round(s.offset * 100)}%`).join(",")})`;
+function gradAngle(g) { const c = g.coords; return Math.round(Math.atan2(c.y2 - c.y1, c.x2 - c.x1) * 180 / Math.PI); }
+/**
+ * A gradient across the object (Illustrator's default: through the middle, at
+ * an angle; a radial one round from the middle). In the object's own units, not
+ * as fractions of its box: a text's box is wider than its letters, and the
+ * print draws the letters' outlines, so a fraction would land elsewhere.
+ */
+function makeGrad(o, type, stops, angle, prop = fillTarget) {
+  const w = o.width || 1, h = o.height || 1;
+  // the same kind at the same angle keeps where it was put (dragged with the Gradient tool)
+  const was = o[prop];
+  const keep = isGrad(was) && was.type === type && (type === "radial" || gradAngle(was) === Math.round(angle || 0)) ? { ...was.coords } : null;
+  const a = (angle || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const half = (Math.abs(w * ca) + Math.abs(h * sa)) / 2; // reaches the box's corners along the angle
+  return new fabric.Gradient({
+    type, gradientUnits: "pixels",
+    coords: keep || (type === "linear"
+      ? { x1: w / 2 - ca * half, y1: h / 2 - sa * half, x2: w / 2 + ca * half, y2: h / 2 + sa * half }
+      : { x1: w / 2, y1: h / 2, r1: 0, x2: w / 2, y2: h / 2, r2: Math.max(w, h) / 2 }),
+    colorStops: stops.slice().sort((p, q) => p.offset - q.offset).map(t => ({ offset: Math.min(1, Math.max(0, t.offset)), color: t.color })),
+  });
+}
+function setGrad(o, g, record = true) {
+  o.set(fillTarget, g);
+  // a gradient stroke needs a stroke to show on
+  if (fillTarget === "stroke" && !o.strokeWidth) o.set("strokeWidth", fillState.strokeW || 2);
+  o.dirty = true; canvas.requestRenderAll(); renderGradPanel(); if (record) pushHistory();
+}
+/** a paint's gradients drawn again for another object (a gradient is in its object's own units) */
+function fitPaint(x, paint) {
+  for (const k of ["fill", "stroke"]) if (isGrad(paint[k])) x.set(k, makeGrad(x, paint[k].type, sortedStops(paint[k]), gradAngle(paint[k]), k));
+}
+/** a paint with its gradients as their first colour, for building a new object before fitPaint */
+const flatPaint = paint => ({ ...paint, ...(isGrad(paint.fill) ? { fill: sortedStops(paint.fill)[0].color } : {}), ...(isGrad(paint.stroke) ? { stroke: sortedStops(paint.stroke)[0].color } : {}) });
+/** a swatch picked while a gradient is selected colours its selected stop; false when there's no gradient */
+function gradColor(color) {
+  const o = gradTarget(), g = o && o[fillTarget];
+  if (!isGrad(g)) return false;
+  const st = sortedStops(g); st[Math.min(gradStop, st.length - 1)].color = color;
+  setGrad(o, makeGrad(o, g.type, st, gradAngle(g)));
+  showCode(color); syncProps();
+  return true;
+}
+function renderGradPanel() {
+  const panel = document.getElementById("gradPanel"); if (!panel) return;
+  const o = gradTarget(), g = o && isGrad(o[fillTarget]) ? o[fillTarget] : null;
+  $("#gradFor").textContent = fillTarget === "stroke" ? "· เส้นขอบ" : "· พื้น";
+  panel.style.opacity = o ? "" : ".55";
+  document.querySelectorAll("[data-gtype]").forEach(b => b.classList.toggle("on", !!o && (g ? g.type : "none") === b.dataset.gtype));
+  $("#gradEdit").style.display = g ? "" : "none";
+  if (!g) return;
+  const st = sortedStops(g); gradStop = Math.min(gradStop, st.length - 1);
+  const bar = $("#gradBar");
+  bar.style.background = gradCss(g);
+  bar.innerHTML = "";
+  st.forEach((s, i) => {
+    const m = document.createElement("div");
+    m.className = "gstop" + (i === gradStop ? " on" : ""); m.style.left = (s.offset * 100) + "%"; m.style.background = s.color;
+    m.title = `${s.color} · ${Math.round(s.offset * 100)}%`;
+    m.onpointerdown = ev => {
+      ev.stopPropagation(); ev.preventDefault();
+      gradStop = i; renderGradPanel();
+      const r = bar.getBoundingClientRect(); let moved = false;
+      const move = e2 => {
+        moved = true;
+        const now = sortedStops(o[fillTarget]), me = now[gradStop];
+        me.offset = Math.min(1, Math.max(0, (e2.clientX - r.left) / r.width));
+        const ordered = now.slice().sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+        setGrad(o, makeGrad(o, g.type, ordered, gradAngle(o[fillTarget])), false);
+      };
+      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (moved) pushHistory(); };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+    };
+    bar.appendChild(m);
+  });
+  $("#gAngle").value = gradAngle(g); $("#gAngle").disabled = g.type !== "linear";
+  $("#gPos").value = Math.round(st[gradStop].offset * 100); $("#gPosV").textContent = Math.round(st[gradStop].offset * 100) + "%";
+  $("#gDel").disabled = st.length <= 2;
+}
+document.querySelectorAll("[data-gtype]").forEach(b => b.onclick = () => {
+  const o = gradTarget(); if (!o) { toast("เลือกรูปทรงหรือข้อความก่อน", "info"); return; }
+  const t = b.dataset.gtype, f = o[fillTarget];
+  if (t === "none") { if (isGrad(f)) { o.set(fillTarget, sortedStops(f)[0].color); canvas.requestRenderAll(); renderGradPanel(); pushHistory(); syncProps(); } return; }
+  // Illustrator's default for a flat colour: the colour fading to black (a stroke with none: the fill's colour)
+  const base = colorHex(f) || (fillTarget === "stroke" ? colorHex(isGrad(o.fill) ? sortedStops(o.fill)[0].color : o.fill) : null) || "#ffffff";
+  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: base }, { offset: 1, color: "#231f20" }];
+  gradStop = 0;
+  setGrad(o, makeGrad(o, t, stops, isGrad(f) && f.type === "linear" ? gradAngle(f) : 0));
+  syncProps();
+});
+$("#gradBar").onpointerdown = ev => {
+  const o = gradTarget(); if (!o || !isGrad(o[fillTarget]) || ev.target !== ev.currentTarget) return;
+  const r = ev.currentTarget.getBoundingClientRect(), at = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+  const g = o[fillTarget], st = sortedStops(g);
+  // the colour already there, as Illustrator adds a stop
+  const i = Math.max(1, st.findIndex(s => s.offset >= at)), a = st[Math.max(0, i - 1)], b = st[Math.min(st.length - 1, i)];
+  const k = b.offset > a.offset ? (at - a.offset) / (b.offset - a.offset) : 0;
+  const ca = new fabric.Color(a.color).getSource(), cb = new fabric.Color(b.color).getSource();
+  const color = "#" + [0, 1, 2].map(j => Math.round(ca[j] + (cb[j] - ca[j]) * k).toString(16).padStart(2, "0")).join("");
+  const me = { offset: at, color };
+  const ordered = st.concat(me).sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+  setGrad(o, makeGrad(o, g.type, ordered, gradAngle(g)));
+};
+/** the selected shape's gradient on the chosen paint (fill or stroke) */
+const curGrad = () => { const o = gradTarget(), g = o && o[fillTarget]; return isGrad(g) ? { o, g } : null; };
+$("#gAngle").onchange = e => { const c = curGrad(); if (c && c.g.type === "linear") setGrad(c.o, makeGrad(c.o, "linear", sortedStops(c.g), +e.target.value || 0)); };
+$("#gPos").oninput = e => {
+  const c = curGrad(); if (!c) return;
+  const st = sortedStops(c.g), me = st[gradStop]; me.offset = (+e.target.value) / 100;
+  const ordered = st.sort((p, q) => p.offset - q.offset); gradStop = ordered.indexOf(me);
+  setGrad(c.o, makeGrad(c.o, c.g.type, ordered, gradAngle(c.g)), false);
+};
+$("#gPos").onchange = () => pushHistory();
+$("#gRev").onclick = () => { const c = curGrad(); if (c) setGrad(c.o, makeGrad(c.o, c.g.type, sortedStops(c.g).map(s => ({ offset: 1 - s.offset, color: s.color })), gradAngle(c.g))); };
+$("#gDel").onclick = () => {
+  const c = curGrad(); if (!c) return;
+  const st = sortedStops(c.g); if (st.length <= 2) return;
+  st.splice(gradStop, 1); gradStop = Math.max(0, gradStop - 1);
+  setGrad(c.o, makeGrad(c.o, c.g.type, st, gradAngle(c.g)));
+};
+
+/* ---------- the Gradient tool (G): dragged across the object, as in Illustrator ---------- */
+let gradToolFor = null, gradDrag = null;
+/** a point on the canvas → the object's own gradient units (from its top-left, unscaled) */
+function toGradUnits(o, p) {
+  const inv = fabric.util.invertTransform(o.calcTransformMatrix());
+  const q = fabric.util.transformPoint(new fabric.Point(p.x, p.y), inv);
+  return { x: q.x + o.width / 2, y: q.y + o.height / 2 };
+}
+function snap45(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+  return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len };
+}
+function gradDragStart(p) {
+  const o = gradToolFor; if (!o || !canvas.getObjects().includes(o)) { setTool("select"); return; }
+  const line = new fabric.Line([p.x, p.y, p.x, p.y], { stroke: "#f26522", strokeWidth: 2 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()], selectable: false, evented: false, _temp: true, excludeFromExport: true });
+  canvas.add(line);
+  gradDrag = { a: p, line };
+}
+function gradDragMove(p, shift) {
+  if (!gradDrag) return;
+  const b = shift ? snap45(gradDrag.a, p) : p;
+  gradDrag.line.set({ x2: b.x, y2: b.y }); canvas.requestRenderAll();
+}
+function gradDragEnd(p, shift) {
+  const { a, line } = gradDrag; gradDrag = null; canvas.remove(line);
+  const o = gradToolFor, b = shift ? snap45(a, p) : p;
+  if (!o || Math.hypot(b.x - a.x, b.y - a.y) < 3 / canvas.getZoom()) { canvas.requestRenderAll(); return; }
+  const f = o[fillTarget];
+  const type = isGrad(f) ? f.type : "linear";
+  const stops = isGrad(f) ? sortedStops(f) : [{ offset: 0, color: colorHex(f) || "#ffffff" }, { offset: 1, color: "#231f20" }];
+  const A = toGradUnits(o, a), B = toGradUnits(o, b);
+  const g = new fabric.Gradient({
+    type, gradientUnits: "pixels",
+    // radial: the drag's start is the centre, its length the radius
+    coords: type === "linear" ? { x1: A.x, y1: A.y, x2: B.x, y2: B.y } : { x1: A.x, y1: A.y, r1: 0, x2: A.x, y2: A.y, r2: Math.hypot(B.x - A.x, B.y - A.y) },
+    colorStops: stops.map(s => ({ offset: s.offset, color: s.color })),
+  });
+  o.set(fillTarget, g);
+  if (fillTarget === "stroke" && !o.strokeWidth) o.set("strokeWidth", fillState.strokeW || 2);
+  o.dirty = true;
+  canvas.setActiveObject(o); canvas.requestRenderAll(); renderGradPanel(); syncProps(); pushHistory();
+}
+
+/* ---------- Pathfinder (as Illustrator's): shapes combined into one outline, by paper.js ---------- */
+let paperReady = null;
+function loadPaper() {
+  return paperReady || (paperReady = new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.18/paper-core.min.js";
+    s.onload = () => { paper.setup(new paper.Size(1, 1)); ok(window.paper); };
+    s.onerror = () => { paperReady = null; bad(new Error("paper.js")); };
+    document.head.appendChild(s);
+  }));
+}
+/** an object's filled area as one paper.js outline in canvas units (text outlined first); null when it has none */
+async function areaOf(o) {
+  const keep = o.clipPath; o.clipPath = null;
+  let svg; try { svg = o.toSVG(); } finally { o.clipPath = keep; }
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">${svg}</svg>`);
+  const root = paper.project.importSVG(r.svg, { insert: false, expandShapes: true });
+  let area = null;
+  const parts = root.getItems({ match: x => (x instanceof paper.Path || x instanceof paper.CompoundPath) && !(x.parent instanceof paper.CompoundPath) });
+  for (const c of parts) {
+    if (c.clipMask || !c.fillColor || c.fillColor.alpha === 0) continue;
+    const p = c.clone({ insert: false });
+    p.applyMatrix = true; // its own transform into its points
+    if (c.parent) p.transform(c.parent.globalMatrix);
+    area = area ? area.unite(p, { insert: false }) : p;
+  }
+  return area;
+}
+/** the paint a result takes (Illustrator: the top object's, or the bottom one's for Minus Front) */
+function paintOf(o) {
+  const src = o._objects ? (o._objects.find(x => x.fill && x.fill !== "rgba(0,0,0,0)") || o._objects[0]) : o;
+  return { fill: src.fill, stroke: src.stroke, strokeWidth: src.strokeWidth || 0, opacity: o.opacity ?? 1, paintFirst: src.paintFirst };
+}
+async function pathfinder(op) {
+  const objs = canvas.getActiveObjects().slice();
+  if (objs.length < 2) { toast("เลือกอย่างน้อย 2 ชิ้น (Shift+คลิก) ก่อนใช้ Pathfinder", "info"); return; }
+  if (objs.some(o => o.type === "image")) { toast("รูปภาพใช้ Pathfinder ไม่ได้ — ใช้กับรูปทรง ข้อความ หรือโลโก้ SVG", "warn"); return; }
+  if (objs.some(o => o.rosterTag)) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ รวมกับชิ้นอื่นไม่ได้", "warn"); return; }
+  try { await loadPaper(); } catch (e) { toast("โหลดเครื่องมือ Pathfinder ไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  canvas.discardActiveObject(); // each object back in canvas units
+  const all = canvas.getObjects();
+  const order = objs.sort((a, b) => all.indexOf(a) - all.indexOf(b)); // bottom first
+  const areas = [];
+  for (const o of order) { const a = await areaOf(o); if (a) areas.push(a); }
+  if (areas.length < 2) { toast("ต้องมีรูปทรงที่มีสีพื้นอย่างน้อย 2 ชิ้น", "warn"); return; }
+  let res;
+  if (op === "unite") res = areas.reduce((a, b) => a.unite(b, { insert: false }));
+  else if (op === "minus") res = areas.slice(1).reduce((a, b) => a.subtract(b, { insert: false }), areas[0]);
+  else if (op === "intersect") res = areas.reduce((a, b) => a.intersect(b, { insert: false }));
+  else res = areas.reduce((a, b) => a.exclude(b, { insert: false }));
+  const d = res && res.pathData;
+  if (!d || !(Math.abs(res.area) > 0.01)) { toast(op === "intersect" ? "รูปทรงไม่ได้ซ้อนกัน — ไม่มีส่วนที่เหลือ" : "ไม่มีรูปทรงเหลือ", "warn"); return; }
+  const from = op === "minus" ? order[0] : order[order.length - 1];
+  const paint = paintOf(from);
+  const shape = new fabric.Path(d, { fillRule: "evenodd", strokeUniform: false, ...flatPaint(paint) });
+  fitPaint(shape, paint);
+  const at = all.indexOf(from);
+  order.forEach(o => canvas.remove(o));
+  canvas.insertAt(shape, Math.min(at - order.filter(o => all.indexOf(o) < at).length, canvas.getObjects().length));
+  if (clipOn) applyClip(shape);
+  canvas.setActiveObject(shape); canvas.requestRenderAll();
+  refreshLayers(); syncProps(); pushHistory();
+  toast({ unite: "รวมรูปทรงแล้ว", minus: "เจาะรูปทรงแล้ว", intersect: "เหลือส่วนที่ซ้อนกันแล้ว", exclude: "ตัดส่วนที่ซ้อนกันแล้ว" }[op], "ok");
+}
+document.querySelectorAll("[data-pf]").forEach(b => b.onclick = () => pathfinder(b.dataset.pf));
+
+/* ---------- stroke corners (Illustrator's Stroke panel: round / miter / bevel) ---------- */
+let curJoin = "round";
+function showJoin(j) { curJoin = j || "round"; document.querySelectorAll("[data-join]").forEach(b => b.classList.toggle("on", b.dataset.join === curJoin)); }
+document.querySelectorAll("[data-join]").forEach(b => b.onclick = () => {
+  showJoin(b.dataset.join);
+  const objs = canvas.getActiveObjects(); if (!objs.length) return;
+  // Illustrator's miter limit: a spike up to 10 × the width, then it is cut
+  objs.forEach(o => (o._objects || [o]).forEach(x => x.set({ strokeLineJoin: curJoin, strokeMiterLimit: 10 })));
+  canvas.requestRenderAll(); pushHistory();
+});
+
+/* ---------- Clipping Mask (Ctrl+7), as Illustrator's: the top object's shape shows only what lies under it ----------
+   The masked objects are a group clipped by the mask's shape, inside an outer group that
+   takes the garment clip (which every top-level object gets): the two clips never fight.
+   The print reads the mask as the artwork's own clip (clip-path in the SVG). */
+async function makeClipMask() {
+  const sel = canvas.getActiveObject();
+  if (!sel || sel.type !== "activeSelection" || sel._objects.length < 2) { toast("เลือก 2 ชิ้นขึ้นไป (Shift+คลิก) — ชิ้นบนสุดจะเป็นกรอบ", "info"); return; }
+  const objs = sel._objects.slice();
+  if (objs.some(o => o.rosterTag)) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ ใส่ใน Clipping Mask ไม่ได้", "warn"); return; }
+  canvas.discardActiveObject();
+  const all = canvas.getObjects();
+  objs.sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  const top = objs.pop(), at = all.indexOf(objs[0]);
+  if (top.type === "image") { toast("ชิ้นบนสุดต้องเป็นรูปทรงหรือข้อความ (ใช้เป็นกรอบ)", "warn"); canvas.setActiveObject(new fabric.ActiveSelection(objs.concat(top), { canvas })); return; }
+  const mask = await new Promise(ok => top.clone(ok, ARC_PROPS));
+  mask.clipPath = null;
+  [top, ...objs].forEach(o => canvas.remove(o));
+  objs.forEach(o => { o.clipPath = null; });
+  const inner = new fabric.Group(objs, { objectCaching: false });
+  // the mask in the group's own space (centred on the group)
+  const c = inner.getCenterPoint(), mc = mask.getCenterPoint();
+  mask.setPositionByOrigin(new fabric.Point(mc.x - c.x, mc.y - c.y), "center", "center");
+  mask._maskOf = top.name || objLabel(top);
+  inner.clipPath = mask;
+  const outer = new fabric.Group([inner], { objectCaching: false });
+  outer._clipMask = true; outer.name = "Clip Group";
+  canvas.insertAt(outer, Math.max(0, at));
+  applyClip(outer);
+  canvas.setActiveObject(outer); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast("ทำ Clipping Mask แล้ว — ยกเลิกได้ด้วย ◪ Release (Ctrl+Alt+7)", "ok");
+}
+function releaseClipMask() {
+  const outer = canvas.getActiveObject();
+  if (!outer || !outer._clipMask) { toast("เลือก Clip Group ก่อน", "info"); return; }
+  const at = canvas.getObjects().indexOf(outer);
+  const inner = outer._objects[0];
+  const mask = inner.clipPath;
+  // the mask back on the canvas where it showed: its place in the inner group, then the groups' own
+  const M = fabric.util.multiplyTransformMatrices(inner.calcTransformMatrix(), mask.calcTransformMatrix());
+  outer.toActiveSelection(); canvas.discardActiveObject();
+  inner.clipPath = null;
+  canvas.setActiveObject(inner); inner.toActiveSelection();
+  const contents = canvas.getActiveObject()._objects.slice();
+  canvas.discardActiveObject();
+  fabric.util.applyTransformToObject(mask, M);
+  delete mask._maskOf;
+  canvas.insertAt(mask, Math.min(canvas.getObjects().length, at + contents.length));
+  contents.concat(mask).forEach(o => { o.setCoords(); applyClip(o); });
+  canvas.setActiveObject(new fabric.ActiveSelection(contents.concat(mask), { canvas }));
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+$("#btnClipMake").onclick = () => makeClipMask();
+$("#btnClipRelease").onclick = () => releaseClipMask();
+
+/* ---------- Offset Path: an outline round the object, a new layer behind it ---------- */
+async function offsetPath() {
+  const o = canvas.getActiveObject();
+  if (!o || o.type === "activeSelection") { toast("เลือกตัวอักษรหรือรูปทรง 1 ชิ้นก่อน", "info"); return; }
+  if (o.type === "image") { toast("รูปภาพทำขอบนอกไม่ได้ — ใช้กับตัวอักษร รูปทรง หรือโลโก้ SVG", "warn"); return; }
+  const mm = Math.max(0.5, +$("#offMm").value || 3), u = mm / MM_PER_UNIT;
+  // near-black, a ring of its own past any keyline already there; recoloured after, as in Illustrator
+  const color = "#231f20";
+  const c = await new Promise(ok => o.clone(ok, ["name", "rosterTag", "arcMeta"]));
+  const widen = x => {
+    const k = x.strokeUniform ? 1 : ((Math.abs(x.scaleX) + Math.abs(x.scaleY)) / 2) * (x.group ? (Math.abs(x.group.scaleX) + Math.abs(x.group.scaleY)) / 2 : 1);
+    // a keyline already under the fill reaches half its width out: the new one goes past it
+    const had = x.stroke && x.strokeWidth && x.paintFirst === "stroke" ? x.strokeWidth : 0;
+    x.set({ fill: isGrad(x.fill) || x.fill ? color : x.fill, stroke: color, strokeWidth: had + (2 * u) / (x.strokeUniform ? 1 : k), strokeLineJoin: curJoin, strokeMiterLimit: 10, paintFirst: "stroke" });
+  };
+  if (c._objects) c._objects.forEach(widen); else widen(c);
+  if (o.rosterTag) c.rosterTag = o.rosterTag; // a name's outline changes with the name
+  c.name = (o.name || objLabel(o)) + " · ขอบนอก";
+  canvas.insertAt(c, canvas.getObjects().indexOf(o));
+  if (clipOn) applyClip(c);
+  canvas.setActiveObject(o); canvas.requestRenderAll(); refreshLayers(); pushHistory();
+  toast(`เพิ่มขอบนอก ${mm} มม. แล้ว (ชั้นด้านหลัง) — เลือกชั้นนั้นแล้วคลิกสีเพื่อเปลี่ยนสี`, "ok");
+}
+$("#btnOffset").onclick = () => offsetPath();
+
+/* ---------- eyedropper: the next object clicked gives its paint to the selection ---------- */
+let eyedropFor = null, eyedropBound = false;
+$("#btnEyedrop").onclick = () => {
+  const objs = canvas.getActiveObjects();
+  if (!objs.length) { toast("เลือกชิ้นที่จะเปลี่ยนสีก่อน แล้วกดดูดสี", "info"); return; }
+  eyedropFor = objs.slice();
+  canvas.defaultCursor = canvas.hoverCursor = "crosshair";
+  toast("คลิกวัตถุที่ต้องการดูดสี (Esc ยกเลิก)", "info");
+  if (eyedropBound) return;
+  eyedropBound = true;
+  canvas.on("mouse:down", opt => {
+    if (!eyedropFor) return;
+    const targets = eyedropFor; eyedropFor = null;
+    canvas.defaultCursor = "default"; canvas.hoverCursor = "move";
+    const t = opt.target, from = t && (t._objects ? t._objects.find(x => x.fill) || t._objects[0] : t);
+    const restore = () => { canvas.discardActiveObject(); canvas.setActiveObject(targets.length > 1 ? new fabric.ActiveSelection(targets, { canvas }) : targets[0]); canvas.requestRenderAll(); syncProps(); };
+    if (!from || targets.includes(t) || t.type === "image") { restore(); return; }
+    const paint = { fill: from.fill, stroke: from.stroke, strokeWidth: from.strokeWidth, paintFirst: from.paintFirst };
+    targets.forEach(o => (o._objects || [o]).forEach(x => {
+      x.set({ ...flatPaint(paint) });
+      fitPaint(x, paint);
+    }));
+    restore(); pushHistory();
+    toast("ดูดสีแล้ว", "ok");
+  });
+};
+document.addEventListener("keydown", e => { if (e.key === "Escape" && eyedropFor) { eyedropFor = null; canvas.defaultCursor = "default"; canvas.hoverCursor = "move"; } });
+
+/* ---------- CMYK typed in: printed exactly, shown as the factory's Illustrator shows it ---------- */
+/** CMYK (0–100) → screen RGB by the factory's table (factory-rgb.js), between its grid points */
+function cmykToRgb(c) {
+  const T = window.AXIOM_CMYK_RGB;
+  if (!T) { const k = 1 - c[3] / 100; return [0, 1, 2].map(i => Math.round(255 * (1 - c[i] / 100) * k)); }
+  const n = T.grid.length, step = 100 / (n - 1);
+  const at = c.map(v => { const t = Math.min(100, Math.max(0, v)) / step, i = Math.min(n - 2, Math.floor(t)); return [i, t - i]; });
+  const out = [0, 0, 0];
+  for (let corner = 0; corner < 16; corner++) {
+    let w = 1, idx = 0;
+    for (let a = 0; a < 4; a++) { const hi = (corner >> (3 - a)) & 1; w *= hi ? at[a][1] : 1 - at[a][1]; idx = idx * n + at[a][0] + hi; }
+    if (!w) continue;
+    for (let q = 0; q < 3; q++) out[q] += w * T.rgb[idx * 3 + q];
+  }
+  return out.map(v => Math.min(255, Math.max(0, Math.round(v))));
+}
+/** every colour the design paints with (fills, strokes, gradient stops, the garment) */
+function usedColours() {
+  const out = new Set([bodyColor, trimColor, sideB && sideB.color].filter(c => typeof c === "string").map(c => c.toLowerCase()));
+  const add = v => { if (typeof v === "string") { const h = colorHex(v); if (h) out.add(h); } else if (isGrad(v)) v.colorStops.forEach(s => add(s.color)); };
+  const walk = o => { add(o.fill); add(o.stroke); (o._objects || []).forEach(walk); };
+  userObjects().forEach(walk);
+  return out;
+}
+/** the screen colour that stands for a typed CMYK: a chart swatch with that CMYK, else its own (unique) colour */
+function inkHex(c) {
+  const key = cmykText(c);
+  const same = Object.entries(customInks).find(([, v]) => cmykText(v) === key); if (same) return same[0];
+  const chart = PALINFO.find(p => p.k === key); if (chart) return chart.c.toLowerCase();
+  const rgb = cmykToRgb(c);
+  // a colour the chart, another typed ink or the design itself already uses would print as this CMYK too:
+  // step it by one so each colour prints its own CMYK (a plain black stays a plain black)
+  const used = usedColours();
+  const taken = h => PALINFO.some(p => p.c.toLowerCase() === h) || customInks[h] || used.has(h) || h === "#000000" || h === "#ffffff";
+  let h, i = 0;
+  do {
+    const b = Math.min(255, Math.max(0, rgb[2] + (i % 2 ? -1 : 1) * Math.ceil(i / 2)));
+    h = "#" + [rgb[0], rgb[1], b].map(v => v.toString(16).padStart(2, "0")).join(""); i++;
+  } while (taken(h) && i < 40);
+  customInks[h] = c;
+  return h;
+}
+function applyTypedCmyk() {
+  const c = ["ckC", "ckM", "ckY", "ckK"].map(id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : Math.round(Math.min(100, Math.max(0, v)) * 10) / 10; });
+  applyColor(inkHex(c));
+}
+$("#ckApply").onclick = applyTypedCmyk;
+["ckC", "ckM", "ckY", "ckK"].forEach(id => document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); applyTypedCmyk(); } }));
+
+/* ---------- rulers (mm) and guides, as Illustrator's ----------
+   Each garment piece has its own 0 at its top-left, as the print measures (the
+   Transform panel's X/Y). Guides are dragged out of a ruler, moved by dragging
+   them on the canvas, dropped back on a ruler to delete; objects snap to them. */
+let userGuides = [];            // { axis: "x" | "y", v: canvas units }
+let guidesShown = true, rulerMouse = null;
+const RULER = 18;
+/** a piece's mm along a canvas axis: [canvas units → mm] as a + b·v, and the canvas range it covers */
+function pieceAxis(p, axis) {
+  const m = panelToMm(p);
+  const at = v => axis === "x" ? applyM(m, v, p.cy) : applyM(m, p.cx, v);
+  const p0 = at(0), p1 = at(1);
+  // the mm axis that changes along this canvas axis (a piece laid on its side swaps them)
+  const k = Math.abs(p1[0] - p0[0]) > Math.abs(p1[1] - p0[1]) ? 0 : 1;
+  return { a: p0[k], b: p1[k] - p0[k], from: axis === "x" ? p.x : p.y, to: axis === "x" ? p.x + p.w : p.y + p.h };
+}
+function drawRuler(el, axis) {
+  const stageR = stage.getBoundingClientRect();
+  const len = axis === "x" ? stageR.width - RULER : stageR.height - RULER;
+  const dpr = window.devicePixelRatio || 1;
+  if (el.width !== Math.round(len * dpr) || el.height !== Math.round(RULER * dpr)) {
+    el.width = Math.round((axis === "x" ? len : RULER) * dpr); el.height = Math.round((axis === "x" ? RULER : len) * dpr);
+    el.style.width = (axis === "x" ? len : RULER) + "px"; el.style.height = (axis === "x" ? RULER : len) + "px";
+  }
+  const g = el.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (axis === "y") { g.translate(RULER, 0); g.rotate(Math.PI / 2); } // draw the left one as a top one, turned
+  g.fillStyle = "#141619"; g.fillRect(0, 0, len, RULER);
+  const vpt = canvas.viewportTransform, k = axis === "x" ? vpt[0] : vpt[3], off = (axis === "x" ? vpt[4] : vpt[5]) - RULER;
+  const toScreen = v => v * k + off;
+  // which pieces: across, every piece side by side; down, the one under the mouse (else the first)
+  let ps = panels.filter(p => p.w && p.h);
+  if (axis === "y") { const near = rulerMouse ? ps.find(p => rulerMouse.x >= p.x && rulerMouse.x <= p.x + p.w) : null; ps = [near || ps[0]].filter(Boolean); }
+  const pxPerMm = k / MM_PER_UNIT;
+  const step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => s * pxPerMm >= 42) || 1000;
+  const minor = step / (step % 5 === 0 ? 5 : 2);
+  g.font = "9px Sora, sans-serif"; g.textBaseline = "top";
+  for (const p of ps) {
+    const ax = pieceAxis(p, axis);
+    const s0 = toScreen(ax.from), s1 = toScreen(ax.to);
+    g.fillStyle = "#1d2024"; g.fillRect(Math.min(s0, s1), 0, Math.abs(s1 - s0), RULER);
+    const mm0 = ax.a + ax.b * ax.from, mm1 = ax.a + ax.b * ax.to;
+    const lo = Math.min(mm0, mm1), hi = Math.max(mm0, mm1);
+    for (let mm = Math.ceil(lo / minor) * minor; mm <= hi + 1e-9; mm += minor) {
+      const x = toScreen((mm - ax.a) / ax.b);
+      if (x < -20 || x > len + 20) continue;
+      const major = Math.abs(mm / step - Math.round(mm / step)) < 1e-6;
+      g.strokeStyle = major ? "#7d8187" : "#4a4e54"; g.beginPath(); g.moveTo(x + 0.5, major ? 6 : 12); g.lineTo(x + 0.5, RULER); g.stroke();
+      if (major) { g.fillStyle = "#a3a6ab"; g.fillText(String(Math.round(mm)), x + 2, 1); }
+    }
+  }
+  // guides and the mouse, marked on the ruler
+  g.fillStyle = "#22d3ee";
+  userGuides.filter(q => q.axis === axis).forEach(q => { const x = toScreen(q.v); g.fillRect(x - 1, 0, 2, RULER); });
+  if (rulerMouse) { g.fillStyle = "#f26522"; const x = toScreen(axis === "x" ? rulerMouse.x : rulerMouse.y); g.fillRect(x - 0.5, 0, 1, RULER); }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+}
+function drawRulers() {
+  if (document.documentElement.classList.contains("norulers") || isPreview()) return;
+  const rx = document.getElementById("rulerX"), ry = document.getElementById("rulerY");
+  if (rx && ry) { drawRuler(rx, "x"); drawRuler(ry, "y"); }
+}
+/** a guide's position in mm on the piece under it, for its label */
+function guideMm(q) {
+  const p = panels.find(pp => q.axis === "x" ? q.v >= pp.x && q.v <= pp.x + pp.w : q.v >= pp.y && q.v <= pp.y + pp.h) || panels[0];
+  if (!p) return "";
+  const ax = pieceAxis(p, q.axis);
+  return (Math.round((ax.a + ax.b * q.v) * 10) / 10) + " มม.";
+}
+/** canvas units under a screen point */
+function canvasAt(clientX, clientY) {
+  const r = canvas.upperCanvasEl.getBoundingClientRect(), vpt = canvas.viewportTransform;
+  return { x: (clientX - r.left - vpt[4]) / vpt[0], y: (clientY - r.top - vpt[5]) / vpt[3] };
+}
+/** a guide on whole mm of its piece (as Illustrator's rulers snap) */
+function snapGuide(q) {
+  const p = panels.find(pp => q.axis === "x" ? q.v >= pp.x && q.v <= pp.x + pp.w : q.v >= pp.y && q.v <= pp.y + pp.h);
+  if (!p) return;
+  // the piece's centre line first (where a number or a name goes), else whole mm
+  const mid = q.axis === "x" ? p.cx : p.cy;
+  if (Math.abs(q.v - mid) < 6 / canvas.getZoom()) { q.v = mid; return; }
+  const ax = pieceAxis(p, q.axis), mm = Math.round(ax.a + ax.b * q.v);
+  q.v = (mm - ax.a) / ax.b;
+}
+let guideDrag = null;
+function startGuideDrag(q, isNew) {
+  guideDrag = { q, isNew };
+  canvas.selection = false;
+  const move = e => {
+    const at = canvasAt(e.clientX, e.clientY);
+    q.v = q.axis === "x" ? at.x : at.y; snapGuide(q);
+    rulerMouse = at; canvas.requestRenderAll();
+  };
+  const up = e => {
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+    canvas.selection = curTool === "select";
+    // let go over a ruler: no guide
+    const r = stage.getBoundingClientRect(), onRuler = e.clientX - r.left < RULER || e.clientY - r.top < RULER;
+    if (onRuler) userGuides = userGuides.filter(g => g !== q);
+    else if (isNew) userGuides.push(q);
+    guideDrag = null; canvas.requestRenderAll();
+    if (!onRuler) toast(`ไกด์ ${q.axis === "x" ? "แนวตั้ง" : "แนวนอน"} ที่ ${guideMm(q)}`, "info");
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+}
+function bindRulers() {
+  const rx = document.getElementById("rulerX"), ry = document.getElementById("rulerY"), corner = document.getElementById("rulerCorner");
+  if (!rx || !ry) return;
+  // out of the top ruler: a horizontal guide; out of the left one: a vertical guide
+  rx.addEventListener("pointerdown", e => { e.preventDefault(); const at = canvasAt(e.clientX, e.clientY); startGuideDrag({ axis: "y", v: at.y }, true); });
+  ry.addEventListener("pointerdown", e => { e.preventDefault(); const at = canvasAt(e.clientX, e.clientY); startGuideDrag({ axis: "x", v: at.x }, true); });
+  corner.addEventListener("dblclick", () => { userGuides = []; canvas.requestRenderAll(); toast("ลบไกด์ทั้งหมดแล้ว"); });
+  // a guide on the canvas, picked up where nothing else is
+  canvas.on("mouse:down:before", opt => {
+    if (curTool !== "select" || !guidesShown || !userGuides.length || spaceDown) return;
+    const p = canvas.getPointer(opt.e), tol = 4 / canvas.getZoom();
+    if (canvas.findTarget(opt.e)) return;
+    const q = userGuides.find(g => Math.abs((g.axis === "x" ? p.x : p.y) - g.v) < tol);
+    if (q) { startGuideDrag(q, false); }
+  });
+  canvas.on("mouse:move", opt => { rulerMouse = canvas.getPointer(opt.e); drawRulers(); });
+  canvas.on("after:render", () => {
+    drawRulers();
+    if (!guidesShown || !userGuides.length) return;
+    const ctx = canvas.contextTop, vpt = canvas.viewportTransform, z = canvas.getZoom();
+    ctx.save(); ctx.setTransform(vpt[0], vpt[1], vpt[2], vpt[3], vpt[4], vpt[5]);
+    ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 1 / z;
+    const far = 1e5;
+    userGuides.forEach(q => { ctx.beginPath(); if (q.axis === "x") { ctx.moveTo(q.v, -far); ctx.lineTo(q.v, far); } else { ctx.moveTo(-far, q.v); ctx.lineTo(far, q.v); } ctx.stroke(); });
+    if (guideDrag) {
+      const q = guideDrag.q; ctx.fillStyle = "#22d3ee"; ctx.font = `${11 / z}px Sora, sans-serif`;
+      const lbl = guideMm(q);
+      if (q.axis === "x") ctx.fillText(lbl, q.v + 4 / z, (rulerMouse ? rulerMouse.y : 0) - 6 / z); else ctx.fillText(lbl, (rulerMouse ? rulerMouse.x : 0) + 6 / z, q.v - 4 / z);
+    }
+    ctx.restore();
+  });
+  // the guides' canvas layer is cleared with the top context, which Fabric does on each render
+  drawRulers();
+}
+
+$("#btnRepeat").onclick = () => stepRepeat();
+
+/* ---------- ✨ AI full-print patterns ----------
+   The customer's words go to the API through the page (it holds the login);
+   The AI (Claude or Gemini) answers with recipes, drawn here as vector shapes (ai-patterns.js)
+   over each piece of the side chosen, under everything else, locked, always
+   inside the garment. They print as the shapes they are: sharp, in CMYK. */
+const AI = window.AXIOM_AI_PATTERN;
+const AI_CHIPS = ["สายฟ้าเหลือง-ดำ ดุๆ", "ข้าวหลามตัดไล่สีชมพู", "คลื่นทะเลสไตล์ญี่ปุ่น น้ำเงิน", "ลายพรางดิจิทัลแดง", "ฮาล์ฟโทนไล่ลง สีทีม", "เศษแก้วแตก ม่วง-ส้ม"];
+let aiSeq = 0, aiWaiting = null;
+/** the panels the pattern goes on: the side chosen of an R-bib, else all */
+function aiTargets() {
+  return panels.map((p, i) => [p, i]).filter(([p]) => curStyle !== 2 || bodySide === "both" || (bodySide === "A") === !String(p.id).startsWith("inner")).map(([, i]) => i);
+}
+/** an AI pattern stays put (Layers unlocks it), and inside its piece */
+function lockAi(o) {
+  if (!o || !o._aiPattern) return;
+  o.set({ lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, selectable: false, evented: false });
+  if (canvas && canvas.getObjects().includes(o)) applyClip(o); else setTimeout(() => { applyClip(o); aiShowTweak(); }, 0);
+}
+const aiOnPanel = i => userObjects().filter(o => o._aiPattern && o._aiPanel === panels[i].id);
+function aiThumb(spec) {
+  const { svg } = AI.render(spec, 400, 480);
+  const img = document.createElement("img"); img.className = "aithumb"; img.title = spec.name; img.alt = spec.name;
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  return img;
+}
+function aiShow(specs, note) {
+  const box = $("#aiResults"); box.innerHTML = "";
+  specs.forEach(s => {
+    const cell = document.createElement("div");
+    const im = aiThumb(s); im.onclick = () => applyAiPattern(s);
+    const cap = document.createElement("div"); cap.textContent = s.name; cap.style.cssText = "font-size:10px;color:var(--muted);text-align:center;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    cell.appendChild(im); cell.appendChild(cap); box.appendChild(cell);
+  });
+  $("#aiMsg").textContent = note || "คลิกลายเพื่อใส่ · ปรับสี/ขนาดต่อได้ · ลายเป็นเวกเตอร์ พิมพ์คมทุกขนาด";
+}
+/** the recipe drawn on each piece of the side chosen, replacing an AI pattern already there */
+async function applyAiPattern(spec) {
+  const targets = aiTargets(); if (!targets.length) return;
+  $("#aiMsg").textContent = "กำลังวางลาย…";
+  for (const i of targets) {
+    const p = panels[i];
+    aiOnPanel(i).forEach(o => canvas.remove(o));
+    const W = p.w * MM_PER_UNIT, H = p.h * MM_PER_UNIT;
+    const { svg } = AI.render(spec, W, H);
+    const g = await new Promise(ok => fabric.loadSVGFromString(svg, (objs, opts) => ok(fabric.util.groupSVGElements(objs, opts))));
+    g.set({ scaleX: 1 / MM_PER_UNIT, scaleY: 1 / MM_PER_UNIT, originX: "center", originY: "center", left: p.cx, top: p.cy, objectCaching: true });
+    g._aiPattern = true; g._aiPanel = p.id; g.aiSpec = spec; g.name = "✨ " + spec.name;
+    g.set({ lockMovementX: true, lockMovementY: true, lockScalingX: true, lockScalingY: true, lockRotation: true, selectable: false, evented: false });
+    canvas.insertAt(g, 0);
+    g.setCoords(); applyClip(g);
+  }
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); aiShowTweak();
+  $("#aiMsg").textContent = `ใส่ลาย “${spec.name}” แล้ว${curStyle === 2 && bodySide !== "both" ? (bodySide === "A" ? " (ด้านนอก)" : " (ด้านใน)") : ""} · ปลดล็อกได้ในแผง Layers`;
+}
+/** the recipe on the side chosen (the first piece that has one) */
+function aiCurrent() {
+  for (const i of aiTargets()) { const o = aiOnPanel(i)[0]; if (o && o.aiSpec) return o.aiSpec; }
+  return null;
+}
+function aiShowTweak() { const t = document.getElementById("aiTweak"); if (t) t.style.display = aiCurrent() ? "" : "none"; }
+/** a small change to the recipe on the side chosen, drawn again: no AI call */
+function aiTweak(kind) {
+  const cur = aiCurrent(); if (!cur) return;
+  const s = JSON.parse(JSON.stringify(cur)), lim = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const layers = s.layers || [];
+  if (kind === "smaller" || kind === "bigger") layers.forEach(l => { l.scale = lim((l.scale || 1) * (kind === "bigger" ? 1.25 : 0.8), 0.3, 3); });
+  if (kind === "fainter" || kind === "stronger") layers.forEach(l => { l.opacity = lim((l.opacity ?? 1) * (kind === "stronger" ? 1.25 : 0.75), 0.1, 1); });
+  if (kind === "shuffle") layers.forEach(l => { l.seed = ((l.seed || 1) * 7 + 13) % 100000; });
+  if (kind === "turn") layers.forEach(l => { l.angle = (((l.angle || 0) + 45 + 180) % 360) - 180; });
+  if (kind === "swap" && layers.length) {
+    // the background and the main motif (the top layer) trade colours: yellow bolts on black → black bolts on yellow
+    const top = layers[layers.length - 1], bg = s.background.colors.slice(), fg = top.colors.slice();
+    s.background.colors = fg.length > 1 || s.background.type === "solid" ? fg : [fg[0], fg[0]];
+    top.colors = bg;
+  }
+  applyAiPattern(s);
+}
+document.querySelectorAll("[data-aitw]").forEach(b => b.onclick = () => aiTweak(b.dataset.aitw));
+/** said before the customer types: off, out for today, or how many are left */
+let aiOpen = true;
+function aiQuota(m) {
+  if (aiWaiting) return;
+  const msg = $("#aiMsg"), go = $("#aiGo");
+  // the line under the box is only the quota's while nothing else is said there
+  const idle = !msg.textContent || msg.textContent === msg.dataset.quota;
+  const say = t => { if (idle) { msg.textContent = t; msg.dataset.quota = t; } };
+  aiOpen = !!m.loggedIn && m.enabled && m.remaining > 0;
+  go.disabled = !!m.loggedIn && !aiOpen; go.style.opacity = go.disabled ? ".5" : "";
+  if (!m.loggedIn) say("เข้าสู่ระบบเพื่อให้ AI ออกแบบลาย · ลองปุ่ม 🎲 ตัวอย่าง ได้เลย");
+  else if (m.closed === "budget") say("วันนี้มีผู้ใช้ AI ออกแบบลายเต็มแล้ว ลองใหม่พรุ่งนี้ · ปุ่ม 🎲 ตัวอย่าง ยังใช้ได้");
+  else if (!m.enabled) say("AI ออกแบบลายปิดให้บริการชั่วคราว · ปุ่ม 🎲 ตัวอย่าง ยังใช้ได้");
+  else if (m.remaining <= 0) say(`ใช้ AI ออกแบบลายครบ ${m.daily} ครั้งของวันนี้แล้ว ลองใหม่พรุ่งนี้`);
+  else say(`วันนี้ให้ AI ออกแบบได้อีก ${m.remaining} ครั้ง (ครั้งละ 3 ลาย)`);
+}
+const aiAskQuota = () => { if (inFrame()) window.parent.postMessage({ type: "axiom-ai-quota" }, "*"); };
+function aiReply(m) {
+  if (!aiWaiting || m.id !== aiWaiting.id) return;
+  aiWaiting = null; $("#aiGo").disabled = false; $("#aiGo").textContent = "✨ ออกแบบ";
+  if (!m.ok) { $("#aiMsg").textContent = m.error || "AI ออกแบบไม่สำเร็จ ลองอีกครั้ง"; aiAskQuota(); return; }
+  aiShow(m.patterns || [], m.remaining !== undefined ? `เลือกลายที่ชอบ · วันนี้ใช้ได้อีก ${m.remaining} ครั้ง` : "");
+  if (m.remaining === 0) { $("#aiGo").disabled = true; $("#aiGo").style.opacity = ".5"; }
+}
+/* a picture of a pattern the customer likes: shrunk here (1024 px, JPEG) so it goes quickly,
+   sent with the words to the AI, which designs in its style. The site keeps none of it. */
+let aiRef = null; // { mime, data (base64) }
+/** the server asks no new AI after 2 minutes and each call stops at 90 s (ai-patterns.service.ts) */
+const AI_WAIT_MS = 240000;
+const AI_REF_PX = 1024;
+async function aiRefLoad(file) {
+  const note = $("#aiRefNote");
+  if (!file || !/^image\//.test(file.type)) { note.textContent = "ใช้ไฟล์รูป JPG, PNG หรือ WebP"; return; }
+  if (file.size > 25e6) { note.textContent = "รูปใหญ่เกิน 25 MB"; return; }
+  let img;
+  try { img = await createImageBitmap(file); }
+  catch { note.textContent = "เปิดรูปนี้ไม่ได้ ลองใช้ JPG หรือ PNG"; return; }
+  const k = Math.min(1, AI_REF_PX / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+  const x = c.getContext("2d");
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, c.width, c.height); // a see-through PNG on white, not black
+  x.drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  const url = c.toDataURL("image/jpeg", 0.85);
+  aiRef = { mime: "image/jpeg", data: url.slice(url.indexOf(",") + 1) };
+  const th = $("#aiRefImg"); th.src = url; th.style.display = "";
+  $("#aiRefDel").style.display = ""; $("#aiRefBtn").textContent = "📷 เปลี่ยนรูป";
+  note.textContent = "AI จะออกแบบตามแนวรูปนี้ · พิมพ์เพิ่มได้ เช่น \"แบบนี้แต่สีแดง\"";
+}
+function aiRefClear() {
+  aiRef = null;
+  const th = $("#aiRefImg"); th.removeAttribute("src"); th.style.display = "none";
+  $("#aiRefDel").style.display = "none"; $("#aiRefBtn").textContent = "📷 แนบรูปลายที่ชอบ";
+  $("#aiRefNote").textContent = "AI ออกแบบตามแนวรูป (ไม่ต้องพิมพ์ก็ได้)";
+  $("#aiRefFile").value = "";
+}
+$("#aiRefBtn").onclick = () => $("#aiRefFile").click();
+$("#aiRefFile").onchange = e => { const f = e.target.files && e.target.files[0]; if (f) aiRefLoad(f); };
+$("#aiRefDel").onclick = aiRefClear;
+// a picture pasted into the words box, or dropped on the AI box
+$("#aiPrompt").addEventListener("paste", e => {
+  const f = [...((e.clipboardData && e.clipboardData.files) || [])].find(f => /^image\//.test(f.type));
+  if (f) { e.preventDefault(); aiRefLoad(f); }
+});
+(() => {
+  const box = document.querySelector(".aibox"), ref = $("#aiRef");
+  const hasFile = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
+  box.addEventListener("dragover", e => { if (!hasFile(e)) return; e.preventDefault(); e.stopPropagation(); ref.classList.add("drop"); });
+  box.addEventListener("dragleave", () => ref.classList.remove("drop"));
+  box.addEventListener("drop", e => {
+    if (!hasFile(e)) return;
+    e.preventDefault(); e.stopPropagation(); ref.classList.remove("drop");
+    const f = [...e.dataTransfer.files].find(f => /^image\//.test(f.type)); if (f) aiRefLoad(f);
+  });
+})();
+$("#aiGo").onclick = () => {
+  const prompt = ($("#aiPrompt").value || "").trim();
+  if (prompt.length < 2 && !aiRef) { $("#aiMsg").textContent = "พิมพ์ลายที่อยากได้ แนบรูปลายที่ชอบ หรือคลิกตัวอย่างด้านบน"; return; }
+  if (!inFrame() || !isLoggedIn) { $("#aiMsg").textContent = "ต้องเข้าสู่ระบบก่อนใช้ AI ออกแบบลาย · ลองปุ่ม 🎲 ตัวอย่าง ได้เลย"; return; }
+  const own = curStyle === 2 && bodySide === "B" && sideB ? sideB.color : bodyColor;
+  aiWaiting = { id: "ai" + (++aiSeq) };
+  $("#aiGo").disabled = true; $("#aiGo").textContent = "กำลังคิด…"; $("#aiMsg").textContent = `AI กำลังออกแบบ 3 แบบ${aiRef ? "ตามแนวรูป" : ""} (ประมาณ 10–30 วินาที)`;
+  window.parent.postMessage({ type: "axiom-ai-pattern", id: aiWaiting.id, prompt, body: colorHex(own) || undefined, trim: colorHex(trimColor) || undefined, count: 3, image: aiRef || undefined }, "*");
+  // a busy AI can take minutes (the server asks the next one when one is stuck): keep the
+  // customer told, and only give up after the server itself would have
+  const mine = aiWaiting.id, still = (t, at) => setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) $("#aiMsg").textContent = t; }, at);
+  still("AI ยังออกแบบอยู่ ช่วงนี้ตอบช้ากว่าปกติ รอได้อีกสักครู่…", 35000);
+  still("ยังรออยู่… ถ้า AI ตัวแรกไม่ตอบ ระบบจะให้ตัวสำรองออกแบบแทน (ไม่นับครั้งที่ไม่สำเร็จ)", 95000);
+  setTimeout(() => { if (aiWaiting && aiWaiting.id === mine) aiReply({ id: mine, ok: false, error: "AI ไม่ตอบกลับ ลองอีกครั้ง" }); }, AI_WAIT_MS);
+};
+$("#aiDemo").onclick = () => {
+  const ex = AI.EXAMPLES.slice(), out = [];
+  while (out.length < 4 && ex.length) out.push(ex.splice(Math.floor(Math.random() * ex.length), 1)[0]);
+  aiShow(out, "สูตรตัวอย่าง (ไม่ได้ใช้ AI) · คลิกเพื่อใส่");
+};
+AI_CHIPS.forEach(t => { const c = document.createElement("span"); c.className = "aichip"; c.textContent = t; c.onclick = () => { $("#aiPrompt").value = t; $("#aiPrompt").focus(); }; $("#aiChips").appendChild(c); });
 
 /* ---------- align / arrange ---------- */
 function fixBackOrder() { const bg = [artboardRect].concat(bgObjects).filter(Boolean); bg.slice().reverse().forEach(o => o.sendToBack()); overlayGroups.filter(Boolean).forEach(o => o.bringToFront()); }
-document.querySelectorAll("[data-align]").forEach(b => b.onclick = () => {
+function moveBy(o, dx, dy) {
+  o.set({ left: o.left + dx, top: o.top + dy }); o.setCoords();
+  if (clipOn) (o.type === "activeSelection" ? o._objects : [o]).forEach(applyClip);
+}
+/** the selection taken apart (each object in canvas units), and put back after */
+function eachSelected(fn) {
+  const sel = canvas.getActiveObject(); if (!sel) return;
+  const multi = sel.type === "activeSelection", objs = multi ? sel.getObjects().slice() : [sel];
+  if (multi) canvas.discardActiveObject();
+  fn(objs, multi);
+  if (multi) canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+  canvas.requestRenderAll(); syncProps(); pushHistory();
+}
+document.querySelectorAll("[data-align]").forEach(b => b.onclick = () => eachSelected((objs, multi) => {
+  const a = b.dataset.align, boxes = objs.map(o => o.getBoundingRect(true, true));
+  let L, T, R, B;
+  if (multi) {
+    L = Math.min(...boxes.map(q => q.left)); T = Math.min(...boxes.map(q => q.top));
+    R = Math.max(...boxes.map(q => q.left + q.width)); B = Math.max(...boxes.map(q => q.top + q.height));
+  } else {
+    const p = panels[panelOf(objs[0])] || { x: 0, y: 0, w: ART.w, h: ART.h };
+    L = p.x; T = p.y; R = p.x + p.w; B = p.y + p.h;
+  }
+  objs.forEach((o, i) => {
+    const q = boxes[i];
+    const dx = a === "left" ? L - q.left : a === "right" ? R - (q.left + q.width) : a === "cx" ? (L + R) / 2 - (q.left + q.width / 2) : 0;
+    const dy = a === "top" ? T - q.top : a === "bottom" ? B - (q.top + q.height) : a === "cy" ? (T + B) / 2 - (q.top + q.height / 2) : 0;
+    moveBy(o, dx, dy);
+  });
+}));
+document.querySelectorAll("[data-flip]").forEach(b => b.onclick = () => {
   const o = canvas.getActiveObject(); if (!o) return;
-  const w = o.getScaledWidth(), h = o.getScaledHeight();
-  const a = b.dataset.align;
-  if (a === "left") o.set({ left: 0 + (o.originX === "center" ? w / 2 : 0) });
-  if (a === "right") o.set({ left: ART.w - (o.originX === "center" ? w / 2 : w) });
-  if (a === "cx") o.set({ left: ART.w / 2 - (o.originX === "center" ? 0 : w / 2) });
-  if (a === "top") o.set({ top: 0 + (o.originY === "center" ? h / 2 : 0) });
-  if (a === "bottom") o.set({ top: ART.h - (o.originY === "center" ? h / 2 : h) });
-  if (a === "cy") o.set({ top: ART.h / 2 - (o.originY === "center" ? 0 : h / 2) });
-  o.setCoords(); canvas.requestRenderAll(); pushHistory();
+  const k = b.dataset.flip === "x" ? "flipX" : "flipY";
+  if (o.type !== "activeSelection") { o.set(k, !o[k]); if (clipOn) applyClip(o); canvas.requestRenderAll(); pushHistory(); return; }
+  // several: each mirrored about the selection's middle, as Illustrator reflects a selection
+  eachSelected(objs => {
+    const boxes = objs.map(x => x.getBoundingRect(true, true));
+    const mid = k === "flipX" ? (Math.min(...boxes.map(q => q.left)) + Math.max(...boxes.map(q => q.left + q.width))) / 2
+      : (Math.min(...boxes.map(q => q.top)) + Math.max(...boxes.map(q => q.top + q.height))) / 2;
+    objs.forEach(x => {
+      const c = x.getCenterPoint();
+      x.set(k, !x[k]); x.set("angle", -(x.angle || 0));
+      x.setPositionByOrigin(k === "flipX" ? new fabric.Point(2 * mid - c.x, c.y) : new fabric.Point(c.x, 2 * mid - c.y), "center", "center");
+      x.setCoords(); if (clipOn) applyClip(x);
+    });
+  });
+});
+document.querySelectorAll("[data-dist]").forEach(b => b.onclick = () => {
+  const o = canvas.getActiveObject();
+  if (!o || o.type !== "activeSelection" || o._objects.length < 3) { toast("เลือก 3 ชิ้นขึ้นไปเพื่อเว้นระยะเท่ากัน", "info"); return; }
+  eachSelected(objs => {
+    const h = b.dataset.dist === "h";
+    const items = objs.map(x => ({ x, q: x.getBoundingRect(true, true) })).sort((p, r) => h ? p.q.left - r.q.left : p.q.top - r.q.top);
+    const start = h ? items[0].q.left : items[0].q.top;
+    const end = h ? Math.max(...items.map(i => i.q.left + i.q.width)) : Math.max(...items.map(i => i.q.top + i.q.height));
+    const total = items.reduce((s, i) => s + (h ? i.q.width : i.q.height), 0);
+    const gap = (end - start - total) / (items.length - 1);
+    let at = start;
+    items.forEach(i => { const d = at - (h ? i.q.left : i.q.top); moveBy(i.x, h ? d : 0, h ? 0 : d); at += (h ? i.q.width : i.q.height) + gap; });
+  });
 });
 document.querySelectorAll("[data-arrange]").forEach(b => b.onclick = () => {
   const o = canvas.getActiveObject(); if (!o) return;
@@ -984,15 +2096,64 @@ $("#btnUngroup").onclick = () => { const s = canvas.getActiveObject(); if (s && 
 $("#btnDup").onclick = duplicate;
 $("#btnDel").onclick = delSelected;
 { const bc = document.getElementById("btnCopy"); if (bc) bc.onclick = doCopy; const bp = document.getElementById("btnPaste"); if (bp) bp.onclick = doPaste; }
-function duplicate() {
-  const o = canvas.getActiveObject(); if (!o) return;
-  o.clone(cl => { cl.set({ left: o.left + 22, top: o.top + 22 }); canvas.add(cl); canvas.setActiveObject(cl); pushHistory(); refreshLayers(); });
+/** the selection's objects on their own (canvas units), and their middle */
+function takeSelection() {
+  const sel = canvas.getActiveObject(); if (!sel) return null;
+  const objs = sel.type === "activeSelection" ? sel._objects.slice() : [sel];
+  canvas.discardActiveObject();
+  const bs = objs.map(o => o.getBoundingRect(true, true));
+  const L = Math.min(...bs.map(b => b.left)), T = Math.min(...bs.map(b => b.top));
+  const R = Math.max(...bs.map(b => b.left + b.width)), B = Math.max(...bs.map(b => b.top + b.height));
+  return { objs, c: { x: (L + R) / 2, y: (T + B) / 2 } };
+}
+const cloneOf = o => new Promise(ok => o.clone(ok, CLONE_PROPS));
+/** copies of the objects moved by (dx, dy) and turned by `rot` about their own middles, just above the top one */
+async function addCopies(objs, dx, dy, rot) {
+  const all = canvas.getObjects(), at = Math.max(...objs.map(o => all.indexOf(o))) + 1;
+  const out = [];
+  for (const o of objs) {
+    const c = await cloneOf(o), m = c.getCenterPoint();
+    c.set({ angle: (c.angle || 0) + rot, evented: true, selectable: true });
+    c.setPositionByOrigin(new fabric.Point(m.x + dx, m.y + dy), "center", "center");
+    out.push(c);
+  }
+  out.forEach((c, i) => { canvas.insertAt(c, at + i); c.setCoords(); if (clipOn) applyClip(c); });
+  return out;
+}
+function selectAll(objs) { canvas.setActiveObject(objs.length > 1 ? new fabric.ActiveSelection(objs, { canvas }) : objs[0]); }
+/* Ctrl+D, as Illustrator's Transform Again: a copy, and when that copy has been
+   moved and Ctrl+D comes again, the next copy goes the same step further. */
+let lastDup = null;
+async function duplicate() {
+  const s = takeSelection(); if (!s) return;
+  let dx = 22, dy = 22;
+  if (lastDup && lastDup.copies.length === s.objs.length && lastDup.copies.every(o => s.objs.includes(o))) { dx = s.c.x - lastDup.from.x; dy = s.c.y - lastDup.from.y; }
+  if (Math.hypot(dx, dy) < 0.5) { dx = 22; dy = 22; }
+  const copies = await addCopies(s.objs, dx, dy, 0);
+  lastDup = { from: s.c, copies };
+  selectAll(copies); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+/* Step and Repeat: the selection as the first cell of a grid, the others so many mm apart */
+async function stepRepeat() {
+  const cols = Math.max(1, Math.min(50, Math.round(+$("#repCols").value || 1))), rows = Math.max(1, Math.min(50, Math.round(+$("#repRows").value || 1)));
+  const dx = (+$("#repDx").value || 0) / MM_PER_UNIT, dy = (+$("#repDy").value || 0) / MM_PER_UNIT, rot = +$("#repRot").value || 0;
+  if (cols * rows < 2) { toast("ตั้งคอลัมน์หรือแถวให้มากกว่า 1", "info"); return; }
+  const s = takeSelection(); if (!s) { toast("เลือกชิ้นที่จะทำซ้ำก่อน", "info"); return; }
+  if (cols * rows * s.objs.length > 400) { selectAll(s.objs); toast("ทำซ้ำได้ไม่เกิน 400 ชิ้นต่อครั้ง", "warn"); return; }
+  const made = [...s.objs];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    if (!r && !c) continue;
+    made.push(...await addCopies(s.objs, c * dx, r * dy, (r * cols + c) * rot));
+  }
+  lastDup = null;
+  selectAll(made); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast(`ทำซ้ำเป็น ${cols}×${rows} แล้ว`, "ok");
 }
 function delSelected() { canvas.getActiveObjects().forEach(o => canvas.remove(o)); canvas.discardActiveObject(); canvas.requestRenderAll(); pushHistory(); refreshLayers(); }
 
 /* ---------- copy / paste ---------- */
 let clipboard = null;
-const CLONE_PROPS = ["name", "rosterTag"];
+const CLONE_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask", "_aiPattern", "_aiPanel", "aiSpec"];
 function doCopy() { const o = canvas.getActiveObject(); if (!o) return; o.clone(cl => { clipboard = cl; toast("คัดลอกแล้ว"); }, CLONE_PROPS); }
 function doPaste() {
   if (!clipboard) return;
@@ -1003,6 +2164,22 @@ function doPaste() {
     else canvas.add(cl);
     canvas.setActiveObject(cl); if (clipOn) applyClip(cl);
     canvas.requestRenderAll(); pushHistory(); refreshLayers();
+  }, CLONE_PROPS);
+}
+/** the copy pasted where it was: in front of the selection, behind it, or on top */
+function pasteInPlace(where) {
+  if (!clipboard) { toast("ยังไม่ได้คัดลอก (Ctrl+C)", "info"); return; }
+  const sel = canvas.getActiveObjects(), all = canvas.getObjects();
+  const idxs = sel.map(o => all.indexOf(o)).filter(i => i >= 0);
+  let at = where === "front" && idxs.length ? Math.max(...idxs) + 1 : where === "back" && idxs.length ? Math.min(...idxs) : all.length;
+  clipboard.clone(cl => {
+    canvas.discardActiveObject();
+    cl.set({ evented: true });
+    if (cl.type === "activeSelection") { cl.canvas = canvas; cl.forEachObject(o => { o.set({ evented: true, selectable: true }); canvas.insertAt(o, at++); }); cl.setCoords(); }
+    else { cl.set({ selectable: true }); canvas.insertAt(cl, at); }
+    canvas.setActiveObject(cl);
+    if (clipOn) (cl._objects || [cl]).forEach(applyClip);
+    fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory();
   }, CLONE_PROPS);
 }
 // Ctrl+C / Ctrl+V / Ctrl+X arrive as native clipboard events (more reliable than keydown for these)
@@ -1023,6 +2200,17 @@ function objLabel(o) {
   if (t.includes("text")) return "T " + (o.text || "ข้อความ").slice(0, 14);
   return t;
 }
+/** locked: not moved, not picked on the canvas (Layers and Ctrl+Alt+2 unlock it) */
+function setLocked(objs, l) {
+  if (l && objs.some(o => canvas.getActiveObjects().includes(o))) canvas.discardActiveObject();
+  objs.forEach(o => o.set({ lockMovementX: l, lockMovementY: l, lockScalingX: l, lockScalingY: l, lockRotation: l, selectable: !l && curTool === "select", evented: !l && curTool === "select" }));
+  canvas.requestRenderAll(); refreshLayers(); pushHistory();
+}
+function setHidden(objs, h) {
+  if (h) canvas.discardActiveObject();
+  objs.forEach(o => { o.visible = !h; });
+  canvas.requestRenderAll(); refreshLayers(); pushHistory();
+}
 function refreshLayers() {
   const list = $("#layersList"); const objs = userObjects().slice().reverse();
   $("#layersEmpty").style.display = objs.length ? "none" : "block";
@@ -1033,7 +2221,7 @@ function refreshLayers() {
     row.innerHTML = `<button class="lbtn" data-a="vis">${o.visible === false ? "🚫" : "👁"}</button><button class="lbtn" data-a="lock">${o.lockMovementX ? "🔒" : "🔓"}</button><span class="lname">${objLabel(o)}</span><button class="lbtn" data-a="up">↑</button><button class="lbtn" data-a="down">↓</button>`;
     row.querySelector(".lname").onclick = () => { canvas.setActiveObject(o); canvas.requestRenderAll(); refreshLayers(); syncProps(); };
     row.querySelector('[data-a="vis"]').onclick = () => { o.visible = o.visible === false ? true : false; canvas.requestRenderAll(); refreshLayers(); };
-    row.querySelector('[data-a="lock"]').onclick = () => { const l = !o.lockMovementX; o.set({ lockMovementX: l, lockMovementY: l, lockScalingX: l, lockScalingY: l, lockRotation: l }); refreshLayers(); };
+    row.querySelector('[data-a="lock"]').onclick = () => { setLocked([o], !o.lockMovementX); };
     row.querySelector('[data-a="up"]').onclick = () => { o.bringForward(); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); };
     row.querySelector('[data-a="down"]').onclick = () => { o.sendBackwards(); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); pushHistory(); };
     list.appendChild(row);
@@ -1045,7 +2233,7 @@ const styleSel = document.getElementById("styleSel");
 const sizeSel = document.getElementById("sizeSel");
 const fabricSel = document.getElementById("fabricSel");
 const trimSel = document.getElementById("trimSel");
-if (styleSel) styleSel.onchange = () => { curStyle = +styleSel.value; rebuildLayout(); if (clipOn) setTimeout(reclipAll, 200); };
+if (styleSel) styleSel.onchange = () => { curStyle = +styleSel.value; showBodySide(); rebuildLayout(); if (clipOn) setTimeout(reclipAll, 200); };
 if (sizeSel) sizeSel.onchange = () => { TPL_SIZE = sizeSel.value; rebuildLayout(); updateDim(); if (clipOn) setTimeout(reclipAll, 200); };
 if (fabricSel) fabricSel.onchange = () => { curFabric = fabricSel.value; updateInfo(); };
 if (trimSel) trimSel.onchange = () => { curTrim = trimSel.value; curLayout = "vertical"; rebuildLayout(); updateInfo(); if (clipOn) setTimeout(reclipAll, 200); };
@@ -1061,9 +2249,11 @@ let isLoggedIn = false;
 function getDoc() {
   return {
     app: "axiom-designer", version: 5, art: ART, style: curStyle, size: TPL_SIZE,
-    fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc,
+    fabric: curFabric, trim: curTrim, cutOn, cutMm, bodyColor, trimColor, bodyPatternSrc, sideB,
     // names only — never the font bytes (licence), so the reader can warn if missing
     importedFonts: [...importedFonts.keys()],
+    customInks,
+    guides: userGuides,
     objects: userObjects().map(o => o.toObject(ARC_PROPS)),
   };
 }
@@ -1081,7 +2271,7 @@ function openDoc(doc) {
   if (doc && doc.app === "axiom-roster") {
     openDoc(doc.template || {});
     const rt = document.getElementById("rosterText");
-    if (rt) rt.value = (doc.roster || []).map(r => [r.name, r.number, r.size].filter(v => v !== undefined && v !== "").join("\t")).join("\n");
+    if (rt) rt.value = (doc.roster || []).map(r => [r.name || "", r.number || "", r.size || ""].join("\t")).join("\n");
     const on = document.getElementById("orderName");
     if (on) on.value = doc.name || "";
     updateRosterCount(); updateTagInfo();
@@ -1089,6 +2279,8 @@ function openDoc(doc) {
     return;
   }
   try {
+    customInks = { ...(doc.customInks || {}) };
+    userGuides = Array.isArray(doc.guides) ? doc.guides.filter(q => q && (q.axis === "x" || q.axis === "y") && isFinite(q.v)) : [];
     userObjects().forEach(o => canvas.remove(o));
     if (doc.style) { curStyle = doc.style; const ss = document.getElementById("styleSel"); if (ss) ss.value = String(curStyle); }
     if (doc.size) { TPL_SIZE = doc.size; const zz = document.getElementById("sizeSel"); if (zz) zz.value = TPL_SIZE; }
@@ -1099,9 +2291,12 @@ function openDoc(doc) {
     curLayout = "vertical";
     if (doc.bodyColor) bodyColor = doc.bodyColor;
     if (doc.trimColor) trimColor = doc.trimColor;
+    garmentCode("bodyCode", bodyColor); garmentCode("trimCode", trimColor);
     bodyPattern = null; bodyPatternSrc = doc.bodyPatternSrc || null;
+    sideB = doc.sideB && typeof doc.sideB.color === "string" ? { color: doc.sideB.color, pat: doc.sideB.pat || null } : null;
+    bodySide = "both"; showBodySide();
     buildTemplate();
-    fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => canvas.add(o)); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
+    fabric.util.enlivenObjects(doc.objects || [], objs => { objs.forEach(o => { lockAi(o); canvas.add(o); }); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); }, "fabric");
     zoomFit(); updateDim(); toast("เปิดดีไซน์แล้ว");
     // imported fonts live in memory, not in the file — say so instead of
     // silently rendering the design in a substitute face
@@ -1111,9 +2306,18 @@ function openDoc(doc) {
     }
   } catch (e) { toast("เปิดดีไซน์ไม่สำเร็จ — ไฟล์อาจเสียหายหรือเป็นเวอร์ชันที่ไม่รองรับ", "err"); }
 }
+let heardFromPage = false;
 window.addEventListener("message", ev => {
   const m = ev.data || {};
-  if (m.type === "axiom-auth") isLoggedIn = !!m.user;
+  if (m.type === "axiom-auth") {
+    isLoggedIn = !!m.user;
+    aiAskQuota();
+    // the page may not have been listening when this editor said it was ready (it loads from
+    // cache faster than the page starts): its first word to us is answered with "ready" again
+    if (!heardFromPage) { heardFromPage = true; window.parent.postMessage({ type: "axiom-ready" }, "*"); }
+  }
+  else if (m.type === "axiom-ai-pattern-result") aiReply(m);
+  else if (m.type === "axiom-ai-quota-result") aiQuota(m);
   else if (m.type === "axiom-save-result") toast(m.ok ? "บันทึกเข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")));
   else if (m.type === "axiom-publish-result") { const pm = document.getElementById("pubMsg"); if (m.ok) { if (pm) pm.textContent = "เผยแพร่ขายแล้ว ✓"; toast("เผยแพร่ขายในตลาดแล้ว ✓"); setTimeout(() => { const md = document.getElementById("pubModal"); if (md) md.classList.remove("on"); }, 900); } else { if (pm) pm.textContent = "ไม่สำเร็จ: " + (m.error || ""); toast("เผยแพร่ไม่สำเร็จ", "err"); } }
   else if (m.type === "axiom-save-order-result") { const p = document.getElementById("rosterProg"); if (p) p.textContent = m.ok ? "บันทึกออเดอร์เข้าบัญชีแล้ว ✓" : ("บันทึกไม่สำเร็จ: " + (m.error || "")); toast(m.ok ? "บันทึกออเดอร์แล้ว ✓" : "บันทึกไม่สำเร็จ"); }
@@ -1294,15 +2498,50 @@ function normWeight(w) {
   return /^\d{3}$/.test(s) ? s : "400";
 }
 
-async function loadOutlineFont(family, weight) {
-  const key = `${family}|${weight}`;
+/* A logo made elsewhere and imported as SVG often keeps live text in a computer's own font
+   (Arial, Helvetica, Times…), which isn't a Google font: outlined in its open twin with the
+   very same letter widths (Arimo, Tinos, Cousine), so it lands where the screen shows it. */
+const OUTLINE_TWINS = {
+  "arial": "Arimo", "helvetica": "Arimo", "helvetica neue": "Arimo", "liberation sans": "Arimo",
+  "times new roman": "Tinos", "times": "Tinos", "liberation serif": "Tinos",
+  "courier new": "Cousine", "courier": "Cousine", "liberation mono": "Cousine",
+};
+/* Glyphs are placed by fontkit, which applies the font's own layout rules (GSUB / GPOS):
+   a Thai tone mark over an upper vowel is raised (ที่, พี่) and one over ป / ฝ / ฟ moves
+   clear of the tall stroke (ปู่). opentype.js drew every glyph at its default spot, so those
+   marks landed inside the vowel or the stroke and vanished from the print. Loaded only when
+   a print file is made (fontkit.min.js: npm run build:fontkit). */
+let fontkitLoading = null;
+function loadFontkit() {
+  if (window.fontkit) return Promise.resolve(window.fontkit);
+  return fontkitLoading || (fontkitLoading = new Promise(res => {
+    const s = document.createElement("script");
+    s.src = "fontkit.min.js";
+    s.onload = () => res(window.fontkit || null);
+    s.onerror = () => { fontkitLoading = null; res(null); };
+    document.head.appendChild(s);
+  }));
+}
+/** the opentype.js font, with its fontkit twin from the same bytes for layout (none: drawn glyph by glyph) */
+async function withShaper(font, buf) {
+  const fk = await loadFontkit();
+  try { if (fk) font._fk = fk.create(new Uint8Array(buf)); } catch (e) { /* glyph by glyph, as before */ }
+  return font;
+}
+async function loadOutlineFont(family, weight, text) {
+  family = OUTLINE_TWINS[String(family).toLowerCase()] || family;
+  const key = `${family}|${weight}${text ? "|" + text : ""}`;
   if (fontCache.has(key)) return fontCache.get(key);
   if (fontFails.has(key)) return null;
   if (typeof opentype === "undefined") { fontFails.add(key); return null; }
   try {
-    const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}`);
+    const res = await fetch(`/api/fonts/${encodeURIComponent(family)}?weight=${weight}${text ? "&text=" + encodeURIComponent(text) : ""}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const font = opentype.parse(await res.arrayBuffer());
+    const buf = await res.arrayBuffer();
+    const font = await withShaper(opentype.parse(buf), buf);
+    // bold asked of a family with no bold: the browser draws the regular thickened (synthetic bold)
+    const served = res.headers.get("X-Font-Weight");
+    if (+weight >= 600 && served && +served < 600) font._fauxBold = true;
     fontCache.set(key, font);
     return font;
   } catch (e) {
@@ -1322,10 +2561,85 @@ function textNeeds(doc) {
   return [...need.values()];
 }
 
-/** convert one <text> element into a <path>, in place */
-function textToPath(t, font) {
+/** whether the font draws this character (not its empty "missing" box) */
+function hasGlyph(font, ch) {
+  if (!ch.trim()) return true;
+  const i = font.charToGlyphIndex(ch);
+  return i !== null && i !== undefined && i > 0;
+}
+/** every family in a CSS font stack, generic names left out */
+function stackFamilies(css) {
+  return String(css || "").split(",").map(f => f.trim().replace(/^['"]|['"]$/g, "")).filter(f => f && !/^(serif|sans-serif|monospace|cursive|fantasy|system-ui)$/i.test(f));
+}
+/** after the text's own stack, the faces the browser falls back to for Thai and Japanese */
+const OUTLINE_FALLBACKS = ["Noto Sans Thai", "Noto Sans JP"];
+
+/**
+ * The fonts a text needs, in order: its own, then — for each character its own
+ * font lacks — the next in its stack or a fallback, as the browser picks one on
+ * screen. A Thai or Japanese name set in a Latin face would otherwise come out as
+ * empty boxes. `missing`: characters no font has.
+ */
+async function fontsForText(t, primary, weight) {
+  const chars = [...new Set([...(t.textContent || "")])];
+  let missing = chars.filter(ch => !hasGlyph(primary, ch));
+  const fonts = [primary];
+  // the text's own family first (its file holds one script; asked for the letters it has them all), then its stack, then the fallbacks
+  const stack = stackFamilies(t.getAttribute("font-family") || t.style.fontFamily);
+  for (const fam of [...new Set([...stack, ...OUTLINE_FALLBACKS])]) {
+    if (!missing.length) break;
+    if (importedFonts.has(fam)) continue; // the customer's own file: what it lacks, it lacks
+    const want = missing.slice().sort().join("");
+    const f = (await loadOutlineFont(fam, weight, want)) || (weight !== "400" ? await loadOutlineFont(fam, "400", want) : null);
+    if (!f || fonts.includes(f)) continue;
+    if (missing.some(ch => hasGlyph(f, ch))) { fonts.push(f); missing = missing.filter(ch => !hasGlyph(f, ch)); }
+  }
+  return { fonts, missing };
+}
+
+/** convert one <text> element into a <path>, in place; `fonts`: its own first, then fallbacks per character */
+function textToPath(t, fonts) {
+  if (!Array.isArray(fonts)) fonts = [fonts];
   const size = parseFloat(t.getAttribute("font-size") || t.style.fontSize || "40");
   const spacing = parseFloat(t.style.letterSpacing || "0") || 0;
+  // a letter keeps its vowels and tone marks: the cluster is drawn by one font, laid out together
+  const pick = cl => fonts.find(f => [...cl].every(ch => hasGlyph(f, ch))) || fonts.find(f => hasGlyph(f, [...cl][0])) || fonts[0];
+  const clusters = text => {
+    const out = [];
+    for (const ch of text) { if (out.length && /\p{M}/u.test(ch)) out[out.length - 1] += ch; else out.push(ch); }
+    return out;
+  };
+  // the text split where its font changes, so each run is shaped (kerned, marks placed) by its own font
+  const pieces = text => {
+    const out = [];
+    for (const cl of clusters(text)) {
+      const f = pick(cl), last = out[out.length - 1];
+      if (last && last.font === f) last.text += cl; else out.push({ font: f, text: cl });
+    }
+    return out;
+  };
+  /** one piece drawn from x on baseline y: its path data and how far it moves on (letter spacing after each spacing glyph) */
+  const drawPiece = (pc, x, y) => {
+    const fk = pc.font._fk;
+    if (fk) {
+      const k = size / fk.unitsPerEm, run = fk.layout(pc.text);
+      let d = "", at = x;
+      run.glyphs.forEach((g, i) => {
+        const p = run.positions[i];
+        d += g.path.scale(k, -k).translate(at + p.xOffset * k, y - p.yOffset * k).toSVG() + " ";
+        at += p.xAdvance * k + (p.xAdvance > 0 ? spacing : 0);
+      });
+      return { d, adv: at - x };
+    }
+    if (!spacing) return { d: pc.font.getPath(pc.text, x, y, size).toPathData(3) + " ", adv: pc.font.getAdvanceWidth(pc.text, size) };
+    let d = "", at = x;
+    for (const cl of clusters(pc.text)) {
+      d += pc.font.getPath(cl, at, y, size).toPathData(3) + " ";
+      at += pc.font.getAdvanceWidth(cl, size) + spacing;
+    }
+    return { d, adv: at - x };
+  };
+  const width = text => Math.max(0, pieces(text).reduce((w, pc) => w + drawPiece(pc, 0, 0).adv, 0) - spacing);
 
   // Fabric writes one <tspan> per line (or per char), each carrying the
   // absolute x/y of its baseline. That is precisely what opentype wants.
@@ -1336,35 +2650,45 @@ function textToPath(t, font) {
 
   const anchor = t.getAttribute("text-anchor") || "start";
 
-  let d = "";
+  // a font without the bold asked for is drawn thickened, as the browser does (synthetic bold): kept apart
+  let d = "", dBold = "";
   for (const run of runs) {
     if (!run.text) continue;
     let x = run.x;
-    if (anchor !== "start") {
-      const w = font.getAdvanceWidth(run.text, size) + spacing * Math.max(0, [...run.text].length - 1);
-      x -= anchor === "middle" ? w / 2 : w;
-    }
-    if (spacing) {
-      // advance glyph by glyph so letter-spacing survives
-      for (const ch of run.text) {
-        d += font.getPath(ch, x, run.y, size).toPathData(3) + " ";
-        x += font.getAdvanceWidth(ch, size) + spacing;
-      }
-    } else {
-      d += font.getPath(run.text, x, run.y, size).toPathData(3) + " ";
+    if (anchor !== "start") { const w = width(run.text); x -= anchor === "middle" ? w / 2 : w; }
+    for (const pc of pieces(run.text)) {
+      const { d: pd, adv } = drawPiece(pc, x, run.y);
+      if (pc.font._fauxBold) dBold += pd; else d += pd;
+      x += adv;
     }
   }
-  if (!d.trim()) { t.remove(); return; }
+  if (!d.trim() && !dBold.trim()) { t.remove(); return; }
 
-  const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
-  p.setAttribute("d", d.trim());
-  // carry over every paint attribute the text had
-  for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "opacity", "transform"]) {
-    const v = t.getAttribute(a);
-    if (v) p.setAttribute(a, v);
-  }
-  if (!p.getAttribute("fill")) p.setAttribute("fill", t.style.fill || "#000");
-  t.parentNode.replaceChild(p, t);
+  const mk = (data, faux) => {
+    const p = t.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", data.trim());
+    // carry over every paint attribute the text had — and its style, where Fabric writes
+    // its stroke (an outlined name lost its keyline without it), paint order and dashes
+    // paint-order is an attribute of its own (Fabric's paintFirst "stroke": the keyline under the letters);
+    // without it the outline printed over the letters and ate into them
+    for (const a of ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-linejoin", "stroke-miterlimit", "stroke-linecap", "stroke-dasharray", "stroke-opacity", "paint-order", "opacity", "transform", "style"]) {
+      const v = t.getAttribute(a);
+      if (v) p.setAttribute(a, v);
+    }
+    if (!p.getAttribute("fill") && !p.style.fill) p.setAttribute("fill", t.style.fill || "#000");
+    // synthetic bold: the outline grown by about 1/28 of the size, in its own colour
+    const sk = p.style.stroke || p.getAttribute("stroke"), skw = parseFloat(p.style.strokeWidth || p.getAttribute("stroke-width") || "0");
+    const strokeNone = !sk || sk === "none" || !(skw > 0);
+    if (faux && strokeNone) {
+      p.style.stroke = p.style.fill || p.getAttribute("fill");
+      p.style.strokeWidth = String(+(size / 28).toFixed(3));
+      p.style.strokeLinejoin = "round";
+    }
+    return p;
+  };
+  if (dBold.trim()) t.parentNode.insertBefore(mk(dBold, true), t);
+  if (d.trim()) t.parentNode.insertBefore(mk(d, false), t);
+  t.remove();
 }
 
 /** returns { svg, converted, skipped[] } */
@@ -1383,14 +2707,16 @@ async function outlineSVG(svgStr) {
 
   let converted = 0;
   const skipped = new Set();
-  doc.querySelectorAll("text").forEach(t => {
+  for (const t of [...doc.querySelectorAll("text")]) {
     const fam = firstFamily(t.getAttribute("font-family") || t.style.fontFamily);
     const w = normWeight(t.getAttribute("font-weight") || t.style.fontWeight);
     const font = fonts.get(`${fam}|${w}`);
-    if (!font) { skipped.add(fam || "?"); return; }   // leave as <text>, warn below
-    textToPath(t, font);
+    if (!font) { skipped.add(fam || "?"); continue; }   // leave as <text>, warn below
+    const { fonts: list, missing } = await fontsForText(t, font, w);
+    if (missing.length) skipped.add(`${fam} (ไม่มีตัว ${missing.join(" ")})`);
+    textToPath(t, list);
     converted++;
-  });
+  }
 
   return { svg: new XMLSerializer().serializeToString(doc), converted, skipped: [...skipped] };
 }
@@ -1422,7 +2748,7 @@ $("#btnSvg").onclick = () => runExport(async () => {
     // sell a template that renders in the wrong face on their screen
     const impUse = objectsUsingImportedFonts();
     if (impUse.length) {
-      const fams = [...new Set(impUse.map(o => (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily).split(",")[0].replace(/["']/g, "").trim()))];
+      const fams = [...new Set(impUse.map(o => (isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily).split(",")[0].replace(/["']/g, "").trim()))];
       toast(`เผยแพร่ขายไม่ได้: ดีไซน์ใช้ฟอนต์ที่นำเข้าเอง (${fams.join(", ")})\nคนซื้อไม่มีไฟล์ฟอนต์นี้ — เปลี่ยนเป็นฟอนต์ในระบบก่อน`, "err");
       return;
     }
@@ -1459,6 +2785,20 @@ document.addEventListener("keydown", e => {
   if (ctrl && k === "y") { e.preventDefault(); redo(); return; }
   if (ctrl && k === "g") { e.preventDefault(); e.shiftKey ? $("#btnUngroup").onclick() : $("#btnGroup").onclick(); return; }
   if (ctrl && k === "d") { e.preventDefault(); duplicate(); return; }
+  if (ctrl && k === "a") { e.preventDefault(); const objs = userObjects().filter(o => o.visible !== false && !o.lockMovementX); canvas.discardActiveObject(); if (objs.length) canvas.setActiveObject(objs.length > 1 ? new fabric.ActiveSelection(objs, { canvas }) : objs[0]); canvas.requestRenderAll(); syncProps(); return; }
+  if (ctrl && e.code === "Digit2") { e.preventDefault(); if (e.altKey) setLocked(userObjects().filter(o => o.lockMovementX), false); else if (canvas.getActiveObjects().length) setLocked(canvas.getActiveObjects(), true); return; }
+  if (ctrl && e.code === "Digit3") { e.preventDefault(); if (e.altKey) setHidden(userObjects().filter(o => o.visible === false), false); else if (canvas.getActiveObjects().length) setHidden(canvas.getActiveObjects(), true); return; }
+  if (ctrl && (e.code === "BracketRight" || e.code === "BracketLeft")) {
+    e.preventDefault();
+    const a = e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : (e.shiftKey ? "back" : "backward");
+    const b = document.querySelector(`[data-arrange="${a}"]`); if (b) b.click(); return;
+  }
+  if (ctrl && k === "r") { e.preventDefault(); document.documentElement.classList.toggle("norulers"); canvas.requestRenderAll(); return; }
+  if (ctrl && (e.code === "Semicolon")) { e.preventDefault(); guidesShown = !guidesShown; canvas.requestRenderAll(); toast(guidesShown ? "แสดงไกด์" : "ซ่อนไกด์"); return; }
+  if (ctrl && k === "f") { e.preventDefault(); pasteInPlace("front"); return; }
+  if (ctrl && k === "b") { e.preventDefault(); pasteInPlace("back"); return; }
+  if (ctrl && e.shiftKey && k === "v") { e.preventDefault(); pasteInPlace("top"); return; }
+  if (ctrl && (k === "7" || e.code === "Digit7")) { e.preventDefault(); e.altKey ? releaseClipMask() : makeClipMask(); return; }
   if (ctrl && (k === "c" || k === "v" || k === "x")) return; // handled by clipboard events below
   if (ctrl && k === "0") { e.preventDefault(); zoomFit(); return; }
   if (ctrl) return;
@@ -1468,7 +2808,7 @@ document.addEventListener("keydown", e => {
     const objs = canvas.getActiveObjects();
     if (objs.length) {
       e.preventDefault();
-      const s = e.shiftKey ? 10 : 1;
+      const s = (e.shiftKey ? 10 : 1) / MM_PER_UNIT; // 1 mm, Shift 10 mm
       const dx = e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0;
       const dy = e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0;
       objs.forEach(o => { o.set({ left: o.left + dx, top: o.top + dy }); o.setCoords(); if (clipOn) applyClip(o); });
@@ -1477,7 +2817,7 @@ document.addEventListener("keydown", e => {
     return;
   }
   if (k === "c" && !e.shiftKey) { placeOnGarment(0, 0, true); return; } // C = center on shirt
-  const map = { v: "select", a: "node", p: "pen", m: "rect", l: "ellipse", y: "poly", "\\": "line", t: "text", h: "hand" };
+  const map = { g: "gradient", v: "select", a: "node", p: "pen", m: "rect", l: "ellipse", y: "poly", "\\": "line", t: "text", h: "hand" };
   if (map[k]) setTool(map[k]);
 }, true);
 window.addEventListener("keyup", e => { if (e.code === "Space") { spaceDown = false; canvas.setCursor(cursors[curTool] || "default"); } });
@@ -1506,7 +2846,22 @@ function starsPat(ctx, W, H, cols, sc){ ctx.fillStyle=cols[0]; ctx.fillRect(0,0,
 function flames(ctx, W, H, cols, sc){ const g=ctx.createLinearGradient(0,H,0,0); g.addColorStop(0,cols[0]); g.addColorStop(0.5,cols[Math.min(1,cols.length-1)]); g.addColorStop(1,cols[cols.length-1]); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.globalAlpha=0.5; const n=Math.round(W/(60*sc))*3; for (let i=0;i<n;i++){ ctx.fillStyle=cols[cols.length-1]; const x=Math.random()*W, by=H, h=(60+Math.random()*160)*sc, w=(20+Math.random()*40)*sc; ctx.beginPath(); ctx.moveTo(x,by); ctx.quadraticCurveTo(x-w/2,by-h*0.6,x,by-h); ctx.quadraticCurveTo(x+w/2,by-h*0.6,x,by); ctx.fill(); } ctx.globalAlpha=1; }
 function graffiti(ctx, W, H, cols, sc){ ctx.fillStyle=cols[0]; ctx.fillRect(0,0,W,H); const c=cols.slice(1).length?cols.slice(1):[cols[cols.length-1]]; ctx.lineCap="round"; for (let i=0;i<22;i++){ ctx.strokeStyle=c[i%c.length]; ctx.lineWidth=(6+Math.random()*16)*sc; const x=Math.random()*W, y=Math.random()*H; ctx.beginPath(); ctx.moveTo(x,y); ctx.bezierCurveTo(x+(-60+Math.random()*120)*sc,y+(-60+Math.random()*120)*sc,x+(-60+Math.random()*120)*sc,y+(-60+Math.random()*120)*sc,x+(-80+Math.random()*160)*sc,y+(-80+Math.random()*160)*sc); ctx.stroke(); } for (let i=0;i<120;i++){ ctx.fillStyle=c[i%c.length]; ctx.beginPath(); ctx.arc(Math.random()*W,Math.random()*H,(1+Math.random()*5)*sc,0,7); ctx.fill(); } }
 function grad(ctx, W, H, cols, type){ let g; if (type==="radial") g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.hypot(W,H)/2); else g=ctx.createLinearGradient(0,0,type==="diag"?W:0,H); cols.forEach((c,i)=>g.addColorStop(i/(cols.length-1),c)); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+/** rows of diamonds, each shaded dark at the top to light at the bottom (cols: dark … light) */
+function diamonds(ctx, W, H, cols, sc){
+  const dark = cols[0], light = cols[cols.length - 1], cw = 118 * sc, ch = cw;
+  ctx.fillStyle = dark; ctx.fillRect(0, 0, W, H);
+  for (let r = -1, y = -ch / 2; y < H + ch; r++, y += ch / 2) {
+    const off = (r & 1) ? cw / 2 : 0;
+    for (let x = -cw + off; x < W + cw; x += cw) {
+      const g = ctx.createLinearGradient(0, y, 0, y + ch); g.addColorStop(0, dark); g.addColorStop(1, light);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x + cw / 2, y); ctx.lineTo(x + cw, y + ch / 2); ctx.lineTo(x + cw / 2, y + ch); ctx.lineTo(x, y + ch / 2); ctx.closePath(); ctx.fill();
+    }
+  }
+}
 const PATTERNS = [
+  { n: "ข้าวหลามตัดแดง", cols: ["#960a14","#eb282d"], g: diamonds },
+  { n: "ข้าวหลามตัดเขียว", cols: ["#145f1e","#78be32"], g: diamonds },
+  { n: "ข้าวหลามตัดน้ำเงิน", cols: ["#0b1f5c","#2f7de1"], g: diamonds },
   { n: "คาโม่เขียว", cols: ["#2f4a22","#6b8e3f","#213617","#9bbb63"], g: camo },
   { n: "คาโม่ทราย", cols: ["#8a6f3a","#b89b63","#5f4a24","#d9c48f"], g: camo },
   { n: "คาโม่เทา", cols: ["#565b62","#8a9096","#363b41","#b8bdc4"], g: camo },
@@ -1525,11 +2880,16 @@ const PATTERNS = [
   { n: "ไล่สีพระอาทิตย์", cols: ["#f97316","#db2777","#7c3aed"], g: (c,W,H,cl)=>grad(c,W,H,cl,"diag") },
   { n: "เรเดียล", cols: ["#22d3ee","#0e7490"], g: (c,W,H,cl)=>grad(c,W,H,cl,"radial") },
 ];
-function renderCurrentPattern(){ if (!lastPat) return; const cols = patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"); c.width = 560; c.height = 660; lastPat.g(c.getContext("2d"), 560, 660, cols, patScale); bodyPatternSrc = c.toDataURL("image/png"); bodyPattern = null; applyGarment(); }
+let patOwn = null; // [dark, light] picked for the ready-made patterns
+function spreadCols(two, n) { if (n <= 2) return two.slice(0, Math.max(1, n)); const a = new fabric.Color(two[0]).getSource(), b = new fabric.Color(two[1]).getSource(); return Array.from({ length: n }, (_, i) => "#" + [0, 1, 2].map(j => Math.round(a[j] + (b[j] - a[j]) * i / (n - 1)).toString(16).padStart(2, "0")).join("")); }
+function renderCurrentPattern(){ if (!lastPat) return; const cols = patOwn ? spreadCols(patOwn, lastPat.cols.length) : patUseBrand ? brandCols() : lastPat.cols; const c = document.createElement("canvas"), K = 3; c.width = 560 * K; c.height = 660 * K; const x = c.getContext("2d"); x.scale(K, K); lastPat.g(x, 560, 660, cols, patScale); setPattern(c.toDataURL("image/png")); }
 function applyPattern(pat){ lastPat = pat; renderCurrentPattern(); toast("ใส่ลาย " + pat.n); }
 function buildPatternGallery(){ const gr = document.getElementById("patGrid"); if (!gr) return; gr.innerHTML = ""; PATTERNS.forEach(pat => { const c = document.createElement("canvas"); c.className = "patthumb"; c.title = pat.n; c.width = 48; c.height = 58; pat.g(c.getContext("2d"), 48, 58, pat.cols, 0.4); c.onclick = () => applyPattern(pat); gr.appendChild(c); }); }
 const patSizeEl = document.getElementById("patSize"); if (patSizeEl) patSizeEl.oninput = e => { patScale = +e.target.value; const v = document.getElementById("patSizeV"); if (v) v.textContent = (+e.target.value).toFixed(1) + "×"; renderCurrentPattern(); };
 const patBrandEl = document.getElementById("patBrand"); if (patBrandEl) patBrandEl.onchange = e => { patUseBrand = e.target.checked; renderCurrentPattern(); };
+{ const own = document.getElementById("patOwn"), c1 = document.getElementById("patC1"), c2 = document.getElementById("patC2");
+  const go = () => { patOwn = own.checked ? [c1.value, c2.value] : null; renderCurrentPattern(); };
+  if (own) { own.onchange = go; c1.onchange = () => { own.checked = true; go(); }; c2.onchange = () => { own.checked = true; go(); }; } }
 
 /* ---------- fonts + clip-to-garment ---------- */
 let curFont = "Sora", clipOn = false;
@@ -1539,6 +2899,7 @@ const FONT_GROUPS = [
   { label: "ไทย", fonts: ["Kanit", "Prompt", "Mitr", "Bai Jamjuree", "K2D", "Athiti", "Krub", "Chakra Petch", "Sarabun", "Pridi", "Noto Sans Thai"] },
   { label: "กีฬา / ตัวหนา", fonts: ["Anton", "Bebas Neue", "Graduate", "Black Ops One", "Russo One", "Staatliches", "Squada One", "Archivo Black", "Bungee", "Teko", "Big Shoulders Display"] },
   { label: "แคบ / คอนเดนส์", fonts: ["Oswald", "Fjalla One", "Saira Condensed", "Barlow Condensed"] },
+  { label: "ตัวเขียน / สคริปต์", fonts: ["Kaushan Script", "Yellowtail", "Lobster", "Pacifico", "Permanent Marker", "Damion"] },
   { label: "ทั่วไป", fonts: ["Sora", "Montserrat"] },
 ];
 /* fonts the user brought themselves. Held in memory ONLY — never uploaded,
@@ -1586,6 +2947,7 @@ async function importFontFile(file) {
   } catch (e) { toast("เบราว์เซอร์ใช้ฟอนต์นี้ไม่ได้: " + (e.message || ""), "err"); return; }
 
   // 2) let the exporter outline it — this is why the factory file stays correct
+  await withShaper(font, buf);
   importedFonts.set(family, font);
   for (const w of ["400", "700"]) fontCache.set(`${family}|${w}`, font);
   if (!IMPORTED_GROUP.fonts.includes(family)) IMPORTED_GROUP.fonts.push(family);
@@ -1623,7 +2985,7 @@ function bindFontImport() {
 function objectsUsingImportedFonts() {
   return userObjects().filter(o => {
     if (!isTextish(o)) return false;
-    const fam = (isArc(o) ? o.arcMeta.fontFamily : o.fontFamily) || "";
+    const fam = (isArc(o) ? arcMetaOf(o).fontFamily : o.fontFamily) || "";
     return isImported(fam.split(",")[0].trim().replace(/^["']|["']$/g, ""));
   });
 }
@@ -1658,7 +3020,7 @@ function panelOf(obj) {
 }
 function applyClip(obj) {
   if (!obj || obj._bg || obj._temp) return;
-  if (!clipOn) { if (obj.clipPath) { obj.clipPath = null; obj.dirty = true; canvas.requestRenderAll(); } return; }
+  if (!clipOn && !obj._aiPattern) { if (obj.clipPath) { obj.clipPath = null; obj.dirty = true; canvas.requestRenderAll(); } return; }
   const src = panelGroups[panelOf(obj)]; if (!src) return;
   src.clone(cl => { cl.absolutePositioned = true; obj.clipPath = cl; obj.dirty = true; canvas.requestRenderAll(); });
 }
@@ -1696,9 +3058,9 @@ let rosterOrig = null;
    is a Group of single characters rotated along a circle. `arcMeta` keeps
    everything needed to re-render it, so it round-trips through save/open and
    can be flattened back to a plain IText when the curve returns to 0.        */
-const ARC_PROPS = ["name", "rosterTag", "arcMeta"];
+const ARC_PROPS = ["name", "rosterTag", "arcMeta", "_clipMask", "_aiPattern", "_aiPanel", "aiSpec"];
 
-function isArc(o) { return !!(o && o.arcMeta); }
+function isArc(o) { return !!(o && (o.arcMeta || o._warpPending)); }
 
 /** a real editable text object. Arc groups are deliberately excluded: the
  *  batch generator swaps `.text` on these in a loop, and rebuilding an arc
@@ -1785,6 +3147,7 @@ function reflowArcs() {
 
 /** metadata snapshot of any text-ish object */
 function arcMetaOf(o) {
+  if (o._warpPending) return { ...o._warpPending }; // a warp still being built
   if (isArc(o)) return { ...o.arcMeta };
   return {
     text: o.text || "",
@@ -1797,12 +3160,18 @@ function arcMetaOf(o) {
     fill: o.fill || "#111111",
     stroke: o.stroke || "",
     strokeWidth: o.strokeWidth || 0,
+    paintFirst: o.paintFirst || "fill",
+    warp: { style: "none", bend: 50 },
   };
 }
 
 /** replace `o` in-place with a re-rendered version carrying `patch` */
 function rebuildArc(o, patch) {
+  // a warp still being built: the next edit goes on top of it, not on the old text
   const meta = { ...arcMetaOf(o), ...patch };
+  if (patch.curve || (patch.warp && patch.warp.style !== "none")) meta.onPath = null;
+  if (meta.onPath) { rebuildOnPath(o, meta); return o; }
+  if (meta.warp && meta.warp.style !== "none" && meta.warp.bend) { rebuildWarp(o, { ...meta, curve: 0 }); return o; }
   // the rebuilt object always has a centre origin; anchor it on the old centre
   // so straight ⇄ curved never makes the text jump half its width
   const c = o.getCenterPoint();
@@ -1824,6 +3193,176 @@ function rebuildArc(o, patch) {
   return next;
 }
 
+/* ---------- warped text, as Illustrator's Effect > Warp ----------
+   The text is outlined (the print's own outlines), its points flattened finely
+   and moved by the warp; arcMeta keeps the text, font and warp, so it can be
+   edited and re-warped (like the curved text) and saved. */
+const WARPS = {
+  // u: −1 (left) … 1 (right) across the text; v: 0 (top) … 1 (bottom); A: the bend in units
+  arc: (u, v, A) => -A * (1 - u * u),
+  arcUpper: (u, v, A) => -A * (1 - u * u) * (1 - v),
+  arcLower: (u, v, A) => A * (1 - u * u) * v,
+  arch: (u, v, A) => -A * (1 - u * u) * (1 - 0.5 * v),
+  bulge: (u, v, A) => -A * 0.6 * (1 - u * u) * (1 - 2 * v),
+  flag: (u, v, A) => A * 0.35 * Math.sin(u * Math.PI),
+  rise: (u, v, A) => -A * 0.5 * u,
+};
+async function warpedOutline(meta) {
+  await loadPaper();
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  const t = new fabric.IText(meta.text || " ", { fontSize: meta.fontSize, fontFamily: meta.fontFamily, fontWeight: meta.fontWeight, fontStyle: meta.fontStyle, charSpacing: meta.charSpacing || 0, fill: "#000000", left: 0, top: 0 });
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">${t.toSVG()}</svg>`);
+  const root = paper.project.importSVG(r.svg, { insert: false, expandShapes: true });
+  const whole = new paper.CompoundPath({ insert: false });
+  for (const c of root.getItems({ match: x => x instanceof paper.Path && !x.clipMask })) {
+    const p = c.clone({ insert: false });
+    p.applyMatrix = true;
+    if (c.parent) p.transform(c.parent.globalMatrix);
+    whole.addChild(p);
+  }
+  if (!whole.children.length) return null;
+  const b = whole.bounds, f = WARPS[meta.warp.style] || WARPS.arc;
+  const A = (meta.warp.bend / 100) * b.height;
+  whole.flatten(Math.max(0.02, b.height / 600));
+  for (const p of whole.children) for (const s of p.segments) {
+    const u = (s.point.x - b.center.x) / (b.width / 2), v = (s.point.y - b.top) / b.height;
+    s.point = new paper.Point(s.point.x, s.point.y + f(u, v, A));
+  }
+  return whole.pathData;
+}
+let warpSeq = 0;
+async function rebuildWarp(o, meta) {
+  const my = ++warpSeq, wasActive = canvas.getActiveObject() === o;
+  o._warpPending = meta;
+  let d;
+  try { d = await warpedOutline(meta); } catch (e) { o._warpPending = null; toast("ดัดรูปข้อความไม่ได้ — ตรวจอินเทอร์เน็ต/ฟอนต์", "err"); return; }
+  if (!d || my !== warpSeq || !canvas.getObjects().includes(o)) return;
+  o._warpPending = null;
+  const c = o.getCenterPoint();
+  const paint = flatPaint({ fill: meta.fill, stroke: meta.stroke || null, strokeWidth: meta.strokeWidth || 0, strokeUniform: true, paintFirst: meta.paintFirst || "fill" });
+  const next = new fabric.Path(d, { ...paint, angle: o.angle || 0, opacity: o.opacity ?? 1, name: o.name, objectCaching: false });
+  fitPaint(next, meta);
+  next.setPositionByOrigin(c, "center", "center");
+  next.arcMeta = { ...meta, fill: meta.fill };
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(next);
+  if (idx >= 0) next.moveTo(idx);
+  if (clipOn) applyClip(next);
+  if (wasActive) canvas.setActiveObject(next);
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+
+/* ---------- Type on a Path, as Illustrator's ----------
+   The letters sit on the path (drawn with the pen, a line, a circle…), each
+   turned with it, centred on it unless shifted; as the curved text, a group of
+   letters with the text, font and path in arcMeta, so it is edited, saved and
+   printed the same way. The path itself goes into arcMeta (unpainted, as
+   Illustrator makes it) and comes back when the text is taken off it. */
+function pathOfObject(o) {
+  // its outline in canvas units, as one paper.js path
+  const keep = o.clipPath; o.clipPath = null;
+  let svg; try { svg = o.toSVG(); } finally { o.clipPath = keep; }
+  const root = paper.project.importSVG(`<svg xmlns="http://www.w3.org/2000/svg">${svg}</svg>`, { insert: false, expandShapes: true });
+  const c = root.getItems({ match: x => x instanceof paper.Path })[0];
+  if (!c) return null;
+  const p = c.clone({ insert: false }); p.applyMatrix = true;
+  if (c.parent) p.transform(c.parent.globalMatrix);
+  return p;
+}
+function buildOnPathGroup(meta, at) {
+  const { text, fontSize, fontFamily, fontWeight, fontStyle, charSpacing, fill, stroke, strokeWidth, paintFirst } = meta;
+  const path = new paper.Path({ pathData: meta.onPath.d, insert: false });
+  if (meta.onPath.flip) path.reverse();
+  const L = path.length;
+  const chars = [...String(text || " ")];
+  const common = { fontSize, fontFamily, fontWeight, fontStyle, fill, stroke, strokeWidth, paintFirst, strokeUniform: true, originX: "center", originY: "center", objectCaching: false };
+  const widths = chars.map(ch => new fabric.Text(ch === " " ? " " : ch, common).width + (charSpacing || 0) / 1000 * fontSize);
+  const total = widths.reduce((a, b) => a + b, 0);
+  let s = (L - total) / 2 + ((meta.onPath.shift || 0) / 100) * L / 2;
+  const lift = fontSize * 0.32; // the letters' baseline on the path, not their middle
+  const objs = chars.map((ch, i) => {
+    const mid = s + widths[i] / 2; s += widths[i];
+    // past an end: straight on along the end's direction
+    const at0 = Math.min(Math.max(mid, 0), L);
+    const pt = path.getPointAt(at0), tan = path.getTangentAt(at0) || new paper.Point(1, 0);
+    const over = mid - at0;
+    const x = pt.x + tan.x * over, y = pt.y + tan.y * over;
+    const ang = Math.atan2(tan.y, tan.x);
+    return new fabric.Text(ch === " " ? " " : ch, { ...common, charSpacing: 0, left: x + Math.sin(ang) * lift, top: y - Math.cos(ang) * lift, angle: ang * 180 / Math.PI });
+  });
+  const g = new fabric.Group(objs, { objectCaching: false });
+  // where it was put: the path's place, moved with the text since
+  if (at) g.setPositionByOrigin(new fabric.Point(at.left, at.top), "center", "center");
+  g.arcMeta = { ...meta };
+  return g;
+}
+let pathSeq = 0;
+async function rebuildOnPath(o, meta) {
+  const my = ++pathSeq, wasActive = canvas.getActiveObject() === o;
+  const built = o.arcMeta && o.arcMeta.onPath ? o.arcMeta : null; // what is on the canvas now
+  o._warpPending = meta;
+  try { await loadPaper(); } catch (e) { o._warpPending = null; toast("โหลดเครื่องมือไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  if (my !== pathSeq || !canvas.getObjects().includes(o)) return;
+  o._warpPending = null;
+  // the path goes wherever the text has been moved since it was laid on it
+  let d = meta.onPath.d;
+  if (built) {
+    const c = o.getCenterPoint(), oc = buildOnPathGroup(built, null).getCenterPoint();
+    const pp = new paper.Path({ pathData: built.onPath.d, insert: false }); pp.translate(new paper.Point(c.x - oc.x, c.y - oc.y));
+    d = pp.pathData;
+  }
+  const m2 = { ...meta, onPath: { ...meta.onPath, d, moved: [0, 0] } };
+  const next = buildOnPathGroup(m2, null);
+  next.set({ opacity: o.opacity ?? 1, name: o.name });
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(next);
+  if (idx >= 0) next.moveTo(idx);
+  next.setCoords(); if (clipOn) applyClip(next);
+  if (wasActive) canvas.setActiveObject(next);
+  fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+async function textOnPath() {
+  const sel = canvas.getActiveObject();
+  const objs = sel && sel.type === "activeSelection" ? sel._objects.slice() : [];
+  const t = objs.find(o => isText(o) || (isArc(o) && !arcMetaOf(o).warp?.bend));
+  const p = objs.find(o => o !== t && !isTextish(o) && o.type !== "image" && o.type !== "group");
+  if (objs.length !== 2 || !t || !p) { toast("เลือกข้อความ 1 ชิ้น กับเส้น/รูปทรง 1 ชิ้น (Shift+คลิก)", "info"); return; }
+  if (t.rosterTag) { toast("ชื่อ/เบอร์ที่เปลี่ยนตามรายชื่อ วางตามเส้นไม่ได้", "warn"); return; }
+  try { await loadPaper(); } catch (e) { toast("โหลดเครื่องมือไม่ได้ — ตรวจอินเทอร์เน็ต", "err"); return; }
+  canvas.discardActiveObject();
+  const path = pathOfObject(p);
+  if (!path || path.length < 1) { toast("อ่านเส้นนี้ไม่ได้", "warn"); return; }
+  const meta = { ...arcMetaOf(t), curve: 0, warp: { style: "none", bend: 50 }, onPath: { d: path.pathData, shift: 0, flip: false, from: p.toObject(["name"]) } };
+  await ensureFont(meta.fontFamily, meta.fontSize, meta.fontWeight);
+  const g = buildOnPathGroup(meta, null);
+  const idx = canvas.getObjects().indexOf(t);
+  canvas.remove(t); canvas.remove(p); canvas.add(g); if (idx >= 0) g.moveTo(Math.min(idx, canvas.getObjects().length - 1));
+  g.setCoords(); if (clipOn) applyClip(g);
+  canvas.setActiveObject(g); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+  toast("ข้อความวิ่งตามเส้นแล้ว — เลื่อน/กลับด้าน/ถอดออก ได้ในแผงข้อความ", "ok");
+}
+/** the text off its path: a plain text, and the path back where the text has gone */
+async function textOffPath(o) {
+  const m = o.arcMeta; if (!m || !m.onPath) return;
+  await loadPaper();
+  const now = buildOnPathGroup(m, null);
+  const dx = o.getCenterPoint().x - now.getCenterPoint().x, dy = o.getCenterPoint().y - now.getCenterPoint().y;
+  const d = new paper.Path({ pathData: m.onPath.d, insert: false }); d.translate(new paper.Point(dx, dy));
+  const back = await new Promise(ok => fabric.util.enlivenObjects([m.onPath.from], objs => ok(objs[0])));
+  const path = back && back.type === "path" ? back : new fabric.Path(d.pathData, { fill: "", stroke: "#94a3b8", strokeWidth: 1 });
+  if (back) { const c = back.getCenterPoint(); back.setPositionByOrigin(new fabric.Point(c.x + dx, c.y + dy), "center", "center"); }
+  const c = o.getCenterPoint();
+  const meta = { ...m, onPath: null, curve: 0 };
+  const t = buildArcGroup(meta, { left: c.x, top: c.y });
+  t.set({ opacity: o.opacity ?? 1, name: o.name });
+  const idx = canvas.getObjects().indexOf(o);
+  canvas.remove(o); canvas.add(path); canvas.add(t); if (idx >= 0) { path.moveTo(idx); t.moveTo(idx + 1); }
+  [path, t].forEach(x => { x.setCoords(); if (clipOn) applyClip(x); });
+  canvas.setActiveObject(t); fixBackOrder(); canvas.requestRenderAll(); refreshLayers(); syncProps(); pushHistory();
+}
+$("#btnTextPath").onclick = () => textOnPath();
+
 function bindTextPanel() {
   const g = id => document.getElementById(id);
   const active = () => canvas.getActiveObject();
@@ -1840,14 +3379,16 @@ function bindTextPanel() {
       updateTagInfo && updateTagInfo();
     }
 
-    // an arc must be rebuilt; a plain text can be mutated in place
-    if (isArc(o) || (patch.curve !== undefined && patch.curve !== 0)) rebuildArc(o, patch);
+    // an arc or a warp must be rebuilt; a plain text can be mutated in place
+    const warping = patch.warp && patch.warp.style !== "none";
+    if (warping && o.rosterTag) { o.rosterTag = null; toast("ข้อความที่ดัดรูปใช้เป็นช่องชื่อ/เบอร์ไม่ได้ — ยกเลิกแท็กให้แล้ว", "warn"); updateTagInfo && updateTagInfo(); }
+    if (isArc(o) || warping || (patch.curve !== undefined && patch.curve !== 0)) rebuildArc(o, patch);
     else { o.set(patch); canvas.requestRenderAll(); }
     pushHistory(); syncProps();
   };
 
-  const weightOf = o => (isArc(o) ? o.arcMeta.fontWeight : o.fontWeight);
-  const styleOf = o => (isArc(o) ? o.arcMeta.fontStyle : o.fontStyle);
+  const weightOf = o => (isArc(o) ? arcMetaOf(o).fontWeight : o.fontWeight);
+  const styleOf = o => (isArc(o) ? arcMetaOf(o).fontStyle : o.fontStyle);
 
   if (g("txSize")) g("txSize").onchange = e => apply({ fontSize: Math.max(4, +e.target.value || 40) });
   if (g("txBold")) g("txBold").onclick = () => { const o = active(); if (!o || !isTextish(o)) return; const w = weightOf(o); apply({ fontWeight: (w === "bold" || w === "700" || w === 700) ? "normal" : "bold" }); };
@@ -1857,6 +3398,15 @@ function bindTextPanel() {
   if (g("txArc")) g("txArc").oninput = e => { const v = +e.target.value; const l = g("txArcV"); if (l) l.textContent = v; };
   if (g("txArc")) g("txArc").onchange = e => apply({ curve: +e.target.value });
   if (g("txText")) g("txText").onchange = e => apply({ text: e.target.value });
+  // on a path: shift along it, the other side, or off it
+  if (g("txPathOff")) g("txPathOff").onchange = e => { const o = active(); const m = o && arcMetaOf(o); if (m && m.onPath) apply({ onPath: { ...m.onPath, shift: +e.target.value } }); };
+  if (g("txPathFlip")) g("txPathFlip").onclick = () => { const o = active(); const m = o && arcMetaOf(o); if (m && m.onPath) apply({ onPath: { ...m.onPath, flip: !m.onPath.flip } }); };
+  if (g("txPathOut")) g("txPathOut").onclick = () => { const o = active(); if (o && arcMetaOf(o).onPath) textOffPath(o); };
+  // a warp and the circle curve are one or the other
+  if (g("txWarp")) g("txWarp").onchange = e => apply({ warp: { style: e.target.value, bend: +g("txBend").value || 50 }, curve: 0 });
+  if (g("txBend")) g("txBend").oninput = e => { const l = g("txBendV"); if (l) l.textContent = e.target.value; };
+  if (g("txBend")) g("txBend").onchange = e => apply({ warp: { style: g("txWarp").value, bend: +e.target.value }, curve: 0 });
+  if (g("txArc")) { const was = g("txArc").onchange; g("txArc").onchange = e => { const o = active(); if (o && isArc(o) && arcMetaOf(o).warp && arcMetaOf(o).warp.style !== "none") { apply({ curve: +e.target.value, warp: { style: "none", bend: 50 } }); return; } was(e); }; }
 }
 
 function updateTagInfo() {
@@ -1875,9 +3425,12 @@ function setRosterTag(tag) {
 }
 function parseRoster() {
   const raw = (document.getElementById("rosterText") || {}).value || "";
-  return raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+  // a line is split before it is trimmed: a player with a number and no name is "\t12\tXL",
+  // and trimming first dropped the empty name — 12 became the name and XL the number
+  return raw.split(/\r?\n/).filter(l => l.trim()).map(l => {
     let parts = l.split(/\t|,|;|\|/).map(s => s.trim());
     if (parts.length === 1) {
+      if (/^[0-9]{1,3}$/.test(parts[0])) return { name: "", number: parts[0], size: "" };
       const t = parts[0].split(/\s+/);
       if (t.length >= 2 && /^[0-9]{1,3}$/.test(t[t.length - 1])) { const num = t.pop(); return { name: t.join(" "), number: num, size: "" }; }
       return { name: parts[0], number: "", size: "" };
@@ -1949,7 +3502,372 @@ async function generateBatch() {
   if (prog) prog.textContent = `เสร็จ ✓ ${rows.length} ตัว (PNG + SVG ต่อคน)`;
   toast("ดาวน์โหลด ZIP แล้ว ✓");
 }
-function saveOrder(goOrder) {
+/* ---------- print data for the factory ----------
+   When a team orders, the bib is printed from what this page draws, not from a
+   file the graphics team re-makes. Every shape is laid down here as an outline
+   (text in the very font on screen), in mm on the CB-005 piece of the size it was
+   drawn on: origin at the cut line's top-left, y down. The API (bibs/designer-print.ts)
+   places it on each size's pieces and builds the job a web bib gets.
+   The shared art goes once; each player only carries their own name / number fields. */
+const PRINT_MAX_PX = 3000;   // a picture's longest side in the print data
+function mulM(A, B) { return [A[0]*B[0]+A[2]*B[1], A[1]*B[0]+A[3]*B[1], A[0]*B[2]+A[2]*B[3], A[1]*B[2]+A[3]*B[3], A[0]*B[4]+A[2]*B[5]+A[4], A[1]*B[4]+A[3]*B[5]+A[5]]; }
+function applyM(m, x, y) { return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]; }
+const r4 = n => Math.round(n * 1e4) / 1e4;
+const nf = a => parseFloat(a) || 0;
+/** canvas units → mm on the panel's piece (the garment sits centred on (200, 235) in sizes.js units, turned by the layout's angle) */
+function panelToMm(p) {
+  const sz = window.AXIOM_SIZES[TPL_SIZE];
+  const bb = pathBBox(p.tpl === "front" ? sz.front : sz.back);
+  const th = -(p.angle || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), U = MM_PER_UNIT;
+  const toLocal = mulM([1, 0, 0, 1, 200 - bb.x, 235 - bb.y], mulM([c, s, -s, c, 0, 0], [1, 0, 0, 1, -p.cx, -p.cy]));
+  return mulM([U, 0, 0, U, 0, 0], toLocal);
+}
+function colorHex(v) {
+  try { const c = new fabric.Color(v); return c.getAlpha() === 0 ? null : "#" + c.toHex().toLowerCase(); } catch (e) { return null; }
+}
+/** a gradient and the ones it takes its stops and settings from (href), nearest first */
+function gradChain(doc, id) {
+  const chain = [];
+  for (let n = doc.getElementById(id); n && chain.length < 8 && !chain.includes(n);) {
+    chain.push(n);
+    const h = n.getAttribute("href") || n.getAttribute("xlink:href");
+    n = h && h[0] === "#" ? doc.getElementById(h.slice(1)) : null;
+  }
+  return chain;
+}
+/** a paint, as a flat colour: a gradient's first stop (the gradient itself is gradientIn's) */
+function paintHex(v, el, warn) {
+  if (!v || v === "none") return null;
+  const u = /url\(["']?#([^"')]+)/.exec(v);
+  if (u) {
+    const chain = gradChain(el.ownerDocument, u[1]);
+    const holder = chain.find(n => n.querySelector("stop"));
+    const stop = holder && holder.querySelector("stop");
+    if (!stop) warn.add("ลวดลาย (pattern) พิมพ์ไม่ได้");
+    return stop ? colorHex(getComputedStyle(stop).stopColor) : null;
+  }
+  return colorHex(v);
+}
+/**
+ * A gradient fill for the print (draw.ts Grad): linear or radial, its stops,
+ * and the matrix from its own space to mm on the piece, from the gradient's
+ * units (the shape's box, or its user space) and gradientTransform. Null when
+ * the paint isn't one.
+ */
+function gradientIn(el, svg, v, toMm, warn) {
+  const u = /url\(["']?#([^"')]+)/.exec(v || ""); if (!u) return null;
+  const chain = gradChain(el.ownerDocument, u[1]), g = chain[0]; if (!g) return null;
+  const tag = g.tagName.toLowerCase(), type = tag === "lineargradient" ? "linear" : tag === "radialgradient" ? "radial" : null;
+  if (!type) return null;
+  const attr = n => { for (const x of chain) if (x.hasAttribute(n)) return x.getAttribute(n); return null; };
+  const holder = chain.find(x => x.querySelector("stop")); if (!holder) return null;
+  const stops = []; let last = 0;
+  for (const s of holder.querySelectorAll("stop")) {
+    const ov = s.getAttribute("offset") || "0", st = getComputedStyle(s), c = colorHex(st.stopColor);
+    const o = Math.min(1, Math.max(last, /%$/.test(ov) ? parseFloat(ov) / 100 : parseFloat(ov) || 0));
+    if (!c) continue;
+    if (parseFloat(st.stopOpacity) < 0.999) warn.add("ไล่สีที่จางเป็นโปร่งใสพิมพ์เป็นสีทึบ");
+    stops.push({ o: r4(o), c }); last = o;
+  }
+  if (!stops.length) return null;
+  if ((attr("spreadMethod") || "pad") !== "pad") warn.add("ไล่สีแบบวนซ้ำ (repeat/reflect) พิมพ์แบบต่อสีปลาย");
+  let bb; try { bb = el.getBBox(); } catch (e) { return null; }
+  if (!(bb.width > 0 && bb.height > 0)) return null;
+  const onBox = (attr("gradientUnits") || "objectBoundingBox") === "objectBoundingBox";
+  // a length: a fraction of the box (objectBoundingBox, or a % in user space), else user units
+  const L = (n, d, axis) => {
+    const s = attr(n); const pct = s == null ? d : /%$/.test(s) ? parseFloat(s) / 100 : null;
+    if (onBox) return pct != null ? pct : parseFloat(s);
+    if (pct == null) return parseFloat(s);
+    return axis === "x" ? bb.x + pct * bb.width : axis === "y" ? bb.y + pct * bb.height : pct * Math.hypot(bb.width, bb.height) / Math.SQRT2;
+  };
+  let coords;
+  if (type === "linear") coords = [L("x1", 0, "x"), L("y1", 0, "y"), L("x2", 1, "x"), L("y2", 0, "y")];
+  else {
+    const cx = L("cx", 0.5, "x"), cy = L("cy", 0.5, "y");
+    coords = [cx, cy, L("r", 0.5, "r"), attr("fx") != null ? L("fx", 0.5, "x") : cx, attr("fy") != null ? L("fy", 0.5, "y") : cy];
+  }
+  if (coords.some(n => !isFinite(n))) return null;
+  const ctm = el.getCTM(); if (!ctm) return null;
+  let m = mulM(toMm, [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f]);
+  if (onBox) m = mulM(m, [bb.width, 0, 0, bb.height, bb.x, bb.y]);
+  const tEl = chain.find(x => x.hasAttribute("gradientTransform"));
+  const t = tEl && tEl.gradientTransform && tEl.gradientTransform.baseVal.consolidate();
+  if (t) m = mulM(m, [t.matrix.a, t.matrix.b, t.matrix.c, t.matrix.d, t.matrix.e, t.matrix.f]);
+  return { type, coords: coords.map(r4), stops, m: m.map(r4) };
+}
+function ellipseD(cx, cy, rx, ry) {
+  const k = 0.5522847498, ox = rx * k, oy = ry * k;
+  return `M${cx - rx} ${cy}C${cx - rx} ${cy - oy} ${cx - ox} ${cy - ry} ${cx} ${cy - ry}C${cx + ox} ${cy - ry} ${cx + rx} ${cy - oy} ${cx + rx} ${cy}C${cx + rx} ${cy + oy} ${cx + ox} ${cy + ry} ${cx} ${cy + ry}C${cx - ox} ${cy + ry} ${cx - rx} ${cy + oy} ${cx - rx} ${cy}Z`;
+}
+function rectD(x, y, w, h, rx, ry) {
+  if (!(rx > 0 || ry > 0)) return `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
+  rx = Math.min(rx || ry, w / 2); ry = Math.min(ry || rx, h / 2);
+  const k = 0.5522847498, ox = rx * k, oy = ry * k;
+  return `M${x + rx} ${y}H${x + w - rx}C${x + w - rx + ox} ${y} ${x + w} ${y + ry - oy} ${x + w} ${y + ry}V${y + h - ry}C${x + w} ${y + h - ry + oy} ${x + w - rx + ox} ${y + h} ${x + w - rx} ${y + h}H${x + rx}C${x + rx - ox} ${y + h} ${x} ${y + h - ry + oy} ${x} ${y + h - ry}V${y + ry}C${x} ${y + ry - oy} ${x + rx - ox} ${y} ${x + rx} ${y}Z`;
+}
+/** any path data → absolute M/L/C/Q/Z only (arcs become curves), as the API reads it */
+function simplePathD(d) {
+  const cmds = fabric.util.makePathSimpler(fabric.util.parsePath(d));
+  return cmds.map(c => c[0] + c.slice(1).map(n => r4(n)).join(" ")).join("");
+}
+function geometryD(el) {
+  const t = el.tagName.toLowerCase(), A = n => nf(el.getAttribute(n));
+  if (t === "path") { const d = el.getAttribute("d"); return d ? simplePathD(d) : ""; }
+  if (t === "rect") return rectD(A("x"), A("y"), A("width"), A("height"), A("rx"), A("ry"));
+  if (t === "circle") return ellipseD(A("cx"), A("cy"), A("r"), A("r"));
+  if (t === "ellipse") return ellipseD(A("cx"), A("cy"), A("rx"), A("ry"));
+  if (t === "line") return `M${A("x1")} ${A("y1")}L${A("x2")} ${A("y2")}`;
+  if (t === "polyline" || t === "polygon") {
+    const n = (el.getAttribute("points") || "").trim().split(/[\s,]+/).map(Number);
+    if (n.length < 4) return "";
+    let d = `M${n[0]} ${n[1]}`; for (let i = 2; i + 1 < n.length; i += 2) d += `L${n[i]} ${n[i + 1]}`;
+    return t === "polygon" ? d + "Z" : d;
+  }
+  return "";
+}
+/** a picture as a PNG (base64) no bigger than PRINT_MAX_PX, shared by index */
+async function printImage(href, images, seen) {
+  if (seen.has(href)) return seen.get(href);
+  const img = new Image(); img.crossOrigin = "anonymous"; img.src = href;
+  await img.decode();
+  const k = Math.min(1, PRINT_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+  let b64;
+  if (k === 1 && /^data:image\/png;base64,/.test(href)) b64 = href.slice(href.indexOf(",") + 1);
+  else {
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    b64 = c.toDataURL("image/png").split(",")[1];
+  }
+  images.push(b64); seen.set(href, images.length - 1);
+  return images.length - 1;
+}
+/** path data moved by a matrix, as absolute M/L/C/Q/Z */
+function transformD(d, m) {
+  return fabric.util.makePathSimpler(fabric.util.parsePath(d)).map(c => {
+    if (c[0] === "Z" || c[0] === "z") return "Z";
+    const pts = [];
+    for (let i = 1; i + 1 < c.length; i += 2) { const [x, y] = applyM(m, c[i], c[i + 1]); pts.push(r4(x), r4(y)); }
+    return c[0] + pts.join(" ");
+  }).join("");
+}
+/** the artwork's own clip on an element (a logo's clip path, a cropped picture), in mm on the piece; null when none */
+function clipInMm(el, svg, toMm) {
+  for (let n = el; n && n !== svg; n = n.parentElement) {
+    const ref = n.getAttribute && n.getAttribute("clip-path");
+    const id = ref && (/url\(["']?#([^"')]+)/.exec(ref) || [])[1];
+    if (!id) continue;
+    const cp = svg.querySelector("#" + CSS.escape(id));
+    const base = n.getCTM();
+    if (!cp || !base) return null;
+    let d = "";
+    for (const c of cp.querySelectorAll("path,rect,circle,ellipse,polygon,polyline")) {
+      const g = geometryD(c); if (!g) continue;
+      const own = c.transform && c.transform.baseVal.consolidate();
+      const cm = own ? own.matrix : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+      d += transformD(g, mulM(toMm, mulM([base.a, base.b, base.c, base.d, base.e, base.f], [cm.a, cm.b, cm.c, cm.d, cm.e, cm.f])));
+    }
+    return d || null;
+  }
+  return null;
+}
+/** the panels an object reaches (a band across the front and back prints on both), else the one it is nearest */
+function panelsOf(o) {
+  const br = o.getBoundingRect(true, true);
+  const hit = panels.map((p, i) => [p, i]).filter(([p]) => br.left < p.x + p.w && br.left + br.width > p.x && br.top < p.y + p.h && br.top + br.height > p.y).map(([, i]) => i);
+  return hit.length ? hit : [panelOf(o)];
+}
+/** the blending modes the print file carries (the same names on the canvas, in CSS and in the API) */
+const PRINT_BLENDS = ["multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion"];
+/** one fabric object as print items, in mm on a panel's piece (its own, or the one given) */
+async function printObj(o, ctx, onPanel) {
+  const pi = onPanel ?? panelOf(o), p = panels[pi], toMm = panelToMm(p);
+  // the editor's own clip to the garment isn't the artwork's: the job clips to the cut line itself
+  const garmentClip = o.clipPath; o.clipPath = null;
+  let svgText;
+  try { svgText = o.toSVG(); } finally { o.clipPath = garmentClip; }
+  const r = await outlineSVG(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10" height="10">${svgText}</svg>`);
+  r.skipped.forEach(f => ctx.fail.add(`ฟอนต์ ${f}`));
+  ctx.host.innerHTML = r.svg;
+  const svg = ctx.host.querySelector("svg");
+  const items = [];
+  for (const el of svg ? svg.querySelectorAll("path,rect,circle,ellipse,line,polyline,polygon,image") : []) {
+    if (el.closest("clipPath,defs,mask,pattern,marker,symbol")) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    let op = 1;
+    for (let n = el; n && n !== svg; n = n.parentElement) { const v = parseFloat(getComputedStyle(n).opacity); op *= isNaN(v) ? 1 : v; }
+    if (op <= 0) continue;
+    const ctm = el.getCTM(); if (!ctm) continue;
+    const m = mulM(toMm, [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f]);
+    if (el.tagName.toLowerCase() === "image") {
+      const href = el.getAttribute("href") || el.getAttribute("xlink:href"); if (!href) continue;
+      const w = nf(el.getAttribute("width")), h = nf(el.getAttribute("height")); if (!w || !h) continue;
+      try {
+        const idx = await printImage(href, ctx.images, ctx.seen);
+        const crop = clipInMm(el, svg, toMm);
+        items.push({ img: idx, m: mulM(m, [w, 0, 0, h, nf(el.getAttribute("x")), nf(el.getAttribute("y"))]).map(r4), ...(crop ? { clip: crop } : {}), ...(op < 0.999 ? { op: r4(op) } : {}) });
+      } catch (e) { ctx.fail.add("รูปที่โหลดไม่ได้"); }
+      continue;
+    }
+    const d = geometryD(el); if (!d) continue;
+    const fill = parseFloat(cs.fillOpacity) === 0 ? null : paintHex(cs.fill, el, ctx.warn);
+    const stroke = parseFloat(cs.strokeOpacity) === 0 ? null : paintHex(cs.stroke, el, ctx.warn);
+    const sw = nf(cs.strokeWidth);
+    const it = { d, m: m.map(r4) };
+    if (fill && !/^(line|polyline)$/i.test(el.tagName)) {
+      it.fill = fill;
+      const g = gradientIn(el, svg, cs.fill, toMm, ctx.warn);
+      if (g) it.grad = g;
+    }
+    if (stroke && sw > 0) {
+      it.stroke = stroke; it.sw = r4(sw);
+      const sg = gradientIn(el, svg, cs.stroke, toMm, ctx.warn);
+      if (sg) it.sgrad = sg;
+      const lj = String(cs.strokeLinejoin || "miter");
+      if (lj === "miter" || lj === "bevel") { it.join = lj; if (lj === "miter") it.ml = Math.min(100, Math.max(1, parseFloat(cs.strokeMiterlimit) || 4)); }
+      const dash = String(cs.strokeDasharray || "").split(/[\s,]+/).map(parseFloat).filter(v => v >= 0);
+      if (dash.length && dash.some(v => v > 0)) it.dash = (dash.length % 2 ? dash.concat(dash) : dash).map(r4);
+    }
+    if (!it.fill && !it.stroke) continue;
+    if (cs.fillRule === "evenodd") it.eo = true;
+    // see-through: the object's and its groups', times the paint's own
+    const fo = parseFloat(cs.fillOpacity), so = parseFloat(cs.strokeOpacity);
+    const seeFill = op * (isNaN(fo) ? 1 : fo), seeStroke = op * (isNaN(so) ? 1 : so);
+    const see = it.fill ? seeFill : seeStroke;
+    if (see < 0.999) it.op = r4(see);
+    const clip = clipInMm(el, svg, toMm);
+    if (clip) it.clip = clip;
+    // a keyline drawn under the fill (Fabric's paintFirst "stroke"): two shapes, the stroke first
+    if (it.fill && it.stroke && /^stroke/.test(String(cs.paintOrder || ""))) {
+      const { fill: f, grad: g0, op: o0, ...under } = it;
+      if (seeStroke < 0.999) under.op = r4(seeStroke);
+      items.push(under);
+      const { stroke: s1, sw: s2, dash: s3, join: s4, ml: s5, sgrad: s6, ...over } = it;
+      items.push(over);
+      continue;
+    }
+    items.push(it);
+  }
+  ctx.host.innerHTML = "";
+  // its blending mode goes on each of its shapes
+  if (PRINT_BLENDS.includes(o.globalCompositeOperation)) items.forEach(it => { it.bm = o.globalCompositeOperation; });
+  // its centre and size on the piece, to carry it to the other sizes
+  const br = o.getBoundingRect(true, true);
+  const pts = [[br.left, br.top], [br.left + br.width, br.top], [br.left, br.top + br.height], [br.left + br.width, br.top + br.height]].map(([x, y]) => applyM(toMm, x, y));
+  const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { panel: pi, c: [r4((x0 + x1) / 2), r4((y0 + y1) / 2)], w: r4(x1 - x0), h: r4(y1 - y0), ...(isTextish(o) ? { text: true } : {}), items };
+}
+/* A player's name or number set in the template's size can be wider than the piece
+   (a long name across the back): it shrinks, about its centre, to sit inside the
+   piece's own outline at its height, clear of the trim — as the bib designer fits names.
+   Only for that player's print data; the template keeps its size. */
+// the trim band along the armholes is up to 20 mm wide: names keep 15 mm clear of it (as bibs/designer-print.ts)
+const FIT_MARGIN_MM = 35;
+const outlineCache = new Map();
+/** the piece's outline as points, in sizes.js units (centred on 200, 235) */
+function pieceOutline(tpl) {
+  const key = TPL_SIZE + "|" + tpl;
+  if (outlineCache.has(key)) return outlineCache.get(key);
+  const sz = window.AXIOM_SIZES[TPL_SIZE], d = tpl === "front" ? sz.front : sz.back;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg"), path = document.createElementNS(NS, "path");
+  svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.position = "absolute";
+  path.setAttribute("d", d); svg.appendChild(path); document.body.appendChild(svg);
+  const L = path.getTotalLength(), pts = [];
+  for (let i = 0; i < 900; i++) { const q = path.getPointAtLength(i / 900 * L); pts.push({ x: q.x, y: q.y }); }
+  svg.remove();
+  outlineCache.set(key, pts);
+  return pts;
+}
+/** shrinks a text to fit inside its piece; returns how to put it back */
+function fitInPiece(o) {
+  const p = panels[panelOf(o)];
+  if (!p || p.angle) return () => {};
+  const pts = pieceOutline(p.tpl), m = FIT_MARGIN_MM / MM_PER_UNIT;
+  const br = o.getBoundingRect(true, true);
+  const toX = X => X - p.cx + 200, toY = Y => Y - p.cy + 235;
+  const y0 = toY(br.top), y1 = toY(br.top + br.height), cx = toX(br.left + br.width / 2);
+  // the outer edges across the text's height: the narrowest place it has to pass
+  let left = -Infinity, right = Infinity;
+  for (let y = y0; y <= y1 + 0.01; y += Math.max(1, (y1 - y0) / 8)) {
+    const near = pts.filter(q => Math.abs(q.y - y) < 2.5);
+    const l = near.filter(q => q.x < 200), r = near.filter(q => q.x > 200);
+    if (!l.length || !r.length) continue;
+    left = Math.max(left, Math.min(...l.map(q => q.x)));
+    right = Math.min(right, Math.max(...r.map(q => q.x)));
+  }
+  if (!isFinite(left) || !isFinite(right)) return () => {};
+  const half = Math.min(cx - (left + m), (right - m) - cx);
+  const k = half > 0 ? (2 * half) / br.width : 1;
+  if (k >= 1) return () => {};
+  const c = o.getCenterPoint(), sx = o.scaleX, sy = o.scaleY;
+  o.set({ scaleX: sx * k, scaleY: sy * k }); o.setPositionByOrigin(c, "center", "center"); o.setCoords();
+  return () => { o.set({ scaleX: sx, scaleY: sy }); o.setPositionByOrigin(c, "center", "center"); o.setCoords(); };
+}
+/** the whole order's print data: { spec, warnings } or { error } */
+async function buildPrintSpec(rows, onProgress) {
+  if (!window.AXIOM_SIZES || !window.AXIOM_SIZES[TPL_SIZE]) return { error: "ไม่พบแพทเทิร์นของไซซ์นี้" };
+  if (curLayout === "horizontal") return { error: "สลับกลับเป็นแนวตั้งก่อนสั่งผลิต" };
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;left:-100000px;top:0;width:10px;height:10px;overflow:hidden;opacity:0;pointer-events:none"; // not visibility: it is inherited, and hidden shapes are skipped
+  document.body.appendChild(host);
+  const ctx = { host, images: [], seen: new Map(), warn: new Set(), fail: new Set() };
+  const nameObjs = taggedObjs("name"), numObjs = taggedObjs("number");
+  const tagged = [...nameObjs, ...numObjs];
+  const savedN = nameObjs.map(o => o.text), savedM = numObjs.map(o => o.text);
+  try {
+    const specPanels = panels.map(p => ({ side: String(p.id).startsWith("inner") ? "B" : "A", part: p.tpl, objs: [] }));
+    for (const o of userObjects()) {
+      if (tagged.includes(o) || o.visible === false) continue;
+      for (const pi of panelsOf(o)) {
+        const { panel, ...obj } = await printObj(o, ctx, pi);
+        if (obj.items.length) specPanels[panel].objs.push(obj);
+      }
+    }
+    const players = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      applyRow(nameObjs, numObjs, r);
+      const objs = [];
+      for (const o of tagged) {
+        if (o.visible === false || !o.text) continue;
+        if (o.initDimensions) o.initDimensions();
+        o.setCoords();
+        const putBack = fitInPiece(o);
+        let po;
+        try { po = await printObj(o, ctx); } finally { putBack(); }
+        if (po.items.length) objs.push(po);
+      }
+      players.push({ name: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase(), objs });
+      if (onProgress) onProgress(i + 1, rows.length);
+    }
+    if (ctx.fail.size) return { error: `เตรียมไฟล์ผลิตไม่ได้: ${[...ctx.fail].join(", ")} — ใช้ฟอนต์ในรายการของโปรแกรมแทน หรือถ้าเป็นตัวหนังสือในโลโก้ที่นำเข้า ให้แปลงเป็นเส้น (Create Outlines) ในไฟล์โลโก้ก่อนนำเข้า` };
+    const spec = {
+      app: "axiom-print", v: 1, size: TPL_SIZE, reversible: curStyle === 2, team: orderName().slice(0, 80),
+      body: colorHex(bodyColor) || "#ffffff", trimColor: colorHex(trimColor) || "#ffffff",
+      trim: curTrim, images: ctx.images, panels: specPanels, players,
+    };
+    if (bodyPatternSrc) spec.pattern = await printImage(bodyPatternSrc, ctx.images, ctx.seen);
+    // an R-bib's inside in a colour / pattern of its own
+    if (curStyle === 2 && sideB) {
+      spec.bodyB = colorHex(sideB.color) || "#ffffff";
+      spec.patternB = sideB.pat ? await printImage(sideB.pat, ctx.images, ctx.seen) : -1;
+    }
+    if (Object.keys(customInks).length) spec.inks = customInks;
+    return { spec, warnings: [...ctx.warn] };
+  } catch (e) {
+    return { error: "เตรียมไฟล์ผลิตไม่สำเร็จ: " + ((e && e.message) || e) };
+  } finally {
+    nameObjs.forEach((o, i) => o.set("text", savedN[i]));
+    numObjs.forEach((o, i) => o.set("text", savedM[i]));
+    if (clipOn) reclipAll();
+    canvas.requestRenderAll();
+    host.remove();
+  }
+}
+async function saveOrder(goOrder) {
   const rows = parseRoster();
   if (!taggedObjs("name").length && !taggedObjs("number").length) { toast("แท็กช่องชื่อ/เบอร์ก่อนบันทึก", "warn"); return; }
   if (!rows.length) { toast("ยังไม่มีรายชื่อ", "warn"); return; }
@@ -1957,11 +3875,20 @@ function saveOrder(goOrder) {
   const preview = exportPNG(0.5);
   const prog = document.getElementById("rosterProg");
   if (inFrame() && isLoggedIn) {
+    // the factory prints from this page's own drawing: lay it down as print data first
+    if (prog) prog.textContent = "กำลังเตรียมไฟล์ผลิต...";
+    const built = await buildPrintSpec(rows, (i, n) => { if (prog) prog.textContent = `กำลังเตรียมไฟล์ผลิต ${i}/${n}`; });
+    if (built.error) {
+      if (prog) prog.textContent = "";
+      toast(built.error, "err");
+      if (goOrder) return;
+    } else if (built.warnings.length) toast("หมายเหตุไฟล์ผลิต: " + built.warnings.join(" · "), "warn");
     window.parent.postMessage({
       type: "axiom-save-order",
       payload: {
         name: orderName(), style: curStyle, size: TPL_SIZE, count: rows.length, doc: orderDoc, preview,
         goOrder: !!goOrder,
+        print: built.spec || null,
         fabric: curFabric, trim: curTrim, reversible: curStyle === 2,
         roster: rows.map(r => ({ playerName: r.name || "", number: r.number || "", size: (r.size || TPL_SIZE).toUpperCase() })),
       },
@@ -2019,7 +3946,8 @@ function applyWizLayout() {
 }
 function syncWizRows() {
   const rt = document.getElementById("rosterText");
-  if (rt) rt.value = wizRows.filter(r => r.name || r.number).map(r => [r.name, r.number, r.size || TPL_SIZE].filter(v => v !== "").join("\t")).join("\n");
+  // every column kept, empty or not: a column left out moves the ones after it
+  if (rt) rt.value = wizRows.filter(r => r.name || r.number).map(r => [r.name || "", r.number || "", r.size || TPL_SIZE].join("\t")).join("\n");
   updateRosterCount();
 }
 function wizEsc(s) { return String(s == null ? "" : s).replace(/"/g, "&quot;"); }
@@ -2028,7 +3956,7 @@ function renderWizTable(body) {
   const rows = wizRows.map((r, i) => `<tr>
     <td style="padding:2px"><input data-wr="${i}" data-wf="name" value="${wizEsc(r.name)}" placeholder="ชื่อ" style="width:100%"></td>
     <td style="padding:2px;width:60px"><input data-wr="${i}" data-wf="number" value="${wizEsc(r.number)}" placeholder="เบอร์" style="width:100%"></td>
-    <td style="padding:2px;width:60px"><select data-wr="${i}" data-wf="size" style="width:100%">${["S", "M", "L", "XL"].map(s => `<option ${(r.size || TPL_SIZE) === s ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+    <td style="padding:2px;width:60px"><select data-wr="${i}" data-wf="size" style="width:100%">${Object.keys(window.AXIOM_SIZES || { S: 1, M: 1, L: 1, XL: 1 }).map(s => `<option ${(r.size || TPL_SIZE) === s ? "selected" : ""}>${s}</option>`).join("")}</select></td>
     <td style="padding:2px;width:26px"><button class="mini" data-wdel="${i}" style="min-width:24px;padding:4px">✕</button></td></tr>`).join("");
   body.innerHTML = `<p style="font-size:12.5px;color:var(--muted);margin-bottom:8px">ใส่รายชื่อผู้เล่น — พิมพ์เอง หรือวางจาก Excel</p>
     <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--muted);font-size:11px"><th style="text-align:left;padding:2px">ชื่อ</th><th style="padding:2px">เบอร์</th><th style="padding:2px">ไซซ์</th><th></th></tr></thead><tbody>${rows}</tbody></table>
@@ -2041,7 +3969,8 @@ function renderWizTable(body) {
   const add = document.getElementById("wizAddRow"); if (add) add.onclick = () => { wizRows.push({ name: "", number: "", size: TPL_SIZE }); renderWizTable(body); };
   const pt = document.getElementById("wizPasteToggle"); if (pt) pt.onclick = () => { const t = document.getElementById("wizPaste"), a = document.getElementById("wizPasteApply"); const show = t.style.display === "none"; t.style.display = a.style.display = show ? "block" : "none"; };
   const pa = document.getElementById("wizPasteApply"); if (pa) pa.onclick = () => {
-    const parsed = (document.getElementById("wizPaste").value || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => { const p = l.split(/\t|,|;/).map(s => s.trim()); return { name: p[0] || "", number: p[1] || "", size: (p[2] || TPL_SIZE).toUpperCase() }; });
+    // split before trimming: an Excel row with an empty name starts with a tab
+    const parsed = (document.getElementById("wizPaste").value || "").split(/\r?\n/).filter(l => l.trim()).map(l => { const p = l.split(/\t|,|;/).map(s => s.trim()); return { name: p[0] || "", number: p[1] || "", size: (p[2] || TPL_SIZE).toUpperCase() }; });
     if (parsed.length) { wizRows = parsed; renderWizTable(body); }
   };
   updateWizCount();

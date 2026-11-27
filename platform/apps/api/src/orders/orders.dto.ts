@@ -4,7 +4,8 @@ import { BibDesignSchema } from "../bibs/design";
 
 const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 
-export const SIZES = ["S", "M", "L", "XL"] as const;
+/** XXL (3L) is made only in the bib (CB-005); orders.service turns it away on anything else */
+export const SIZES = ["S", "M", "L", "XL", "XXL"] as const;
 export const FABRICS = ["mesh", "B1", "C1"] as const;
 export const TRIMS = ["none", "neck", "neckarm", "full"] as const;
 export const GARMENT_IDS = ["jersey", "hoodie", "shorts", "piste", "piste_zip", "pants", "bib_n", "bib_r"] as const;

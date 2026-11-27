@@ -14,6 +14,9 @@ async function bootstrap() {
 
   // Slips arrive base64 inside JSON. Express defaults to a 100kb body, which
   // every phone screenshot exceeds — without this, upload fails with 413.
+  // The advanced designer's print data carries its pictures (a pattern up to 3000 px, logos):
+  // allowed more than other bodies, on that one route.
+  app.use("/api/v1/designer-prints", express.json({ limit: "64mb" }));
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ limit: "12mb", extended: true }));
 
@@ -25,6 +28,8 @@ async function bootstrap() {
   // The customer's print files (bib orders) are their artwork: signed links only,
   // GET /api/v1/order-files/:id/zip — see orders/order-file-link.ts.
   app.use("/uploads/order-files", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
+  // The advanced designer's print data (names, artwork): read by the job builder only.
+  app.use("/uploads/designer-prints", (_req: express.Request, res: express.Response) => { res.status(404).end(); });
   // Team logos and fonts (kit studio). Named by content hash, so they never change:
   // cache for a year. The web app draws them into WebGL from another origin, which
   // needs CORS; they are print artwork, not personal data.

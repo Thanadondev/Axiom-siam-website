@@ -2,6 +2,27 @@ import { readFileSync } from "node:fs";
 import * as opentype from "opentype.js";
 import { bounds, mapPath, parsePath, type Box, type Seg } from "./path";
 
+/*
+ * Glyphs are placed by fontkit, which applies the font's own layout rules
+ * (GSUB / GPOS): a Thai tone mark over an upper vowel is raised (ที่, พี่) and one
+ * over ป / ฝ / ฟ moves clear of the tall stroke (ปู่). Drawn glyph by glyph at the
+ * default spot, those marks landed inside the vowel or the stroke and vanished.
+ * opentype.js still says which font has a character. fontkit has no types: the
+ * little of it used here.
+ */
+interface FkFont {
+  unitsPerEm: number;
+  layout(text: string): { glyphs: { path: { commands: { command: string; args: number[] }[] } }[]; positions: { xAdvance: number; xOffset: number; yOffset: number }[] };
+}
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const fontkit: { create(buf: Buffer): FkFont } = require("fontkit");
+/** the fontkit face of a font loaded with opentype.js, from the same bytes */
+const shaper = new WeakMap<opentype.Font, FkFont>();
+function withShaper(f: opentype.Font, buf: Uint8Array): opentype.Font {
+  try { shaper.set(f, fontkit.create(Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength))); } catch { /* drawn glyph by glyph, as before */ }
+  return f;
+}
+
 /**
  * Text as outlines: the factory's files have no live text (the "_ol" in their
  * names), so every name, number and label is drawn from the glyph shapes. The
@@ -9,7 +30,12 @@ import { bounds, mapPath, parsePath, type Box, type Seg } from "./path";
  * accented name still comes out.
  */
 
-export type FontId = "block" | "classic" | "thai";
+export const FONT_IDS = ["block", "classic", "thai", "college", "sport", "italic", "kanit"] as const;
+export type FontId = (typeof FONT_IDS)[number];
+/** what each is called on the order sheet's notes and for the graphics team */
+export const FONT_NAMES: Record<FontId, string> = {
+  block: "Anton", classic: "Sora", thai: "Noto Sans Thai", college: "Graduate", sport: "Teko", italic: "Racing Sans One", kanit: "Kanit",
+};
 /** one of ours, or the team's own font (the kit studio's upload) with one of ours for what it lacks */
 export type FontRef = FontId | "label" | { font: opentype.Font; fallback: FontId };
 
@@ -17,10 +43,10 @@ export type FontRef = FontId | "label" | { font: opentype.Font; fallback: FontId
 export function parseFont(buf: Uint8Array): opentype.Font | null {
   try {
     const f = opentype.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
-    return f.charToGlyphIndex("0") > 0 || f.charToGlyphIndex("A") > 0 ? f : null;
+    return f.charToGlyphIndex("0") > 0 || f.charToGlyphIndex("A") > 0 ? withShaper(f, buf) : null;
   } catch { return null; }
 }
-type Face = "anton" | "sora8" | "sora7" | "thai8" | "thai7" | "jp8" | "jp7";
+type Face = "anton" | "sora8" | "sora7" | "thai8" | "thai7" | "graduate" | "teko7" | "racing" | "kanit8" | "jp8" | "jp7";
 
 const FILES: Record<Exclude<Face, "jp8" | "jp7">, string[]> = {
   anton: ["@fontsource/anton/files/anton-latin-400-normal.woff", "@fontsource/anton/files/anton-latin-ext-400-normal.woff"],
@@ -28,6 +54,11 @@ const FILES: Record<Exclude<Face, "jp8" | "jp7">, string[]> = {
   sora7: ["@fontsource/sora/files/sora-latin-700-normal.woff", "@fontsource/sora/files/sora-latin-ext-700-normal.woff"],
   thai8: ["@fontsource/noto-sans-thai/files/noto-sans-thai-thai-800-normal.woff", "@fontsource/noto-sans-thai/files/noto-sans-thai-latin-800-normal.woff"],
   thai7: ["@fontsource/noto-sans-thai/files/noto-sans-thai-thai-700-normal.woff", "@fontsource/noto-sans-thai/files/noto-sans-thai-latin-700-normal.woff"],
+  // added 2026-11-26, all SIL Open Font License: a collegiate slab, a squared-off sports face, a sporty italic, a heavy Thai
+  graduate: ["@fontsource/graduate/files/graduate-latin-400-normal.woff"],
+  teko7: ["@fontsource/teko/files/teko-latin-700-normal.woff", "@fontsource/teko/files/teko-latin-ext-700-normal.woff"],
+  racing: ["@fontsource/racing-sans-one/files/racing-sans-one-latin-400-normal.woff", "@fontsource/racing-sans-one/files/racing-sans-one-latin-ext-400-normal.woff"],
+  kanit8: ["@fontsource/kanit/files/kanit-thai-800-normal.woff", "@fontsource/kanit/files/kanit-latin-800-normal.woff", "@fontsource/kanit/files/kanit-latin-ext-800-normal.woff"],
 };
 
 /**
@@ -38,6 +69,11 @@ const CHAINS: Record<FontId | "label", Face[]> = {
   block: ["anton", "thai8", "sora8", "jp8"],
   classic: ["sora8", "thai8", "jp8"],
   thai: ["thai8", "sora8", "jp8"],
+  // a Thai name in the new Latin faces comes out in Kanit, the heavier, sportier Thai
+  college: ["graduate", "kanit8", "sora8", "jp8"],
+  sport: ["teko7", "kanit8", "sora8", "jp8"],
+  italic: ["racing", "kanit8", "sora8", "jp8"],
+  kanit: ["kanit8", "sora8", "jp8"],
   label: ["sora7", "thai7", "jp7"],
 };
 
@@ -46,7 +82,7 @@ function font(file: string): opentype.Font {
   let f = loaded.get(file);
   if (!f) {
     const b = readFileSync(require.resolve(file));
-    f = opentype.parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+    f = withShaper(opentype.parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)), b);
     loaded.set(file, f);
   }
   return f;
@@ -92,17 +128,66 @@ function fontFor(ch: string, chain: Face[]): opentype.Font {
   return font(FILES[chain[0] as keyof typeof FILES][0]);
 }
 
+/** a glyph's outline from fontkit (font units, y up) at (ox, oy), k mm a unit, y down */
+function glyphSegs(commands: { command: string; args: number[] }[], ox: number, oy: number, k: number): Seg[] {
+  const X = (v: number) => ox + v * k, Y = (v: number) => oy - v * k;
+  const out: Seg[] = [];
+  let cx = 0, cy = 0;
+  for (const { command, args: a } of commands) {
+    if (command === "moveTo" || command === "lineTo") {
+      out.push({ op: command === "moveTo" ? "M" : "L", x: X(a[0]), y: Y(a[1])});
+      [cx, cy] = [a[0], a[1]];
+    } else if (command === "quadraticCurveTo") {
+      const [qx, qy, x, y] = a;
+      out.push({ op: "C", x1: X(cx + (2 / 3) * (qx - cx)), y1: Y(cy + (2 / 3) * (qy - cy)), x2: X(x + (2 / 3) * (qx - x)), y2: Y(y + (2 / 3) * (qy - y)), x: X(x), y: Y(y) });
+      [cx, cy] = [x, y];
+    } else if (command === "bezierCurveTo") {
+      const [x1, y1, x2, y2, x, y] = a;
+      out.push({ op: "C", x1: X(x1), y1: Y(y1), x2: X(x2), y2: Y(y2), x: X(x), y: Y(y) });
+      [cx, cy] = [x, y];
+    } else if (command === "closePath") out.push({ op: "Z" });
+  }
+  return out;
+}
+
 /** the glyph outlines of a line of text at font size 100, baseline at y = 0 */
 function rawText(text: string, chain: Face[], tracking = 0, own?: opentype.Font): Seg[] {
+  // clusters: a letter and the vowels / tone marks on it, drawn by one font
+  const clusters: string[] = [];
+  for (const ch of Array.from(text.normalize("NFC"))) {
+    if (clusters.length && /\p{M}/u.test(ch)) clusters[clusters.length - 1] += ch;
+    else clusters.push(ch);
+  }
+  // runs of clusters in the same font, laid out together
+  const runs: { f: opentype.Font; text: string }[] = [];
+  for (const cl of clusters) {
+    const base = Array.from(cl)[0];
+    const f = own && Array.from(cl).every(c => own.charToGlyphIndex(c) > 0) ? own : fontFor(base, chain);
+    const last = runs[runs.length - 1];
+    if (last && last.f === f) last.text += cl; else runs.push({ f, text: cl });
+  }
   const segs: Seg[] = [];
   let x = 0;
-  for (const ch of Array.from(text.normalize("NFC"))) {
-    const f = own && own.charToGlyphIndex(ch) > 0 ? own : fontFor(ch, chain);
-    const g = f.charToGlyph(ch);
-    const scale = 100 / f.unitsPerEm;
-    segs.push(...parsePath(g.getPath(x, 0, 100).toPathData(3)));
-    const adv = (g.advanceWidth ?? 0) * scale;
-    x += adv + (adv > 0 ? tracking : 0);
+  for (const r of runs) {
+    const fk = shaper.get(r.f);
+    if (fk) {
+      const k = 100 / fk.unitsPerEm;
+      const lay = fk.layout(r.text);
+      lay.glyphs.forEach((g, i) => {
+        const p = lay.positions[i];
+        segs.push(...glyphSegs(g.path.commands, x + p.xOffset * k, -p.yOffset * k, k));
+        const adv = p.xAdvance * k;
+        x += adv + (adv > 0 ? tracking : 0);
+      });
+      continue;
+    }
+    // no shaper for this font: glyph by glyph at the default spot
+    for (const ch of Array.from(r.text)) {
+      const g = r.f.charToGlyph(ch);
+      segs.push(...parsePath(g.getPath(x, 0, 100).toPathData(3)));
+      const adv = (g.advanceWidth ?? 0) * (100 / r.f.unitsPerEm);
+      x += adv + (adv > 0 ? tracking : 0);
+    }
   }
   return segs;
 }

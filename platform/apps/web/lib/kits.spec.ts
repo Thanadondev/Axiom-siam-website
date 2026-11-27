@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts, isBottom } from "./kits";
+import { KITS, QUICK_SWATCHES, kitById, restoreConfig, defaultConfig, parseRoster, cleanName, cleanNumber, trimEdges, kitFabrics, kitTrims, kitParts, isBottom, kitPriceGarment, defaultSideB, sideLook, kitSizes, unknownSizes } from "./kits";
 import { FABRICS, SIZES } from "./order-draft";
 import { TRIMS } from "./garment-options";
 
@@ -73,6 +73,29 @@ describe("restoreConfig", () => {
     expect(c.name).toBe("SOMCHAI JAIDEE"); // 14-character cap cuts the trailing space
     expect(c.number).toBe("12");
   });
+
+  it("the bib kit can be reversible, with side B's own colours and pattern; other kits can't", () => {
+    const bib = kitById("bib")!;
+    expect(bib.reversible).toBe(true);
+    expect(kitPriceGarment(bib, restoreConfig(bib, {}))).toBe("bib_n");
+    const c = restoreConfig(bib, { reversible: true, sideB: { colors: { body: "#FACC15", number: "nope" }, pattern: "hoops" } });
+    expect(c.reversible).toBe(true);
+    expect(c.sideB!.colors.body).toBe("#facc15");
+    expect(c.sideB!.colors.number).toBe(defaultSideB(c.colors).colors.number);
+    expect(c.sideB!.pattern).toBe("hoops");
+    expect(sideLook(c, "B").colors.body).toBe("#facc15");
+    expect(sideLook(c, "A").colors.body).toBe(c.colors.body);
+    expect(kitPriceGarment(bib, c)).toBe("bib_r");
+    // switched back to one side: side B is kept but not shown or priced
+    const one = restoreConfig(bib, { reversible: false, sideB: { colors: { body: "#facc15" } } });
+    expect(one.reversible).toBeUndefined();
+    expect(sideLook(one, "B").colors.body).toBe(one.colors.body);
+    expect(kitPriceGarment(bib, one)).toBe("bib_n");
+    const striker = kitById("striker")!;
+    const s = restoreConfig(striker, { reversible: true, sideB: { colors: { body: "#facc15" } } });
+    expect(s.reversible).toBeUndefined();
+    expect(s.sideB).toBeUndefined();
+  });
 });
 
 describe("name / number cleaning", () => {
@@ -117,6 +140,16 @@ describe("parseRoster", () => {
 
   it("keeps a number-only player (unnamed shirt)", () => {
     expect(parseRoster("\t23\tS")).toEqual([{ playerName: "", number: "23", size: "S" }]);
+  });
+
+  it("the bib kit is also made in XXL (3L); a size a kit isn't made in is pointed out", () => {
+    const bib = kitById("bib")!, striker = kitById("striker")!;
+    expect(kitSizes(bib)).toEqual(["S", "M", "L", "XL", "XXL"]);
+    expect(kitSizes(striker)).toEqual(["S", "M", "L", "XL"]);
+    expect(parseRoster("A,1,XXL", kitSizes(bib))[0].size).toBe("XXL");
+    expect(parseRoster("A,1,XXL", kitSizes(striker))[0].size).toBe("M");
+    expect(unknownSizes("A,1,XXL\nB,2,3l\nC,3,M\nD,4,xxl", kitSizes(striker))).toEqual(["XXL", "3L"]);
+    expect(unknownSizes("A,1,XXL\nB,2\nC,3,M", kitSizes(bib))).toEqual([]);
   });
 });
 
