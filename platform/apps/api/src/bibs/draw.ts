@@ -238,14 +238,14 @@ const stacked = (art: Art) => !!art.logoCenter && !!art.numberCenter;
 
 /**
  * The logo and the number both in the middle of the front: team name, number, logo down the middle. The
- * number keeps the middle of the piece (where it is, on a bib without one too, so every bib matches), the
+ * number a little above the middle (there on a bib without one too, so every bib matches), the
  * team name goes above it, and the logo below it, bigger, down toward the hem. Sponsors in the bottom
  * corners come first: the logo is made shorter to stay above them, or narrower to fit between them,
  * whichever leaves it bigger. Centre heights (mm), and the logo's box.
  */
 export function middleStack(p: Piece, art: Art): { number: number; team: number; logo?: { x: number; y: number; w: number; h: number } } {
   const k = p.w / BASE_WIDTH, F = LAYOUT.front, S = F.stack, M = F.middle, mid = p.w / 2;
-  const number = M.cy * p.h;
+  const number = S.numberCy * p.h;
   const team = number - (M.h / 2 + S.gap + F.team.h / 2) * k;
   if (!art.show.frontLogo || !art.logo) return { number, team };
   const top = number + (M.h / 2 + S.gap) * k, floor = p.h - S.floor * k, gap = S.clear * k;
@@ -296,16 +296,16 @@ export function sponsorBoxes(p: Piece, art: Art, part: Part = "front"): { slot: 
   return out;
 }
 
-/** a number in the middle: its centre height (mm), the middle of the piece */
-export function middleNumberCy(p: Piece): number {
-  return LAYOUT.front.middle.cy * p.h;
+/** a number in the middle: its centre height (mm), the middle of the piece (a little higher with the logo in the middle under it) */
+export function middleNumberCy(p: Piece, art: Art): number {
+  return stacked(art) ? middleStack(p, art).number : LAYOUT.front.middle.cy * p.h;
 }
 
 /** the team name's centre height (mm): under the number when the number is in the middle (above it when the logo is in the middle too), else the middle */
 export function teamCy(p: Piece, art: Art): number {
   const k = p.w / BASE_WIDTH, F = LAYOUT.front, M = F.middle;
   if (stacked(art)) return middleStack(p, art).team;
-  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return middleNumberCy(p) + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
+  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return middleNumberCy(p, art) + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
   return F.team.cy * p.h;
 }
 
@@ -316,7 +316,7 @@ export function frontNumber(p: Piece, art: Art): TextShape | null {
   if (art.numberCenter) {
     // in the middle of the piece: as wide as the armholes (and the logo, if it reaches down that far) leave room for
     const M = LAYOUT.front.middle;
-    const at = { cx: mid, cy: middleNumberCy(p) };
+    const at = { cx: mid, cy: middleNumberCy(p, art) };
     let t = textShape(art.number, art.font, { h: M.h * k }, at);
     if (!t) return null;
     const cut = parsePath(p.cut);

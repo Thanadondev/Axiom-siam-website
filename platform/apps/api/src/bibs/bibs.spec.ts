@@ -149,7 +149,7 @@ describe("paths and outlined text", () => {
     expect(frontNumber(m, { ...art, numberCenter: true, number: "88", logo: { png: new Uint8Array(0), w: 1000, h: 1000 } })!.box.h).toBeCloseTo(85, 0);
   });
 
-  it("a logo in the middle: a number beside it keeps clear of it; a number in the middle stays there, the team name above it and the logo below it, bigger", () => {
+  it("a logo in the middle: a number beside it keeps clear of it; a number in the middle goes a little up, the team name above it and the logo below it, bigger", () => {
     const wide = { png: new Uint8Array(0), w: 1300, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
     for (const size of BIB_SIZES) {
       const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
@@ -159,9 +159,9 @@ describe("paths and outlined text", () => {
         expect(l.x + l.w / 2, at).toBeCloseTo(p.w / 2, 3);
         const b = bounds(frontNumber(p, a)!.segs)!;
         if (numberCenter) {
-          // the number in the middle of the piece, the team name above it, the logo below it
+          // the number in the middle, a little high, the team name above it, the logo below it
           expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
-          expect(b.y + b.h / 2, at).toBeCloseTo(p.h / 2, 0);
+          expect(b.y + b.h / 2, at).toBeCloseTo(LAYOUT.front.stack.numberCy * p.h, 0);
           const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
           expect(b.y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
           expect(team.y - p.neckDepth, at).toBeGreaterThanOrEqual(5 * k);
