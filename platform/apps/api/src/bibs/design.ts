@@ -8,6 +8,9 @@ import { BIB_SIZES } from "./template";
  * hand (print file per size, order sheet, name list).
  */
 
+/** a logo the kit-asset upload stored: the browser re-encodes every logo to PNG */
+const LOGO_URL = z.string().regex(/^\/uploads\/kit-assets\/logos\/[a-f0-9]{64}\.png$/, "logo must be uploaded on the design page");
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "colour must be #RRGGBB").transform(s => s.toLowerCase());
 
 /**
@@ -60,6 +63,8 @@ export const BibDesignSchema = z.object({
   logoTint: z.boolean().default(false),
   /** with no team logo, the Axiom mark in its place (always one colour, a little smaller), as the kit studio shows it */
   axiomMark: z.boolean().default(false),
+  /** sponsors' logos in the front's bottom corners, left and right as you look at the front (full colour) */
+  sponsors: z.object({ left: LOGO_URL.optional(), right: LOGO_URL.optional() }).default({}),
   /** the team's own font for names and numbers (uploaded in the kit studio); ours stand in for what it lacks */
   fontUrl: z.string().regex(/^\/uploads\/kit-assets\/fonts\/[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/).optional(),
   /** made in the kit studio: the kit, named on the order sheet and the job folder */
@@ -92,6 +97,8 @@ export const LAYOUT = {
     team: { cx: 0.5, cy: 0.5, w: 320, h: 50 },
     /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
     middle: { cy: 0.5, h: 85, teamGap: 15 },
+    /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
+    sponsor: { cx: 0.2, bottom: 40, h: 45, maxW: 120 },
   },
   back: {
     name: { cx: 0.5, top: 0.146, h: 35, maxW: 380 },

@@ -79,12 +79,13 @@ const PIECE_W: Record<BibSize, number> = { S: 459, M: 519, L: 609, XL: 683, XXL:
  * on M (no wider than 110 mm), scaled with the piece — so the largest size on the
  * list decides. Dots per inch over its printed height.
  */
-export function logoDpi(w: number, h: number, sizes: BibSize[]): { dpi: number; mm: number; size: string } {
+/** how sharp a logo prints where it prints biggest; `box` is where it's fitted on the M piece (mm): the chest logo's by default, or a sponsor's (45 × 120) */
+export function logoDpi(w: number, h: number, sizes: BibSize[], box = { h: 85, maxW: 110 }): { dpi: number; mm: number; size: string } {
   const size = (sizes.length ? sizes : (["M"] as BibSize[])).reduce((a, b) => (PIECE_W[b] > PIECE_W[a] ? b : a));
   const k = PIECE_W[size] / PIECE_W.M;
-  let mmH = 85 * k;
+  let mmH = box.h * k;
   const mmW = (mmH * w) / h;
-  if (mmW > 110 * k) mmH = (110 * k * h) / w;
+  if (mmW > box.maxW * k) mmH = (box.maxW * k * h) / w;
   return { dpi: Math.round(h / (mmH / 25.4)), mm: Math.round(mmH), size: BIB_SIZE_LABEL[size] };
 }
 

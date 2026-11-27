@@ -5,7 +5,7 @@ import { resolve } from "path";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "../orders/order-files.service";
 import { BibDesignSchema, type BibDesign } from "./design";
-import { buildBibJob, logoArt, teamFont, type BuiltJob } from "./job";
+import { buildBibJob, logoArt, sponsorArt, teamFont, type BuiltJob } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
@@ -121,6 +121,11 @@ export class BibJobService {
     return buf ? new Uint8Array(buf) : undefined;
   }
 
+  /** the sponsors' logo bytes, from the design's URLs (checked as the team logo is) */
+  async sponsors(d: BibDesign): Promise<{ left?: Uint8Array; right?: Uint8Array }> {
+    return { left: await this.logo(d.sponsors.left), right: await this.logo(d.sponsors.right) };
+  }
+
   /** the order sheet for one size, as SVG: the designer's live preview */
   async sheet(input: unknown, logoUrl: string | undefined, size?: string) {
     const p = BibDesignSchema.safeParse(input);
@@ -135,7 +140,7 @@ export class BibJobService {
     const logo = logoArt(d, png);
     // the team's own font, as the print files will set it (or the note saying it couldn't be read)
     const tf = teamFont(d, await this.font(d.fontUrl));
-    const { svg } = orderSheetSvg(d, { font: tf.font ?? d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter }, z, counts, { ref: "PREVIEW", date: new Date(), ...(tf.note ? { notes: [tf.note] } : {}) });
+    const { svg } = orderSheetSvg(d, { font: tf.font ?? d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter, sponsors: sponsorArt(await this.sponsors(d), PREVIEW_LOGO_PX) }, z, counts, { ref: "PREVIEW", date: new Date(), ...(tf.note ? { notes: [tf.note] } : {}) });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
   }
 
@@ -176,6 +181,7 @@ export class BibJobService {
       ref: o.orderNo, date: o.createdAt,
       logoPng: await this.logo(logoUrl),
       fontData: await this.font(design.fontUrl),
+      sponsorPngs: await this.sponsors(design),
     });
     return this.save(o, job, t0);
   }

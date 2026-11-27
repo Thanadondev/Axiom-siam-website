@@ -92,6 +92,7 @@ export function kitBibDesign(s: KitSnapshot, roster: RosterRow[]): BibDesign {
     roster,
     logoLeft: true,
     numberCenter: false,
+    sponsors: {},
     logoTint: s.logoTint === true,
     axiomMark: s.logo === "axiom" || s.logo === undefined,
     ...(fontUrl && /^\/uploads\/kit-assets\/fonts\/[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/.test(fontUrl) ? { fontUrl } : {}),

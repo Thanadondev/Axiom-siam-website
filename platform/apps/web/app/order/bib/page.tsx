@@ -86,6 +86,12 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const [logoBusy, setLogoBusy] = useState(false);
   const [logoErr, setLogoErr] = useState("");
   const logoInput = useRef<HTMLInputElement>(null);
+  // sponsors' logos in the front's bottom corners, as you look at the front
+  const [sponsors, setSponsors] = useState<{ left?: SponsorImg; right?: SponsorImg }>({});
+  const [sponsorBusy, setSponsorBusy] = useState<"" | "left" | "right">("");
+  const [sponsorErr, setSponsorErr] = useState("");
+  const sponsorInput = useRef<HTMLInputElement>(null);
+  const sponsorSide = useRef<"left" | "right">("left");
   const [rosterText, setRosterText] = useState("");
   const [run, setRun] = useState<{ size: BibSize; count: number; from: number }>({ size: "M", count: 10, from: 1 });
   const [prices, setPrices] = useState<Record<string, number>>({});
@@ -110,11 +116,12 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
 
   const design = useMemo(() => ({
     product, team: team.trim(), font, show, logoLeft, numberCenter,
+    sponsors: { ...(sponsors.left ? { left: sponsors.left.url } : {}), ...(sponsors.right ? { right: sponsors.right.url } : {}) },
     ...(teamFont ? { fontUrl: teamFont.url } : {}),
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, teamFont, show, logoLeft, numberCenter, used, roster]);
+  }), [product, team, font, teamFont, show, logoLeft, numberCenter, sponsors, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -183,6 +190,22 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
     } finally {
       setLogoBusy(false);
       if (logoInput.current) logoInput.current.value = "";
+    }
+  }
+
+  async function onSponsor(f?: File | null) {
+    const side = sponsorSide.current;
+    if (!f || !token) return;
+    setSponsorErr(""); setSponsorBusy(side);
+    try {
+      const a = await importPrintLogo(f);
+      const url = await uploadAsset({ id: `sponsor-${side}-${Date.now()}`, kind: "logo", name: a.name, data: a.data, created: Date.now() }, token);
+      setSponsors(v => ({ ...v, [side]: { url, data: a.data, w: a.w, h: a.h } }));
+    } catch (e: any) {
+      setSponsorErr(lang === "th" ? e?.message || "นำเข้าโลโก้ไม่สำเร็จ" : L("", "Couldn't use this logo — try a PNG with a clear background", "このロゴを使用できませんでした。背景が透明なPNGでお試しください"));
+    } finally {
+      setSponsorBusy("");
+      if (sponsorInput.current) sponsorInput.current.value = "";
     }
   }
 
@@ -383,6 +406,38 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             )}
           </div>
 
+          <div className="acard">
+            <h2 className="ah2">{L("โลโก้สปอนเซอร์", "Sponsor logos", "スポンサーロゴ")}</h2>
+            <p className="asub">{L(
+              "มุมล่างซ้ายและขวาของชิ้นหน้า (มองจากด้านหน้า) พิมพ์สีตามไฟล์ ขนาดไม่เกิน 120×45 มม. ที่ไซส์ M (ไซส์อื่นย่อขยายตาม)",
+              "The front's bottom corners (looking at the front), printed in the file's own colours, up to 120 × 45 mm on size M (other sizes scale)",
+              "前面の左下・右下（正面から見て）。ファイルの色のまま印刷、Mサイズで最大120×45mm（他のサイズは比例）",
+            )}</p>
+            <div className="bd-sponsors">
+              {(["left", "right"] as const).map(side => {
+                const s = sponsors[side];
+                const q = s && logoDpi(s.w, s.h, roster.rows.map(r => r.size), { h: 45, maxW: 120 });
+                return (
+                  <div key={side} className="bd-logo">
+                    <div className="pic">{s ? <img src={s.data} alt="" /> : <span className="dim">{L("ไม่มี", "None", "なし")}</span>}</div>
+                    <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
+                      <strong style={{ fontSize: 13.5 }}>{side === "left" ? L("ซ้ายล่าง", "Bottom left", "左下") : L("ขวาล่าง", "Bottom right", "右下")}</strong>
+                      <button type="button" className="abtn ghost" disabled={!!sponsorBusy} onClick={() => { sponsorSide.current = side; sponsorInput.current?.click(); }}>
+                        {sponsorBusy === side ? L("กำลังนำเข้า…", "Adding…", "読み込み中…") : s ? L("เปลี่ยน", "Change", "変更") : L("เลือกไฟล์", "Choose a file", "ファイルを選択")}
+                      </button>
+                      {s && <button type="button" className="minibtn" onClick={() => setSponsors(v => { const n = { ...v }; delete n[side]; return n; })}>{L("เอาออก", "Remove", "削除")}</button>}
+                      {q && <span className={q.dpi < 150 ? "ou-warn" : "dim"} style={{ fontSize: 12 }}>
+                        {q.dpi >= 250 ? "✓ " : "⚠ "}{s.w}×{s.h} px ≈ {q.dpi} dpi{q.dpi < 150 ? L(" — ภาพจะแตก ใช้ไฟล์ใหญ่กว่านี้", " — will print blurry; use a bigger file", " — 粗く印刷されます") : ""}
+                      </span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <input ref={sponsorInput} type="file" accept={LOGO_ACCEPT} hidden onChange={e => onSponsor(e.target.files?.[0])} />
+            {sponsorErr && <p className="ou-warn">⚠ {sponsorErr}</p>}
+          </div>
+
           {used.map((s, i) => (
             <SideCard key={i} L={L} title={product === "bib_r" ? (i === 0 ? L("ด้าน A (ด้านหลัก)", "Side A (main side)", "A面（メイン）") : L("ด้าน B (ด้านกลับ)", "Side B (reverse)", "B面（裏面）")) : L("สีและลาย", "Colours and pattern", "色と柄")}
               side={s} onChange={v => setSide(i as 0 | 1, v)} />
@@ -561,6 +616,9 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
     </div>
   );
 }
+
+/** a sponsor's logo as uploaded: its stored URL, the picture to show, its pixel size */
+type SponsorImg = { url: string; data: string; w: number; h: number };
 
 export default function OrderBibPage() {
   const [lang, setLang] = useLang();

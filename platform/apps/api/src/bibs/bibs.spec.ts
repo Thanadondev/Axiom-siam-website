@@ -4,9 +4,9 @@ import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
 import { textShape, FONT_IDS } from "./text";
 import { BibDesignSchema } from "./design";
-import { drawPiece, frontNumber, edgeX, logoBox, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
+import { drawPiece, frontNumber, edgeX, logoBox, sponsorBoxes, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
 import { factoryCmyk, ink } from "./color";
-import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND } from "./template";
+import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND, HEM_BAND } from "./template";
 import { buildBibJob } from "./job";
 
 // colours off the factory's DTP chart
@@ -149,6 +149,32 @@ describe("paths and outlined text", () => {
     expect(frontNumber(m, { ...art, numberCenter: true, number: "88", logo: { png: new Uint8Array(0), w: 1000, h: 1000 } })!.box.h).toBeCloseTo(85, 0);
   });
 
+  it("sponsors sit in the front's bottom corners: inside the piece, clear of the hem band and the team name", () => {
+    const wide = { png: new Uint8Array(0), w: 3000, h: 1000 }, tall = { png: new Uint8Array(0), w: 600, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const [left, right] of [[wide, tall], [tall, wide]]) for (const numberCenter of [false, true]) {
+        const a = { ...art, number: "188", numberCenter, sponsors: { left, right } };
+        const boxes = sponsorBoxes(p, a), at = `${size}${numberCenter ? " numberCenter" : ""}`;
+        expect(boxes.map(b => b.side)).toEqual(["left", "right"]);
+        const team = bounds(textShape("SAGINUMA FC", "block", { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+        for (const b of boxes) {
+          expect(b.w, at).toBeLessThanOrEqual(120 * k + 0.01);
+          expect(b.h, at).toBeLessThanOrEqual(45 * k + 0.01);
+          expect(b.side === "left" ? b.x + b.w < p.w / 2 : b.x > p.w / 2, at).toBe(true);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
+          expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);
+          expect(p.h - (b.y + b.h), at).toBeGreaterThanOrEqual(HEM_BAND + 10);
+          expect(b.y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
+        }
+      }
+      // drawn as pictures on the front only, and only the ones given
+      const one = { ...art, sponsors: { right: wide } };
+      expect(drawPiece(p, "front", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(1);
+      expect(drawPiece(piecesFor(size, "A").back!, "back", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(0);
+    }
+  });
+
   it("draws Japanese names in kanji and kana, not empty boxes", () => {
     // an empty box ("tofu") is two rectangles: ~10 segments a character, and every character the same
     const one = (ch: string) => pathData(textShape(ch, "block", { h: 35 }, { x: 0, top: 0 })!.segs);
@@ -269,6 +295,18 @@ describe("the job package", () => {
     const job = await buildBibJob(design({ roster: [{ name: "A", number: "1", size: "S" }] }), { ref: "AX-T4", date: new Date(), logoPng: new Uint8Array(png) });
     const bytes = Buffer.from(Object.values(unzipSync(job.zip)).find((_, i, a) => Object.keys(unzipSync(job.zip))[i].endsWith("_ol.pdf"))!);
     expect(bytes.includes("/ColorSpace /DeviceRGB")).toBe(true);
+  }, 30_000);
+
+  it("sponsors' logos go in each bib's print file", async () => {
+    const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBkZGBgYAEUUA/0nH5SQAAAAAElFTkSuQmCC", "base64"));
+    const images = async (sponsorPngs?: { left?: Uint8Array; right?: Uint8Array }) => {
+      const job = await buildBibJob(design({ product: "bib_n", sides: [look("#ffffff")], roster: [{ name: "A", number: "1", size: "S" }] }), { ref: "AX-T5", date: new Date(), ...(sponsorPngs ? { sponsorPngs } : {}) });
+      const files = unzipSync(job.zip), pdf = Object.keys(files).find(f => f.endsWith("_ol.pdf"))!;
+      return (Buffer.from(files[pdf]).toString("latin1").match(/\/Subtype \/Image/g) ?? []).length;
+    };
+    const none = await images();
+    expect(await images({ left: png })).toBeGreaterThan(none);
+    expect(await images({ left: png, right: new Uint8Array(png) })).toBeGreaterThan(await images({ left: png }));
   }, 30_000);
 
   it("a normal bib: front and back only; off-chart colours reported", async () => {

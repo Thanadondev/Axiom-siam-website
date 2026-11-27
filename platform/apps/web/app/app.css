@@ -318,6 +318,10 @@ a.noteitem:hover{background:var(--soft)}
 .bd-logo .pic { width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 12px; font-size: 12px; text-align: center;
   background: repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
 .bd-logo .pic img { max-width: 104px; max-height: 104px; object-fit: contain; }
+.bd-sponsors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.bd-sponsors .bd-logo { grid-template-columns: 88px minmax(0, 1fr); gap: 10px; }
+.bd-sponsors .bd-logo .pic { width: 88px; height: 88px; }
+.bd-sponsors .bd-logo .pic img { max-width: 76px; max-height: 76px; }
 .bd-pickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
 .bd-pickers.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .bd-seg { display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; margin: 6px 0 8px; }
@@ -341,4 +345,6 @@ a.noteitem:hover{background:var(--soft)}
   .bd-pickers, .bd-pickers.three, .bd-checks { grid-template-columns: minmax(0, 1fr); }
   .bd-fonts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bd-logo { grid-template-columns: minmax(0, 1fr); }
+  .bd-sponsors { grid-template-columns: minmax(0, 1fr); }
+  .bd-sponsors .bd-logo { grid-template-columns: 88px minmax(0, 1fr); }
 }

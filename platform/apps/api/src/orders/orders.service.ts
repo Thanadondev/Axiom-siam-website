@@ -82,6 +82,7 @@ export class OrdersService {
     const bibLines = bib ? BIB_SIZES.map(size => ({ size, qty: bib.roster.filter(r => r.size === size).length })) : null;
     if (bib && !this.bibs) throw new ServiceUnavailableException("ยังสั่งเอี๊ยมที่ออกแบบบนเว็บไม่ได้ในขณะนี้");
     if (bib && dto.logoUrl) await this.bibs!.logo(dto.logoUrl); // there, and a PNG, before anything is made
+    if (bib) await this.bibs!.sponsors(bib); // and the sponsors' logos
     const lines: { size: string; qty: number }[] = (bibLines ?? dto.lines ?? []).filter(l => l.qty > 0);
     if (lines.length === 0) throw new BadRequestException("กรุณาระบุจำนวนอย่างน้อย 1 ไซส์");
     const totalQty = lines.reduce((s, l) => s + l.qty, 0);
