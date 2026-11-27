@@ -102,8 +102,13 @@ export const LAYOUT = {
     number: { cx: 0.264, top: 0.278, h: 85 },
     logo: { cx: 0.743, top: 0.268, h: 85, maxW: 110 },
     team: { cx: 0.5, cy: 0.5, w: 320, h: 50 },
-    /** numberCenter: the number in the middle of the piece, and the team name moved under it; under a logo in the middle, at least logoGap below it (mm on M) */
-    middle: { cy: 0.5, h: 85, teamGap: 15, logoGap: 20 },
+    /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
+    middle: { cy: 0.5, h: 85, teamGap: 15 },
+    /**
+     * the logo and the number both in the middle: number, logo and team name down the middle in that
+     * order, `gap` mm apart, the whole stack centred on the piece; the logo bigger there (mm on M)
+     */
+    stack: { gap: 15, logo: { h: 120, maxW: 200 } },
     /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
     sponsor: { cx: 0.25, bottom: 35, h: 80, maxW: 170 },
   },

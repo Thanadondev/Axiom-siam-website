@@ -1,6 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import * as jpeg from "jpeg-js";
-import { drawPiece, frontNumber, moveShapes, sponsorBoxes, teamCy, type Art, type Shape } from "./draw";
+import { drawPiece, frontNumber, logoBox, moveShapes, sponsorBoxes, teamCy, type Art, type Shape } from "./draw";
 import { frontLayout, LAYOUT, type BibDesign, type SideLook } from "./design";
 import { parsePath, pathData, type Seg } from "./path";
 import { BASE_WIDTH, piecesFor, ribsFor, SIZE_NAME, TEMPLATE, type BibSize, type Part } from "./template";
@@ -139,7 +139,10 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
         // a number in the middle points out on the side away from the logo
         if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: art.numberCenter ? fn.box.y / p.h : F.number.top },
           art.numberCenter ? fn.box.w / 2 / k + 6 : art.logoLeft ? 45 : 30, art.numberCenter ? !art.logoLeft : undefined);
-        if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoCenter ? 62 : art.logoLeft ? 30 : 45);
+        const lb = logoBox(p, art);
+        // a logo under the middle number: its own size and place (bigger there); else as on the team's sheets
+        if (lb && art.logoCenter && art.numberCenter) note(`H${Math.round(lb.h)}mm`, { cx: 0.5, top: lb.y / p.h }, lb.w / 2 / k + 6, false);
+        else if (lb && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoCenter ? 62 : art.logoLeft ? 30 : 45);
         // the sponsors: their printed size, out to their own side of the piece
         for (const sb of sponsorBoxes(p, art)) {
           const y = y0 + (sb.y + sb.h / 2) * s;

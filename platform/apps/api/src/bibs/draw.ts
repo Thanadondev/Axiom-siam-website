@@ -225,10 +225,42 @@ export function edgeX(cut: Seg[], y0: number, y1: number, side: "left" | "right"
  */
 export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15, logo: 12 };
 
+/** the logo's printed size (mm) fitted in a box of h × maxW on M (its own scale applied) */
+function logoSize(k: number, logo: NonNullable<Art["logo"]>, box: { h: number; maxW: number }) {
+  const g = logo.scale ?? 1;
+  let h = box.h * k * g, w = (h * logo.w) / logo.h;
+  if (w > box.maxW * k * g) { w = box.maxW * k * g; h = (w * logo.h) / logo.w; }
+  return { w, h };
+}
+
+/** the logo and the number both in the middle of the front: stacked down the middle (middleStack) */
+const stacked = (art: Art) => !!art.logoCenter && !!art.numberCenter;
+
+/**
+ * Number, logo and team name down the middle of the front, in that order and the logo bigger, the stack
+ * centred on the piece: the centre height (mm) of each that is printed.
+ */
+export function middleStack(p: Piece, art: Art): { number?: number; logo?: number; team?: number } {
+  const k = p.w / BASE_WIDTH, F = LAYOUT.front, S = F.stack;
+  const items: ["number" | "logo" | "team", number][] = [];
+  if (art.show.frontNumber && art.number.trim()) items.push(["number", F.middle.h * k]);
+  if (art.show.frontLogo && art.logo) items.push(["logo", logoSize(k, art.logo, S.logo).h]);
+  if (art.show.frontTeam && art.team.trim()) items.push(["team", F.team.h * k]);
+  const total = items.reduce((t, [, h]) => t + h, 0) + S.gap * k * Math.max(0, items.length - 1);
+  let y = F.middle.cy * p.h - total / 2;
+  const out: { number?: number; logo?: number; team?: number } = {};
+  for (const [key, h] of items) { out[key] = y + h / 2; y += h + S.gap * k; }
+  return out;
+}
+
 /** where the chest logo prints on the front piece (mm), or null when there is none */
 export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; h: number } | null {
   if (!art.show.frontLogo || !art.logo) return null;
   const k = p.w / BASE_WIDTH, L = frontLayout(!!art.logoLeft, !!art.logoCenter), g = art.logo.scale ?? 1;
+  if (stacked(art)) {
+    const { w, h } = logoSize(k, art.logo, LAYOUT.front.stack.logo), cy = middleStack(p, art).logo!;
+    return { x: p.w / 2 - w / 2, y: cy - h / 2, w, h };
+  }
   let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
   if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
   // a smaller logo keeps its centre where the full-size one would be
@@ -257,19 +289,16 @@ export function sponsorBoxes(p: Piece, art: Art, part: Part = "front"): { slot: 
   return out;
 }
 
-/**
- * A number in the middle: its centre height (mm). The middle of the piece, or lower when a logo in the
- * middle of the chest reaches down that far (the big sizes): it stays clear under the logo.
- */
+/** a number in the middle: its centre height (mm), the middle of the piece unless it heads the stack with the logo */
 export function middleNumberCy(p: Piece, art: Art): number {
-  const k = p.w / BASE_WIDTH, M = LAYOUT.front.middle;
-  const lb = art.logoCenter ? logoBox(p, art) : null;
-  return Math.max(M.cy * p.h, lb ? lb.y + lb.h + (M.logoGap + M.h / 2) * k : 0);
+  return (stacked(art) ? middleStack(p, art).number : undefined) ?? LAYOUT.front.middle.cy * p.h;
 }
 
-/** the team name's centre height (mm): under the number when the number is in the middle, else the middle */
+/** the team name's centre height (mm): under the number when the number is in the middle (under the logo too when that is), else the middle */
 export function teamCy(p: Piece, art: Art): number {
   const k = p.w / BASE_WIDTH, F = LAYOUT.front, M = F.middle;
+  const st = stacked(art) ? middleStack(p, art).team : undefined;
+  if (st !== undefined) return st;
   if (art.numberCenter && art.show.frontNumber && art.number.trim()) return middleNumberCy(p, art) + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
   return F.team.cy * p.h;
 }
