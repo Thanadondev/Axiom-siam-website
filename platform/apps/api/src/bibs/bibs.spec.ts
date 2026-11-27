@@ -3,7 +3,7 @@ import { PDFDocument, PDFRawStream, decodePDFRawStream } from "pdf-lib";
 import { unzipSync, strFromU8 } from "fflate";
 import { parsePath, bounds, pathData } from "./path";
 import { textShape, FONT_IDS } from "./text";
-import { BibDesignSchema } from "./design";
+import { BibDesignSchema, LAYOUT } from "./design";
 import { drawPiece, frontNumber, edgeX, logoBox, sponsorBoxes, teamCy, FRONT_NUMBER_CLEAR } from "./draw";
 import { factoryCmyk, ink } from "./color";
 import { piecesFor, hasRibs, ribsFor, layoutFor, deriveRibs, BIB_SIZES, TEMPLATE, RIB_BAND, HEM_BAND } from "./template";
@@ -159,8 +159,8 @@ describe("paths and outlined text", () => {
         expect(boxes.map(b => b.side)).toEqual(["left", "right"]);
         const team = bounds(textShape("SAGINUMA FC", "block", { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
         for (const b of boxes) {
-          expect(b.w, at).toBeLessThanOrEqual(120 * k + 0.01);
-          expect(b.h, at).toBeLessThanOrEqual(45 * k + 0.01);
+          expect(b.w, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.maxW * k + 0.01);
+          expect(b.h, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.h * k + 0.01);
           expect(b.side === "left" ? b.x + b.w < p.w / 2 : b.x > p.w / 2, at).toBe(true);
           expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
           expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);

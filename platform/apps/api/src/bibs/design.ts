@@ -98,7 +98,7 @@ export const LAYOUT = {
     /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
     middle: { cy: 0.5, h: 85, teamGap: 15 },
     /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
-    sponsor: { cx: 0.2, bottom: 40, h: 45, maxW: 120 },
+    sponsor: { cx: 0.25, bottom: 35, h: 80, maxW: 170 },
   },
   back: {
     name: { cx: 0.5, top: 0.146, h: 35, maxW: 380 },

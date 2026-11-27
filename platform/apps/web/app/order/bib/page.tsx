@@ -409,14 +409,14 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
           <div className="acard">
             <h2 className="ah2">{L("โลโก้สปอนเซอร์", "Sponsor logos", "スポンサーロゴ")}</h2>
             <p className="asub">{L(
-              "มุมล่างซ้ายและขวาของชิ้นหน้า (มองจากด้านหน้า) พิมพ์สีตามไฟล์ ขนาดไม่เกิน 120×45 มม. ที่ไซส์ M (ไซส์อื่นย่อขยายตาม)",
-              "The front's bottom corners (looking at the front), printed in the file's own colours, up to 120 × 45 mm on size M (other sizes scale)",
-              "前面の左下・右下（正面から見て）。ファイルの色のまま印刷、Mサイズで最大120×45mm（他のサイズは比例）",
+              "มุมล่างซ้ายและขวาของชิ้นหน้า (มองจากด้านหน้า) พิมพ์สีตามไฟล์ ขนาดไม่เกิน 170×80 มม. ที่ไซส์ M (ไซส์อื่นย่อขยายตาม)",
+              "The front's bottom corners (looking at the front), printed in the file's own colours, up to 170 × 80 mm on size M (other sizes scale)",
+              "前面の左下・右下（正面から見て）。ファイルの色のまま印刷、Mサイズで最大170×80mm（他のサイズは比例）",
             )}</p>
             <div className="bd-sponsors">
               {(["left", "right"] as const).map(side => {
                 const s = sponsors[side];
-                const q = s && logoDpi(s.w, s.h, roster.rows.map(r => r.size), { h: 45, maxW: 120 });
+                const q = s && logoDpi(s.w, s.h, roster.rows.map(r => r.size), { h: 80, maxW: 170 });
                 return (
                   <div key={side} className="bd-logo">
                     <div className="pic">{s ? <img src={s.data} alt="" /> : <span className="dim">{L("ไม่มี", "None", "なし")}</span>}</div>
