@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * End-to-end: สั่งผลิตได้เฉพาะบัญชีที่ยืนยันอีเมลแล้ว
- *   สมัคร → สั่งไม่ได้ (403) → ขอลิงก์ใหม่ → ลิงก์เก่าใช้ไม่ได้ → ยืนยัน → สั่งได้ → ขอลิงก์เกิน 3 ครั้ง/ชม. (429)
+ *   สมัคร → สั่งไม่ได้ (403) → ขอลิงก์ใหม่ → ลิงก์เก่าใช้ไม่ได้ → ขอเกิน 3 ครั้ง/ชม. (429) → ยืนยัน → สั่งได้
  *
  * Hits a RUNNING API against a REAL dev database. Creates an @axiom.test account and cancels
  * its own order; `npm run test:e2e:purge` clears it. Never touches the demo or real accounts.
@@ -11,14 +11,15 @@
  *   npm run test:e2e:verify                                       # without it the link cases are skipped
  *   REPORT_JSON=out.json …                                        # the results as JSON too
  *
- * The resend route allows 3 calls an hour per IP (in memory): one run spends all 3 and checks
- * the 4th is refused. Run again within the hour and the resend cases say "ข้าม" — restart the API.
+ * The link can be sent again 3 times an hour per account (counted in the database), and each run
+ * makes a new account, so runs don't wait on each other. Sign-ups are 5 an hour per IP.
  */
 import { writeFileSync } from "node:fs";
 import { confirmEmail, loggedLinks, waitForLink } from "./e2e-confirm.mjs";
 
 const API = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "");
 const HAVE_LOG = !!process.env.API_LOG;
+const RESENDS = 3; // the API's RESEND_VERIFY_PER_HOUR
 
 const results = [];
 const record = (id, name, status, detail = "") => {
@@ -66,10 +67,9 @@ async function main() {
   const mine0 = await api("/orders", { token });
   check("V06", "ไม่มีออเดอร์เกิดขึ้นจากครั้งที่ถูกปฏิเสธ", Array.isArray(mine0.data) ? mine0.data.length === 0 : (mine0.data.items ?? []).length === 0, show(mine0));
 
-  // ---- send the link again (3 an hour per IP: this, the 401 and the one after confirming)
+  // ---- send the link again
   const anon = await api("/auth/resend-verify", { method: "POST" });
-  if (anon.status === 429) skip("V07", "ไม่ล็อกอิน ขอลิงก์ใหม่ไม่ได้ (401)", "ใช้โควตา 3 ครั้ง/ชม. ของ IP นี้หมดแล้ว — restart API แล้วรันใหม่");
-  else check("V07", "ไม่ล็อกอิน ขอลิงก์ใหม่ไม่ได้ (401)", anon.status === 401, show(anon));
+  check("V07", "ไม่ล็อกอิน ขอลิงก์ใหม่ไม่ได้ (401)", anon.status === 401, show(anon));
 
   const signupLinks = HAVE_LOG ? await waitForLink(email, 1) : [];
   if (HAVE_LOG) check("V08", "สมัครแล้วได้ลิงก์ยืนยัน 1 ลิงก์", signupLinks.length === 1, `${signupLinks.length} ลิงก์`);
@@ -77,8 +77,7 @@ async function main() {
 
   const again = await api("/auth/resend-verify", { method: "POST", token });
   const resent = again.ok && again.data.sent === true;
-  if (again.status === 429) skip("V09", "ขอลิงก์ใหม่ได้ ({sent: true})", "ใช้โควตาหมดแล้ว — restart API แล้วรันใหม่");
-  else check("V09", "ขอลิงก์ใหม่ได้ ({sent: true})", resent, show(again));
+  check("V09", "ขอลิงก์ใหม่ได้ ({sent: true})", resent, show(again));
 
   if (HAVE_LOG && resent) {
     const links = await waitForLink(email, 2);
@@ -95,37 +94,40 @@ async function main() {
   const bogus = await api("/auth/verify-email", { method: "POST", body: { token: "x".repeat(43) } });
   check("V13", "ลิงก์ปลอมใช้ไม่ได้ (400)", bogus.status === 400, show(bogus));
 
+  // ---- how often: 3 resends an hour per account; the call without a sign-in (V07) didn't count
+  const more = [];
+  for (let i = 1; i < RESENDS; i++) more.push(await api("/auth/resend-verify", { method: "POST", token }));
+  check("V14", `ขอลิงก์ใหม่ได้ครบ ${RESENDS} ครั้ง (ครั้งที่ไม่ล็อกอินไม่นับ)`, more.every(r => r.ok && r.data.sent === true), more.map(r => r.status).join(", "));
+  const over = await api("/auth/resend-verify", { method: "POST", token });
+  const secs = Number(/(\d+)/.exec(String(over.data.message))?.[1]);
+  check("V15", `ขอครั้งที่ ${RESENDS + 1} ในชั่วโมงเดียวกันถูกปฏิเสธ (429)`, over.status === 429, show(over));
+  check("V16", "429 บอกเวลาที่ต้องรอ (วินาที + header Retry-After)", over.status === 429 && secs > 3500 && secs <= 3600 && over.headers.get("retry-after") === String(secs), `${over.data.message} · Retry-After ${over.headers.get("retry-after")}`);
+  if (HAVE_LOG) {
+    const n = (await waitForLink(email, RESENDS + 1)).length;
+    await new Promise(r => setTimeout(r, 500)); // a mail it shouldn't have sent would be in the log by now
+    check("V17", "ครั้งที่ถูกปฏิเสธไม่ได้ส่งอีเมล", n === RESENDS + 1 && loggedLinks(email).length === n, `ลิงก์ใน log ${loggedLinks(email).length} (สมัคร 1 + ขอใหม่ ${RESENDS})`);
+  } else skip("V17", "ครั้งที่ถูกปฏิเสธไม่ได้ส่งอีเมล", "ไม่มี API_LOG");
+
   // ---- confirm with the newest link
   let how;
-  try { how = await confirmEmail(api, email); } catch (e) { check("V14", "ยืนยันด้วยลิงก์ล่าสุดได้", false, String(e.message)); return; }
-  check("V14", "ยืนยันด้วยลิงก์ล่าสุดได้", true, how === "link" ? "ลิงก์จริงจาก log" : "ตั้งในฐานข้อมูล (ไม่มี API_LOG)");
+  try { how = await confirmEmail(api, email); } catch (e) { check("V18", "ยืนยันด้วยลิงก์ล่าสุดได้", false, String(e.message)); return; }
+  check("V18", "ยืนยันด้วยลิงก์ล่าสุดได้", true, how === "link" ? "ลิงก์จริงจาก log" : "ตั้งในฐานข้อมูล (ไม่มี API_LOG)");
   if (how === "link") {
     const reuse = await api("/auth/verify-email", { method: "POST", body: { token: loggedLinks(email).at(-1) } });
-    check("V15", "ลิงก์เดิมใช้ซ้ำไม่ได้ (400)", reuse.status === 400, show(reuse));
-  } else skip("V15", "ลิงก์เดิมใช้ซ้ำไม่ได้ (400)", "ไม่มี API_LOG");
+    check("V19", "ลิงก์เดิมใช้ซ้ำไม่ได้ (400)", reuse.status === 400, show(reuse));
+  } else skip("V19", "ลิงก์เดิมใช้ซ้ำไม่ได้ (400)", "ไม่มี API_LOG");
   const me1 = await api("/auth/me", { token });
-  check("V16", "บัญชียืนยันแล้ว (isVerified = true) ใช้ token เดิมได้เลย", me1.data.isVerified === true, `isVerified = ${me1.data.isVerified}`);
+  check("V20", "บัญชียืนยันแล้ว (isVerified = true) ใช้ token เดิมได้เลย", me1.data.isVerified === true, `isVerified = ${me1.data.isVerified}`);
 
   const before = loggedLinks(email).length;
   const already = await api("/auth/resend-verify", { method: "POST", token });
-  if (already.status === 429) skip("V17", "ยืนยันแล้ว ขอลิงก์ใหม่ไม่ส่งอะไรเพิ่ม ({already: true})", "ใช้โควตาหมดแล้ว");
-  else {
-    await new Promise(r => setTimeout(r, 1000)); // a mail it shouldn't have sent would be in the log by now
-    const after = loggedLinks(email).length;
-    check("V17", "ยืนยันแล้ว ขอลิงก์ใหม่ไม่ส่งอะไรเพิ่ม ({already: true})", already.ok && already.data.already === true && after === before, `${show(already)} · ลิงก์ใน log ${before} → ${after}`);
-  }
+  await new Promise(r => setTimeout(r, 500));
+  check("V21", "ยืนยันแล้ว ขอลิงก์ใหม่ไม่ส่งอะไรเพิ่ม ({already: true})", already.ok && already.data.already === true && loggedLinks(email).length === before, show(already));
 
   // ---- the same zip orders now (the refusal didn't use it up)
   const order = await api("/orders", { method: "POST", token, body: orderBody });
-  check("V18", "ยืนยันแล้วสั่งผลิตได้ ด้วยไฟล์ zip เดิมที่ถูกปฏิเสธไปก่อน", order.ok && !!order.data.id, order.ok ? order.data.orderNo ?? order.data.id : show(order));
-
-  // ---- the 4th resend in the hour
-  const fourth = await api("/auth/resend-verify", { method: "POST", token });
-  const secs = Number(/(\d+)/.exec(String(fourth.data.message))?.[1]);
-  check("V19", "ขอลิงก์ครั้งที่ 4 ในชั่วโมงเดียวกันถูกปฏิเสธ (429)", fourth.status === 429, show(fourth));
-  check("V20", "429 บอกเวลาที่ต้องรอ (วินาที + header Retry-After)", fourth.status === 429 && secs > 0 && secs <= 3600 && fourth.headers.get("retry-after") === String(secs), `${fourth.data.message} · Retry-After ${fourth.headers.get("retry-after")}`);
-
-  if (order.ok) check("V21", "ยกเลิกออเดอร์ทดสอบ (เก็บกวาด)", (await api(`/orders/${order.data.id}/cancel`, { method: "POST", token })).ok);
+  check("V22", "ยืนยันแล้วสั่งผลิตได้ ด้วยไฟล์ zip เดิมที่ถูกปฏิเสธไปก่อน", order.ok && !!order.data.id, order.ok ? order.data.orderNo ?? order.data.id : show(order));
+  if (order.ok) check("V23", "ยกเลิกออเดอร์ทดสอบ (เก็บกวาด)", (await api(`/orders/${order.data.id}/cancel`, { method: "POST", token })).ok);
 }
 
 main()

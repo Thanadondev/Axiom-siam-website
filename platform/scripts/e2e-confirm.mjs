@@ -51,3 +51,15 @@ export async function confirmEmail(api, email) {
   } finally { await prisma.$disconnect(); }
   return "db";
 }
+
+/**
+ * The site launches with bibs only (apps/api/src/orders/launch.ts): without OPEN_ALL=1 the API
+ * refuses a jersey, and a designer design without its print file, which is right — say so and stop
+ * there; the rest of the flow needs the API (and this script) run with OPEN_ALL=1.
+ */
+const LAUNCH_REFUSALS = ["เปิดสั่งผลิตเฉพาะเอี๊ยม", "แบบนี้ยังไม่มีไฟล์ผลิต"];
+export function bibsOnlyRefusal(res) {
+  const msg = String(res.data?.message ?? "");
+  return process.env.OPEN_ALL !== "1" && res.status === 400 && LAUNCH_REFUSALS.some(m => msg.includes(m));
+}
+export const OPEN_ALL_HINT = "ข้ามส่วนที่เหลือ — ช่วงนี้เปิดเฉพาะ Bib: รัน API ด้วย OPEN_ALL=1 แล้วรันสคริปต์นี้ด้วย OPEN_ALL=1";

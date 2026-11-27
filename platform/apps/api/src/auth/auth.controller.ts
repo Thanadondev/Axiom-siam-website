@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { AuthService } from "./auth.service";
+import { AuthService, TooManyLinks } from "./auth.service";
 import {
   RegisterSchema,
   LoginSchema,
@@ -57,11 +57,16 @@ export class AuthController {
     return this.auth.verifyEmail(dto.token);
   }
 
+  // limited per account inside (RESEND_VERIFY_PER_HOUR), so no @RateLimit by IP here
   @UseGuards(JwtAuthGuard)
-  @RateLimit({ limit: 3, windowMs: 60 * 60_000 }) // 3 links / hour / IP
   @Post("resend-verify")
-  resendVerify(@CurrentUser() user: AuthUser) {
-    return this.auth.resendVerify(user.id);
+  async resendVerify(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
+    try {
+      return await this.auth.resendVerify(user.id);
+    } catch (e) {
+      if (e instanceof TooManyLinks) res.setHeader("Retry-After", String(e.retryAfter));
+      throw e;
+    }
   }
 
   @Public()

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createHash } from "crypto";
 import { BadRequestException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { AuthService } from "./auth.service";
+import { AuthService, RESEND_VERIFY_PER_HOUR, TooManyLinks } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RATE_LIMIT_KEY } from "../common/rate-limit.guard";
@@ -14,7 +14,7 @@ import { RATE_LIMIT_KEY } from "../common/rate-limit.guard";
  */
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-type Tok = { id: string; userId: string; type: string; token: string; expiresAt: Date; revokedAt: Date | null };
+type Tok = { id: string; userId: string; type: string; token: string; expiresAt: Date; revokedAt: Date | null; createdAt: Date };
 
 function setup(isVerified = false) {
   const users = new Map([["u1", { id: "u1", email: "runner@axiom.test", locale: "ja", isVerified }]]);
@@ -27,7 +27,10 @@ function setup(isVerified = false) {
       update: async ({ where, data }: any) => Object.assign(users.get(where.id)!, data),
     },
     authToken: {
-      create: async ({ data }: any) => { const t = { id: `t${tokens.length + 1}`, revokedAt: null, ...data }; tokens.push(t); return t; },
+      create: async ({ data }: any) => { const t = { id: `t${tokens.length + 1}`, revokedAt: null, createdAt: new Date(), ...data }; tokens.push(t); return t; },
+      findMany: async ({ where }: any) => tokens
+        .filter(t => t.userId === where.userId && t.type === where.type && t.createdAt > where.createdAt.gt)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
       findUnique: async ({ where }: any) => tokens.find(t => t.token === where.token) ?? null,
       update: async ({ where, data }: any) => Object.assign(tokens.find(t => t.id === where.id)!, data),
       updateMany: async ({ where, data }: any) => { const hit = tokens.filter(t => match(t, where)); hit.forEach(t => Object.assign(t, data)); return { count: hit.length }; },
@@ -76,13 +79,13 @@ describe("send the confirm link again", () => {
     await s.svc.resendVerify("u1");
     s.tokens[0].expiresAt = new Date(Date.now() - 1000);
     await expect(s.svc.verifyEmail(s.sent[0].raw)).rejects.toBeInstanceOf(BadRequestException);
-    s.tokens.push({ id: "r1", userId: "u1", type: "password_reset", token: sha("reset-raw"), expiresAt: new Date(Date.now() + 3_600_000), revokedAt: null });
+    s.tokens.push({ id: "r1", userId: "u1", type: "password_reset", token: sha("reset-raw"), expiresAt: new Date(Date.now() + 3_600_000), revokedAt: null, createdAt: new Date() });
     await expect(s.svc.verifyEmail("reset-raw")).rejects.toBeInstanceOf(BadRequestException);
     expect(s.users.get("u1")!.isVerified).toBe(false);
   });
 
   it("leaves other kinds of token alone when it revokes the old links", async () => {
-    s.tokens.push({ id: "r1", userId: "u1", type: "password_reset", token: sha("reset-raw"), expiresAt: new Date(Date.now() + 3_600_000), revokedAt: null });
+    s.tokens.push({ id: "r1", userId: "u1", type: "password_reset", token: sha("reset-raw"), expiresAt: new Date(Date.now() + 3_600_000), revokedAt: null, createdAt: new Date() });
     await s.svc.resendVerify("u1");
     expect(s.tokens.find(t => t.id === "r1")!.revokedAt).toBeNull();
   });
@@ -100,6 +103,41 @@ describe("send the confirm link again", () => {
   });
 });
 
+describe("how often the link can be sent again: 3 an hour per account", () => {
+  const min = 60_000;
+  /** the account's sign-up link, sent `ago` ms back */
+  const signedUp = (s: ReturnType<typeof setup>, ago: number) =>
+    s.tokens.push({ id: "t0", userId: "u1", type: "email_verify", token: sha("signup"), expiresAt: new Date(Date.now() + 86_400_000), revokedAt: null, createdAt: new Date(Date.now() - ago) });
+
+  it("the sign-up's link, then 3 more; the 4th is refused with the seconds to wait", async () => {
+    const s = setup();
+    signedUp(s, 10 * min);
+    for (let i = 0; i < RESEND_VERIFY_PER_HOUR; i++) expect(await s.svc.resendVerify("u1")).toEqual({ sent: true });
+    const e = await s.svc.resendVerify("u1").catch(x => x);
+    expect(e).toBeInstanceOf(TooManyLinks);
+    expect(e.getStatus()).toBe(429);
+    // free again when the sign-up's link is an hour old: in 50 minutes
+    expect(e.retryAfter).toBeGreaterThan(49 * 60);
+    expect(e.retryAfter).toBeLessThanOrEqual(50 * 60);
+    expect(e.getResponse().message).toBe(`พยายามหลายครั้งเกินไป กรุณารออีก ${e.retryAfter} วินาที`);
+    expect(s.sent).toHaveLength(RESEND_VERIFY_PER_HOUR); // nothing sent for the refused one
+  });
+
+  it("links more than an hour old don't count", async () => {
+    const s = setup();
+    signedUp(s, 61 * min);
+    for (let i = 0; i < RESEND_VERIFY_PER_HOUR + 1; i++) expect(await s.svc.resendVerify("u1")).toEqual({ sent: true });
+  });
+
+  it("one account's links don't count for another", async () => {
+    const s = setup();
+    s.users.set("u2", { id: "u2", email: "other@axiom.test", locale: "th", isVerified: false });
+    for (let i = 0; i < RESEND_VERIFY_PER_HOUR + 1; i++) await s.svc.resendVerify("u1");
+    await expect(s.svc.resendVerify("u1")).rejects.toBeInstanceOf(TooManyLinks);
+    expect(await s.svc.resendVerify("u2")).toEqual({ sent: true });
+  });
+});
+
 describe("POST /auth/resend-verify", () => {
   const handler = AuthController.prototype.resendVerify;
 
@@ -107,7 +145,15 @@ describe("POST /auth/resend-verify", () => {
     expect(Reflect.getMetadata("__guards__", handler)).toContain(JwtAuthGuard);
   });
 
-  it("3 links an hour per IP", () => {
-    expect(Reflect.getMetadata(RATE_LIMIT_KEY, handler)).toEqual({ limit: 3, windowMs: 60 * 60_000 });
+  it("isn't limited by IP (a call without a sign-in would use up the office's links)", () => {
+    expect(Reflect.getMetadata(RATE_LIMIT_KEY, handler)).toBeUndefined();
+  });
+
+  it("a refusal carries Retry-After", async () => {
+    const headers: Record<string, string> = {};
+    const ctl = new AuthController({ resendVerify: async () => { throw new TooManyLinks(1234); } } as any);
+    const res = { setHeader: (k: string, v: string) => { headers[k] = v; } };
+    await expect(ctl.resendVerify({ id: "u1" } as any, res as any)).rejects.toBeInstanceOf(TooManyLinks);
+    expect(headers["Retry-After"]).toBe("1234");
   });
 });

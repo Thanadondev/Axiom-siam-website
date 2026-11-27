@@ -4,6 +4,8 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  HttpException,
+  HttpStatus,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
@@ -24,6 +26,20 @@ const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const randomToken = () => randomBytes(32).toString("hex");
 const days = (n: number) => new Date(Date.now() + n * 86400_000);
 const hours = (n: number) => new Date(Date.now() + n * 3600_000);
+
+/**
+ * Confirm links an account can be sent again in any hour, counted from its own links in the
+ * database: the sign-up's link plus this many more. Per account, not per IP, so people on one
+ * office Wi-Fi don't use up each other's, and a call without a sign-in counts for nothing.
+ */
+export const RESEND_VERIFY_PER_HOUR = 3;
+
+/** 429 "… กรุณารออีก N วินาที" (the rate limiter's wording; the web reads N), N also in `retryAfter` */
+export class TooManyLinks extends HttpException {
+  constructor(readonly retryAfter: number) {
+    super({ statusCode: 429, message: `พยายามหลายครั้งเกินไป กรุณารออีก ${retryAfter} วินาที`, retryAfter }, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
 
 @Injectable()
 export class AuthService {
@@ -71,6 +87,18 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
     if (user.isVerified) return { already: true };
+    const hourAgo = new Date(Date.now() - 3600_000);
+    const recent = await this.prisma.authToken.findMany({
+      where: { userId, type: "email_verify", createdAt: { gt: hourAgo } },
+      select: { createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const allowed = RESEND_VERIFY_PER_HOUR + 1; // + the sign-up's
+    if (recent.length >= allowed) {
+      // free again when the oldest of the last `allowed` links is an hour old
+      const frees = recent[recent.length - allowed].createdAt.getTime() + 3600_000;
+      throw new TooManyLinks(Math.max(1, Math.ceil((frees - Date.now()) / 1000)));
+    }
     await this.prisma.authToken.updateMany({ where: { userId, type: "email_verify", revokedAt: null }, data: { revokedAt: new Date() } });
     await this.createTokenAndSendVerify(user.id, user.email, user.locale);
     return { sent: true };
