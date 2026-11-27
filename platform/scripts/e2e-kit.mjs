@@ -16,6 +16,7 @@
  * with `npm run test:e2e:purge`.
  */
 import { deflateSync } from "zlib";
+import { confirmEmail } from "./e2e-confirm.mjs";
 
 const ORIGIN = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "");
 const API = ORIGIN + "/api/v1";
@@ -71,6 +72,8 @@ async function main() {
   const login = await api("/auth/login", { method: "POST", body: { email, password } });
   if (!check("เข้าสู่ระบบ", login.ok && login.data.accessToken, JSON.stringify(login.data))) return finish();
   const token = login.data.accessToken;
+  // orders need a confirmed email
+  try { check("ยืนยันอีเมล", !!(await confirmEmail(api, email))); } catch (e) { check("ยืนยันอีเมล", false, e.message); return finish(); }
 
   section("2. อัปโหลดโลโก้และฟอนต์");
   const logoData = "data:image/png;base64," + pngSquare().toString("base64");

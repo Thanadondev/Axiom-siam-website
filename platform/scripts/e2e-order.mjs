@@ -15,6 +15,8 @@
  *   KEEP=1                               → don't cancel the order at the end
  */
 
+import { confirmEmail } from "./e2e-confirm.mjs";
+
 const API = (process.env.API ?? "http://localhost:4000").replace(/\/$/, "") + "/api/v1";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -95,6 +97,8 @@ async function main() {
   const login = await api("/auth/login", { method: "POST", body: { email, password } });
   if (!check("เข้าสู่ระบบ", login.ok && !!login.data.accessToken, `HTTP ${login.status}: ${JSON.stringify(login.data)}`)) return finish();
   const token = login.data.accessToken;
+  // orders need a confirmed email
+  try { ok("ยืนยันอีเมล", await confirmEmail(api, email)); } catch (e) { check("ยืนยันอีเมล", false, e.message); return finish(); }
 
   // ---------- 2. pricing is public ----------
   section("2. ราคา (public)");

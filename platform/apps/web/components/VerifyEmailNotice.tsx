@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth, type User } from "../lib/auth-context";
 import { apiFetch } from "../lib/api";
 import { tri, type Lang } from "../lib/i18n";
+import { waitMinutes } from "../lib/verify-email";
 
-/** the API refused an order because the account's email isn't confirmed yet */
-export const isUnverified = (e: unknown) => (e as { body?: { code?: string } })?.body?.code === "email_unverified";
+export { isUnverified } from "../lib/verify-email";
 
 /**
  * Orders only come from accounts whose email is confirmed (the API checks it too). Shown above the
@@ -49,9 +49,8 @@ export default function VerifyEmailNotice({ lang = "th" }: { lang?: Lang }) {
       const r = await apiFetch<{ already?: boolean }>("/auth/resend-verify", { method: "POST", token });
       if (r.already) { await recheck(); return; }
       setSent("sent");
-    } catch (e: any) {
-      const secs = e?.status === 429 ? Number(/(\d+)/.exec(String(e?.message))?.[1]) : NaN;
-      setWaitMin(Number.isFinite(secs) ? Math.max(1, Math.ceil(secs / 60)) : 0);
+    } catch (e) {
+      setWaitMin(waitMinutes(e));
       setSent("error");
     }
   }
