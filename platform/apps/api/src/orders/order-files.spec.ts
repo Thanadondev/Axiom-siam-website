@@ -31,6 +31,8 @@ const prisma: any = {
     updateMany: async ({ where, data }: any) => { const hit = files.filter(f => match(f, where)); hit.forEach(f => Object.assign(f, data)); return { count: hit.length }; },
     delete: async ({ where }: any) => { files = files.filter(f => f.id !== where.id); },
   },
+  // USER's email confirmed; anyone else's not
+  user: { findUnique: async ({ where }: any) => ({ isVerified: where.id === USER }) },
   address: { findFirst: async ({ where }: any) => (where.id === ADDR && where.userId === USER ? { id: ADDR } : null) },
   design: { findFirst: async ({ where }: any) => designs.find(d => d.id === where.id && d.userId === where.userId) ?? null },
   order: {
@@ -173,6 +175,17 @@ describe("ordering bibs with the zip", () => {
     await svc.create(USER, order({ fileId: mine.id, product: "bib_n" }));
     await expect(svc.create(USER, order({ fileId: mine.id, product: "bib_n" }))).rejects.toThrow(/ใช้กับออเดอร์อื่นไปแล้ว/);
     expect(orders).toHaveLength(1);
+  });
+
+  it("an account whose email isn't confirmed can't order yet, and the page is told why", async () => {
+    const store = new OrderFilesService(prisma);
+    const up = await store.saveZip(OTHER, Readable.from([zip()]), "theirs.zip");
+    const svc = new OrdersService(prisma, settings, notify);
+    const err: any = await svc.create(OTHER, order({ fileId: up.id, product: "bib_n" })).catch(e => e);
+    expect(err.getStatus()).toBe(403);
+    expect(err.getResponse()).toMatchObject({ code: "email_unverified" });
+    expect(orders).toHaveLength(0);
+    expect(files[0].orderId).toBeNull(); // the zip stays theirs, to order once confirmed
   });
 });
 

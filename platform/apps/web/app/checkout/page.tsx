@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import CheckoutScene, { type CheckoutPhase } from "../../components/CheckoutScene";
 import PayPanel from "../../components/PayPanel";
 import { useAuth } from "../../lib/auth-context";
+import VerifyEmailNotice from "../../components/VerifyEmailNotice";
 import { apiFetch } from "../../lib/api";
 import { parseOrderDraft, linesFromQty, emptyQty, DRAFT_KEY, SIZES, JERSEY_SIZES, type RosterRow, type Size } from "../../lib/order-draft";
 import { designerBib as designerBibOf } from "../../lib/designer-doc";
@@ -350,6 +351,7 @@ function Checkout() {
           )}
 
           {err && <p className="ax-err" role="alert">{err}</p>}
+          {step === 2 && <VerifyEmailNotice />}
 
           {step < 3 && (
             <div className="ax-ck-nav">
@@ -357,7 +359,7 @@ function Checkout() {
               {step < 2 ? (
                 <button type="button" className="ax-btn solid sq" onClick={next} disabled={step === 0 && totalQty === 0}>ต่อไป</button>
               ) : (
-                <button type="button" className="ax-btn solid sq" onClick={place} disabled={busy || !bd || !addrId || rosterOver}>
+                <button type="button" className="ax-btn solid sq" onClick={place} disabled={busy || !bd || !addrId || rosterOver || !user.isVerified}>
                   {busy ? "กำลังสร้างออเดอร์…" : `ยืนยันสั่งผลิต${bd ? ` · ${baht(bd.total)}` : ""}`}
                 </button>
               )}

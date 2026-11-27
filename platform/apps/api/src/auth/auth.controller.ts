@@ -57,6 +57,13 @@ export class AuthController {
     return this.auth.verifyEmail(dto.token);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @RateLimit({ limit: 3, windowMs: 60 * 60_000 }) // 3 links / hour / IP
+  @Post("resend-verify")
+  resendVerify(@CurrentUser() user: AuthUser) {
+    return this.auth.resendVerify(user.id);
+  }
+
   @Public()
   @RateLimit({ limit: 10, windowMs: 5 * 60_000 }) // slows credential stuffing
   @Post("login")

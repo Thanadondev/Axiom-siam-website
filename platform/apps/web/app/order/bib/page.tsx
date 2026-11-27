@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import VerifyEmailNotice, { isUnverified } from "../../../components/VerifyEmailNotice";
 import SwatchPicker from "../../../components/SwatchPicker";
 import { useAuth } from "../../../lib/auth-context";
 import { inkClashes } from "../../../lib/ink-contrast";
@@ -261,7 +262,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
       });
       router.push(`/orders/${res.id}`);
     } catch (e: any) {
-      setErr(lang === "th" ? e?.message || "สั่งผลิตไม่สำเร็จ" : L("", "Couldn't place the order — please try again, or contact us", "注文を作成できませんでした。もう一度お試しいただくか、お問い合わせください"));
+      setErr(isUnverified(e) ? L("กรุณายืนยันอีเมลก่อนสั่งผลิต", "Please confirm your email before ordering", "ご注文の前にメールアドレスを確認してください")
+        : lang === "th" ? e?.message || "สั่งผลิตไม่สำเร็จ" : L("", "Couldn't place the order — please try again, or contact us", "注文を作成できませんでした。もう一度お試しいただくか、お問い合わせください"));
       setBusy(false);
     }
   }
@@ -314,6 +316,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </p>
           </div>
 
+          <VerifyEmailNotice lang={lang} />
           <div className="acard bd-stepbar" ref={stepBar}>
             <ol className="bd-steps" aria-label={L("ขั้นตอน", "Steps", "ステップ")}>
               {steps.map((x, i) => (
@@ -590,7 +593,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             <span className="dim">{L(`ขั้นที่ ${at + 1} จาก ${steps.length}`, `Step ${at + 1} of ${steps.length}`, `ステップ ${at + 1}／${steps.length}`)}</span>
             {next
               ? <button type="button" className="abtn solid" onClick={() => go(next.id)}>{L("ถัดไป", "Next", "次へ")}: {next.label} →</button>
-              : <button type="button" className="abtn solid" disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId)} onClick={submit}>
+              : <button type="button" className="abtn solid" disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
                   {busy ? L("กำลังสร้างออเดอร์…", "Placing the order…", "注文を作成中…") : L("สั่งผลิต", "Place the order", "注文する")}
                 </button>}
           </div>
@@ -631,7 +634,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </>
           )}
           {err && <p className="ou-warn" role="alert">⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId)} onClick={submit}>
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !!roster.errors.length || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
             {busy ? L("กำลังสร้างออเดอร์และไฟล์งาน…", "Placing the order and making the files…", "注文と入稿データを作成中…") : L("สั่งผลิต", "Place the order", "注文する")}
           </button>
           <p className="dim" style={{ marginTop: 10 }}>

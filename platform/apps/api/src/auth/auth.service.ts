@@ -66,6 +66,16 @@ export class AuthService {
     await this.mail.sendVerifyEmail(email, raw, lang);
   }
 
+  /** the confirm link again (the first one lost, or out of date): earlier links stop working */
+  async resendVerify(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    if (user.isVerified) return { already: true };
+    await this.prisma.authToken.updateMany({ where: { userId, type: "email_verify", revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.createTokenAndSendVerify(user.id, user.email, user.locale);
+    return { sent: true };
+  }
+
   async verifyEmail(token: string) {
     const rec = await this.prisma.authToken.findUnique({ where: { token: sha256(token) } });
     if (!rec || rec.type !== "email_verify" || rec.revokedAt || rec.expiresAt < new Date())

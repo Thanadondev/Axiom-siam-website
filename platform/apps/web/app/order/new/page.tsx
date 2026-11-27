@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../lib/auth-context";
+import VerifyEmailNotice from "../../../components/VerifyEmailNotice";
 import { apiFetch } from "../../../lib/api";
 import { parseOrderDraft, qtyFromRoster, linesFromQty, DRAFT_KEY, type RosterRow } from "../../../lib/order-draft";
 
@@ -308,7 +309,8 @@ function Checkout() {
             </>
           )}
           {err && <p style={{ color: "var(--err, #dc2626)", fontSize: 13, marginTop: 12 }}>⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !addrId || rosterOver} onClick={submit}>
+          <VerifyEmailNotice />
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={busy || !bd || !addrId || rosterOver || !user.isVerified} onClick={submit}>
             {busy ? "กำลังสร้างออเดอร์…" : "ยืนยันสั่งผลิต"}
           </button>
           <p className="dim" style={{ marginTop: 10 }}>กดยืนยันแล้วออเดอร์จะถูกสร้างในสถานะ "รอชำระเงิน" ยังยกเลิกได้ก่อนชำระ</p>

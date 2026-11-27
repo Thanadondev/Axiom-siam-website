@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import VerifyEmailNotice from "../../../components/VerifyEmailNotice";
 import { useAuth } from "../../../lib/auth-context";
 import { apiFetch, type ApiError } from "../../../lib/api";
 import { tri, locale, useLang, type Lang } from "../../../lib/i18n";
@@ -449,7 +450,8 @@ function UploadOrder({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             </div>
           )}
           {err && <p className="ou-warn" role="alert">⚠ {err}</p>}
-          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || (!toAgent && !addrId)} onClick={submit}>
+          <VerifyEmailNotice lang={lang} />
+          <button className="abtn solid block" style={{ marginTop: 16 }} disabled={!!busy || !file || blocked || !bd || (!toAgent && !addrId) || !user.isVerified} onClick={submit}>
             {busy === "upload" ? L("กำลังอัปโหลดไฟล์…", "Uploading…", "アップロード中…")
               : busy === "order" ? L("กำลังสร้างออเดอร์…", "Placing the order…", "注文を作成中…")
               : L("อัปโหลดไฟล์และสั่งผลิต", "Upload and place the order", "データをアップロードして注文する")}

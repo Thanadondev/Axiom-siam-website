@@ -351,6 +351,10 @@ a.noteitem:hover{background:var(--soft)}
   .bd-stepnav .abtn { flex: 1 1 100%; }
   .bd-stepnav .dim { order: -1; flex: 1 1 100%; text-align: center; }
 }
+.verify-note { margin: 14px 0 0; padding: 12px 14px; border: 1.5px solid #f59e0b; border-radius: 12px; background: rgba(245, 158, 11, 0.08); font-size: 13.5px; line-height: 1.55; }
+.verify-note p { margin: 4px 0 0; }
+.verify-note .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ou-grid > div > .verify-note { margin: 16px 0; }
 .bd-roster { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 13px; }
 .bd-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
 .bd-run .ainput, .app.ax .bd-run .ainput { width: auto; min-width: 0; padding: 6px 8px; flex: none; }

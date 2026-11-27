@@ -76,6 +76,9 @@ export class OrdersService {
 
   // ---------- create ----------
   async create(userId: string, dto: CreateOrderDto) {
+    // an order only from an account whose email is confirmed: it's where the order's news and the slip go
+    const who = await this.prisma.user.findUnique({ where: { id: userId }, select: { isVerified: true } });
+    if (!who?.isVerified) throw new ForbiddenException({ code: "email_unverified", message: "กรุณายืนยันอีเมลก่อนสั่งผลิต" });
     const cfg = await this.settings.pricing();
     // a bib designed on the web: one piece per name on its list, counted by size
     const bib = dto.bib ?? null;
