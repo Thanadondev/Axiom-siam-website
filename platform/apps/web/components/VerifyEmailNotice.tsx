@@ -19,6 +19,8 @@ export default function VerifyEmailNotice({ lang = "th" }: { lang?: Lang }) {
   const [sent, setSent] = useState<"" | "busy" | "sent" | "error">("");
   const [checking, setChecking] = useState(false);
   const [notYet, setNotYet] = useState(false);
+  // sent too often (3 an hour): about how many minutes until it can be sent again
+  const [waitMin, setWaitMin] = useState(0);
   const pending = !!user && !user.isVerified;
 
   const recheck = useCallback(async () => {
@@ -47,7 +49,11 @@ export default function VerifyEmailNotice({ lang = "th" }: { lang?: Lang }) {
       const r = await apiFetch<{ already?: boolean }>("/auth/resend-verify", { method: "POST", token });
       if (r.already) { await recheck(); return; }
       setSent("sent");
-    } catch { setSent("error"); }
+    } catch (e: any) {
+      const secs = e?.status === 429 ? Number(/(\d+)/.exec(String(e?.message))?.[1]) : NaN;
+      setWaitMin(Number.isFinite(secs) ? Math.max(1, Math.ceil(secs / 60)) : 0);
+      setSent("error");
+    }
   }
 
   return (
@@ -67,7 +73,9 @@ export default function VerifyEmailNotice({ lang = "th" }: { lang?: Lang }) {
       </div>
       {notYet && <p className="dim">{L("ยังไม่ได้ยืนยัน — กดลิงก์ในอีเมลก่อน", "Not confirmed yet — click the link in the email first", "まだ確認されていません。先にメール内のリンクを押してください")}</p>}
       {sent === "sent" && <p className="dim">{L("ลิงก์ใหม่ใช้ได้ 24 ชั่วโมง ลิงก์เก่าใช้ไม่ได้แล้ว", "The new link works for 24 hours; earlier ones no longer do", "新しいリンクの有効期限は24時間です。以前のリンクは使えなくなりました")}</p>}
-      {sent === "error" && <p className="ou-warn">⚠ {L("ส่งไม่สำเร็จ — ลองอีกครั้งภายหลัง", "Couldn't send it — try again a little later", "送信できませんでした。しばらくしてからお試しください")}</p>}
+      {sent === "error" && <p className="ou-warn">⚠ {waitMin
+        ? L(`ส่งบ่อยเกินไป — ส่งได้อีกครั้งในอีกราว ${waitMin} นาที ระหว่างนี้ลองหาอีเมลเดิมในจดหมายขยะ`, `Sent too often — you can send it again in about ${waitMin} min; meanwhile look for the last one in your spam folder`, `送信回数が多すぎます。約${waitMin}分後に再送できます。その間に迷惑メールフォルダをご確認ください`)
+        : L("ส่งไม่สำเร็จ — ลองอีกครั้งภายหลัง", "Couldn't send it — try again a little later", "送信できませんでした。しばらくしてからお試しください")}</p>}
     </div>
   );
 }
