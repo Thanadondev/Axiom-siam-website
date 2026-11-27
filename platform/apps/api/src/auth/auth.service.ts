@@ -6,6 +6,7 @@ import {
   NotFoundException,
   HttpException,
   HttpStatus,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
@@ -74,12 +75,14 @@ export class AuthService {
     return { message: "สมัครสำเร็จ กรุณายืนยันอีเมล", userId: user.id };
   }
 
+  /** a new confirm link, mailed; `sent` false when the mail can't have reached them */
   private async createTokenAndSendVerify(userId: string, email: string, lang?: string) {
     const raw = randomToken();
-    await this.prisma.authToken.create({
+    const t = await this.prisma.authToken.create({
       data: { userId, type: "email_verify", token: sha256(raw), expiresAt: hours(24) },
     });
-    await this.mail.sendVerifyEmail(email, raw, lang);
+    const sent = await this.mail.sendVerifyEmail(email, raw, lang);
+    return { id: t.id, sent };
   }
 
   /** the confirm link again (the first one lost, or out of date): earlier links stop working */
@@ -99,8 +102,13 @@ export class AuthService {
       const frees = recent[recent.length - allowed].createdAt.getTime() + 3600_000;
       throw new TooManyLinks(Math.max(1, Math.ceil((frees - Date.now()) / 1000)));
     }
-    await this.prisma.authToken.updateMany({ where: { userId, type: "email_verify", revokedAt: null }, data: { revokedAt: new Date() } });
-    await this.createTokenAndSendVerify(user.id, user.email, user.locale);
+    const t = await this.createTokenAndSendVerify(user.id, user.email, user.locale);
+    if (!t.sent) {
+      // nothing reached them: that link goes (and doesn't count against the hour), the earlier ones stay good
+      await this.prisma.authToken.delete({ where: { id: t.id } });
+      throw new ServiceUnavailableException({ code: "mail_failed", message: "ส่งอีเมลไม่สำเร็จ — ลองใหม่อีกครั้ง หรือติดต่อทีมงาน" });
+    }
+    await this.prisma.authToken.updateMany({ where: { userId, type: "email_verify", revokedAt: null, id: { not: t.id } }, data: { revokedAt: new Date() } });
     return { sent: true };
   }
 

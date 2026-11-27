@@ -1,4 +1,23 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+
+/** onboarding@resend.dev, Resend's test sender: it only delivers to the Resend account's own address */
+const RESEND_TEST_SENDER = "onboarding@resend.dev";
+
+/**
+ * What's wrong with how mail is set up, in Thai, for the admin dashboard and the API's start-up log.
+ * Orders need a confirmed email, so on the live site any of these stops new customers ordering.
+ */
+export function mailConfig(env: NodeJS.ProcessEnv = process.env) {
+  const live = env.NODE_ENV === "production";
+  const key = !!env.RESEND_API_KEY;
+  const from = env.EMAIL_FROM || `Axiom Siam <${RESEND_TEST_SENDER}>`;
+  const site = env.NEXT_PUBLIC_SITE_URL ?? "";
+  const warnings: string[] = [];
+  if (live && !key) warnings.push("ยังไม่ได้ตั้ง RESEND_API_KEY — ระบบส่งอีเมลยืนยันไม่ได้ ลูกค้าใหม่จะสั่งผลิตไม่ได้");
+  if (live && key && from.includes(RESEND_TEST_SENDER)) warnings.push(`EMAIL_FROM ยังเป็น ${RESEND_TEST_SENDER} ซึ่งส่งได้เฉพาะอีเมลเจ้าของบัญชี Resend — ตั้งเป็นอีเมลบนโดเมนที่ยืนยันใน Resend แล้ว`);
+  if (live && (!site || /localhost|127\.0\.0\.1/.test(site))) warnings.push("NEXT_PUBLIC_SITE_URL ยังไม่ใช่ที่อยู่เว็บจริง — ลิงก์ในอีเมลจะเปิดไม่ได้");
+  return { mode: key ? "resend" as const : "console" as const, from, warnings };
+}
 
 /**
  * Transactional email.
@@ -9,7 +28,7 @@ import { Injectable, Logger } from "@nestjs/common";
  * differs.
  */
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
   private readonly log = new Logger("MailService");
   private site = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
   private from = process.env.EMAIL_FROM || "Axiom Siam <onboarding@resend.dev>";
@@ -19,11 +38,21 @@ export class MailService {
     return !!this.key;
   }
 
-  private async send(to: string, subject: string, html: string, tag: string, fallbackLink?: string) {
+  onModuleInit() {
+    for (const w of mailConfig().warnings) this.log.error(w);
+  }
+
+  /** true when it went (to Resend, or to the console in dev); false when it can't have reached them */
+  private async send(to: string, subject: string, html: string, tag: string, fallbackLink?: string): Promise<boolean> {
     if (!this.key) {
+      // the live site without a key: nothing reaches the customer
+      if (process.env.NODE_ENV === "production") {
+        this.log.error(`[${tag}] not sent to ${to}: RESEND_API_KEY is not set`);
+        return false;
+      }
       // dev / CI: print what we would have sent
       this.log.log(`[${tag}] → ${to}${fallbackLink ? ` : ${fallbackLink}` : ""}`);
-      return;
+      return true;
     }
     try {
       const res = await fetch("https://api.resend.com/emails", {
@@ -34,12 +63,14 @@ export class MailService {
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         this.log.error(`Resend ${res.status} sending "${subject}" to ${to}: ${body}`);
-      } else {
-        this.log.log(`[${tag}] sent to ${to}`);
+        return false;
       }
+      this.log.log(`[${tag}] sent to ${to}`);
+      return true;
     } catch (e) {
-      // email must never break the request that triggered it
+      // email must never break the request that triggered it: the caller decides what a failure means
       this.log.error(`Resend threw sending "${subject}" to ${to}: ${(e as Error).message}`);
+      return false;
     }
   }
 
@@ -48,13 +79,13 @@ export class MailService {
   async sendVerifyEmail(email: string, token: string, lang?: string | null) {
     const url = `${this.site}/verify?token=${encodeURIComponent(token)}`;
     const m = verifyMail(lang, url);
-    await this.send(email, m.subject, m.html, "verify-email", url);
+    return this.send(email, m.subject, m.html, "verify-email", url);
   }
 
   async sendResetEmail(email: string, token: string, lang?: string | null) {
     const url = `${this.site}/reset-password?token=${encodeURIComponent(token)}`;
     const m = resetMail(lang, url);
-    await this.send(email, m.subject, m.html, "reset-password", url);
+    return this.send(email, m.subject, m.html, "reset-password", url);
   }
 }
 

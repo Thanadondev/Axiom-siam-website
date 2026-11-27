@@ -416,6 +416,15 @@ export default function AdminPage() {
       {/* ---------------- DASHBOARD ---------------- */}
       {tab === "dash" && stats && (
         <>
+          {stats.mail?.warnings?.length > 0 && (
+            <div className="acard verify-note" role="alert">
+              <b>⚠ ระบบอีเมลยังใช้งานไม่ได้ — ลูกค้าใหม่ยืนยันอีเมลและสั่งผลิตไม่ได้</b>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                {stats.mail.warnings.map((w: string) => <li key={w}>{w}</li>)}
+              </ul>
+              <p className="dim">ระหว่างนี้ยืนยันอีเมลให้ลูกค้าได้ที่หน้าสมาชิก (ปุ่ม &quot;ยืนยันอีเมลให้ลูกค้า&quot;)</p>
+            </div>
+          )}
           <div className="acard">
             <h2 className="ah2">ภาพรวม</h2>
             <div className="kpigrid">

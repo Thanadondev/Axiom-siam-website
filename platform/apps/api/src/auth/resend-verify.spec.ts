@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { describe, it, expect, beforeEach } from "vitest";
 import { createHash } from "crypto";
-import { BadRequestException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { AuthService, RESEND_VERIFY_PER_HOUR, TooManyLinks } from "./auth.service";
 import { AuthController } from "./auth.controller";
@@ -20,7 +20,7 @@ function setup(isVerified = false) {
   const users = new Map([["u1", { id: "u1", email: "runner@axiom.test", locale: "ja", isVerified }]]);
   const tokens: Tok[] = [];
   const sent: { to: string; raw: string; lang?: string }[] = [];
-  const match = (t: Tok, w: any) => Object.entries(w).every(([k, v]) => (t as any)[k] === v);
+  const match = (t: Tok, w: any) => Object.entries(w).every(([k, v]: [string, any]) => v && typeof v === "object" && "not" in v ? (t as any)[k] !== v.not : (t as any)[k] === v);
   const prisma: any = {
     user: {
       findUnique: async ({ where }: any) => users.get(where.id) ?? null,
@@ -33,12 +33,14 @@ function setup(isVerified = false) {
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
       findUnique: async ({ where }: any) => tokens.find(t => t.token === where.token) ?? null,
       update: async ({ where, data }: any) => Object.assign(tokens.find(t => t.id === where.id)!, data),
+      delete: async ({ where }: any) => { const i = tokens.findIndex(t => t.id === where.id); return tokens.splice(i, 1)[0]; },
       updateMany: async ({ where, data }: any) => { const hit = tokens.filter(t => match(t, where)); hit.forEach(t => Object.assign(t, data)); return { count: hit.length }; },
     },
     $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
   };
-  const mail: any = { sendVerifyEmail: async (to: string, raw: string, lang?: string) => { sent.push({ to, raw, lang }); } };
-  return { svc: new AuthService(prisma, new JwtService({}), mail), users, tokens, sent };
+  // `mail.down = true`: Resend refused it, or the live site has no key
+  const mail: any = { down: false, sendVerifyEmail: async (to: string, raw: string, lang?: string) => { if (mail.down) return false; sent.push({ to, raw, lang }); return true; } };
+  return { svc: new AuthService(prisma, new JwtService({}), mail), users, tokens, sent, mail };
 }
 
 describe("send the confirm link again", () => {
@@ -95,6 +97,24 @@ describe("send the confirm link again", () => {
     expect(await v.svc.resendVerify("u1")).toEqual({ already: true });
     expect(v.sent).toHaveLength(0);
     expect(v.tokens).toHaveLength(0);
+  });
+
+  it("the mail didn't go: 503 mail_failed, the link sent before still works, and it doesn't count", async () => {
+    await s.svc.resendVerify("u1");
+    const working = s.sent[0].raw;
+    s.mail.down = true;
+    const e = await s.svc.resendVerify("u1").catch(x => x);
+    expect(e).toBeInstanceOf(ServiceUnavailableException);
+    expect(e.getResponse()).toMatchObject({ code: "mail_failed" });
+    expect(s.tokens).toHaveLength(1); // the unsent link is gone, not just revoked
+    expect(s.tokens[0].revokedAt).toBeNull();
+    s.mail.down = false;
+    // still 3 an hour: the failed one didn't use one up
+    expect(await s.svc.resendVerify("u1")).toEqual({ sent: true });
+    expect(await s.svc.resendVerify("u1")).toEqual({ sent: true });
+    expect(await s.svc.resendVerify("u1")).toEqual({ sent: true });
+    expect(s.tokens.filter(t => !t.revokedAt)).toHaveLength(1);
+    await expect(s.svc.verifyEmail(working)).rejects.toBeInstanceOf(BadRequestException); // revoked by the later good sends
   });
 
   it("no such account: 401", async () => {

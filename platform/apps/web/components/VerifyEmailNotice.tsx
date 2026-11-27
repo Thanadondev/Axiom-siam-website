@@ -74,7 +74,7 @@ export default function VerifyEmailNotice({ lang = "th" }: { lang?: Lang }) {
       {sent === "sent" && <p className="dim">{L("ลิงก์ใหม่ใช้ได้ 24 ชั่วโมง ลิงก์เก่าใช้ไม่ได้แล้ว", "The new link works for 24 hours; earlier ones no longer do", "新しいリンクの有効期限は24時間です。以前のリンクは使えなくなりました")}</p>}
       {sent === "error" && <p className="ou-warn">⚠ {waitMin
         ? L(`ส่งบ่อยเกินไป — ส่งได้อีกครั้งในอีกราว ${waitMin} นาที ระหว่างนี้ลองหาอีเมลเดิมในจดหมายขยะ`, `Sent too often — you can send it again in about ${waitMin} min; meanwhile look for the last one in your spam folder`, `送信回数が多すぎます。約${waitMin}分後に再送できます。その間に迷惑メールフォルダをご確認ください`)
-        : L("ส่งไม่สำเร็จ — ลองอีกครั้งภายหลัง", "Couldn't send it — try again a little later", "送信できませんでした。しばらくしてからお試しください")}</p>}
+        : L("ส่งอีเมลไม่สำเร็จ — ลองอีกครั้งภายหลัง หรือติดต่อทีมงานให้ช่วยยืนยันอีเมล", "Couldn't send the email — try again later, or contact us and we'll confirm it for you", "メールを送信できませんでした。しばらくしてから再度お試しいただくか、お問い合わせください（確認をお手伝いします）")}</p>}
     </div>
   );
 }
