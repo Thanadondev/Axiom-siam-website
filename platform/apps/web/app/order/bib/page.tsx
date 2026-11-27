@@ -378,7 +378,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
             {logo && (() => {
               // how sharp it prints where it prints biggest (the largest size on the list)
               // under a middle number the logo prints bigger (the API's LAYOUT.front.stack)
-              const q = logoDpi(logo.w, logo.h, roster.rows.map(r => r.size), logoCenter && numberCenter && show.frontNumber ? { h: 120, maxW: 200 } : undefined);
+              const q = logoDpi(logo.w, logo.h, roster.rows.map(r => r.size), logoCenter && numberCenter && show.frontNumber ? { h: 170, maxW: 260 } : undefined);
               const tone = q.dpi >= 250 ? "ok" : q.dpi >= 150 ? "soft" : "bad";
               return (
                 <p className={tone === "bad" ? "ou-warn" : "dim"} style={{ fontSize: 13, margin: "10px 0 0" }}>
@@ -406,7 +406,7 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
                 {show.frontNumber && !numberCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{logoCenter
                   ? L("เบอร์ด้านหน้าจะอยู่ทางซ้าย และเล็กลงถ้าที่ไม่พอ — เลือกเบอร์ \"กลางตัว\" ได้เบอร์ใหญ่กว่า", "the front number goes on the left, smaller if it doesn't fit — an \"In the middle\" number stays full size", "前面の番号は左側に入り、入らない場合は小さくなります。「中央」の番号なら大きいままです")
                   : L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
-                {show.frontNumber && numberCenter && logoCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("โลโก้จะอยู่ใต้เบอร์ และใหญ่ขึ้น (สูงสุด 120 มม.)", "the logo goes under the number, bigger (up to 120 mm)", "ロゴは番号の下に大きく入ります（最大120mm）")}</span>}
+                {show.frontNumber && numberCenter && logoCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("ชื่อทีมอยู่เหนือเบอร์ โลโก้อยู่ใต้เบอร์และใหญ่ขึ้น (สูงสุด 170 มม. เล็กลงถ้าชนสปอนเซอร์)", "the team name goes above the number, the logo under it, bigger (up to 170 mm; smaller to clear the sponsors)", "チーム名は番号の上、ロゴは番号の下に大きく入ります（最大170mm、スポンサーに重なる場合は小さく）")}</span>}
               </>
             )}
           </div>

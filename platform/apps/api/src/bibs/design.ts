@@ -105,10 +105,11 @@ export const LAYOUT = {
     /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
     middle: { cy: 0.5, h: 85, teamGap: 15 },
     /**
-     * the logo and the number both in the middle: number, logo and team name down the middle in that
-     * order, `gap` mm apart, the whole stack centred on the piece; the logo bigger there (mm on M)
+     * the logo and the number both in the middle: the number stays in the middle of the piece, the team
+     * name goes above it and the logo, bigger, below it, `gap` mm apart; the logo keeps `floor` mm above the
+     * hem's cut line and `clear` mm from the sponsors in the bottom corners, smaller if it must (mm on M)
      */
-    stack: { gap: 15, logo: { h: 120, maxW: 200 } },
+    stack: { gap: 15, floor: 40, clear: 10, logo: { h: 170, maxW: 260 } },
     /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
     sponsor: { cx: 0.25, bottom: 35, h: 80, maxW: 170 },
   },

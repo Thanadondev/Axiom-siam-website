@@ -149,7 +149,7 @@ describe("paths and outlined text", () => {
     expect(frontNumber(m, { ...art, numberCenter: true, number: "88", logo: { png: new Uint8Array(0), w: 1000, h: 1000 } })!.box.h).toBeCloseTo(85, 0);
   });
 
-  it("a logo in the middle: a number beside it keeps clear of it; a number in the middle heads a stack of number, bigger logo and team name", () => {
+  it("a logo in the middle: a number beside it keeps clear of it; a number in the middle stays there, the team name above it and the logo below it, bigger", () => {
     const wide = { png: new Uint8Array(0), w: 1300, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
     for (const size of BIB_SIZES) {
       const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
@@ -159,16 +159,22 @@ describe("paths and outlined text", () => {
         expect(l.x + l.w / 2, at).toBeCloseTo(p.w / 2, 3);
         const b = bounds(frontNumber(p, a)!.segs)!;
         if (numberCenter) {
-          // number, then the logo (bigger: the full 120 mm box on M), then the team name, down the middle
+          // the number in the middle of the piece, the team name above it, the logo below it
           expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
-          expect(b.y - p.neckDepth, at).toBeGreaterThanOrEqual(10 * k);
-          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
-          expect(l.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
-          expect(l.h, at).toBeCloseTo(120 * k, 3);
+          expect(b.y + b.h / 2, at).toBeCloseTo(p.h / 2, 0);
           const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
-          expect(team.y - (l.y + l.h), at).toBeGreaterThanOrEqual(10 * k);
-          // clear of the front's sponsors in the bottom corners
-          expect(sponsorBoxes(p, a)[0].y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(b.y - (team.y + team.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(team.y - p.neckDepth, at).toBeGreaterThanOrEqual(5 * k);
+          expect(team.x - edgeX(cut, team.y, team.y + team.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(20 * k);
+          expect(l.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(p.h - (l.y + l.h), at).toBeGreaterThanOrEqual(40 * k - 0.01);
+          // clear of the sponsors in the bottom corners: beside them or above them
+          for (const sb of sponsorBoxes(p, a)) {
+            const apart = Math.max(sb.x - (l.x + l.w), l.x - (sb.x + sb.w), sb.y - (l.y + l.h));
+            expect(apart, at).toBeGreaterThanOrEqual(10 * k - 0.01);
+          }
+          // with no sponsors, bigger than on the chest: the full 170 mm box on M
+          if (logo === square) expect(logoBox(p, { ...a, sponsors: undefined })!.h, at).toBeCloseTo(170 * k, 3);
         } else {
           // on the left, clear of the logo and the armhole
           expect(l.x - (b.x + b.w), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.logo * k - 0.5);
