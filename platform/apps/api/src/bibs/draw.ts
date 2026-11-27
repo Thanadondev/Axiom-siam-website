@@ -1,4 +1,4 @@
-import { frontLayout, LAYOUT, type SideLook } from "./design";
+import { frontLayout, LAYOUT, type SideLook, type SponsorSlot } from "./design";
 import { mapPath, parsePath, type Seg } from "./path";
 import { BASE_WIDTH, type Part, type Piece, type Rib } from "./template";
 import { textShape, type FontRef, type TextShape } from "./text";
@@ -79,8 +79,8 @@ export interface Art {
   logoLeft?: boolean;
   /** the front number in the middle of the chest; the logo keeps its side and the number keeps clear of it */
   numberCenter?: boolean;
-  /** sponsors' logos (PNG) in the front's bottom corners, as you look at the front */
-  sponsors?: { left?: Img; right?: Img };
+  /** sponsors' logos (PNG): the front's bottom corners, as you look at the front, and the row under the back number */
+  sponsors?: Partial<Record<SponsorSlot, Img>>;
   show: { frontNumber: boolean; frontLogo: boolean; frontTeam: boolean; backName: boolean; backNumber: boolean };
 }
 
@@ -234,18 +234,23 @@ export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; 
   return { x: L.logo.cx * p.w - w / 2, y, w, h };
 }
 
-/** where the sponsors' logos print on the front piece (mm): each fitted in its corner box, centred in it */
-export function sponsorBoxes(p: Piece, art: Art): { side: "left" | "right"; img: Img; x: number; y: number; w: number; h: number }[] {
-  const k = p.w / BASE_WIDTH, S = LAYOUT.front.sponsor;
-  const cy = p.h - (S.bottom + S.h / 2) * k;
+/**
+ * Where the sponsors' logos print on a piece (mm), each fitted in its box and centred in it: on the
+ * front the two bottom corners, on the back a row under the number (where it is, printed or not).
+ */
+export function sponsorBoxes(p: Piece, art: Art, part: Part = "front"): { slot: SponsorSlot; img: Img; x: number; y: number; w: number; h: number }[] {
+  const k = p.w / BASE_WIDTH;
+  const F = LAYOUT.front.sponsor, B = LAYOUT.back.sponsor, N = LAYOUT.back.number;
+  const row: { box: { h: number; maxW: number }; cy: number; at: [SponsorSlot, number][] } = part === "front"
+    ? { box: F, cy: p.h - (F.bottom + F.h / 2) * k, at: [["left", F.cx], ["right", 1 - F.cx]] }
+    : { box: B, cy: N.top * p.h + (N.h + B.gap + B.h / 2) * k, at: [["backLeft", B.cx], ["backCenter", 0.5], ["backRight", 1 - B.cx]] };
   const out: ReturnType<typeof sponsorBoxes> = [];
-  for (const side of ["left", "right"] as const) {
-    const img = art.sponsors?.[side];
+  for (const [slot, cx] of row.at) {
+    const img = art.sponsors?.[slot];
     if (!img) continue;
-    let h = S.h * k, w = (h * img.w) / img.h;
-    if (w > S.maxW * k) { w = S.maxW * k; h = (w * img.h) / img.w; }
-    const cx = (side === "left" ? S.cx : 1 - S.cx) * p.w;
-    out.push({ side, img, x: cx - w / 2, y: cy - h / 2, w, h });
+    let h = row.box.h * k, w = (h * img.w) / img.h;
+    if (w > row.box.maxW * k) { w = row.box.maxW * k; h = (w * img.h) / img.w; }
+    out.push({ slot, img, x: cx * p.w - w / 2, y: row.cy - h / 2, w, h });
   }
   return out;
 }
@@ -315,7 +320,6 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
     }
     const lb = logoBox(p, art);
     if (lb && art.logo) out.push({ kind: "image", png: art.logo.png, ...lb, ...(art.logo.tint ? { tint: look.ink } : {}) });
-    for (const b of sponsorBoxes(p, art)) out.push({ kind: "image", png: b.img.png, x: b.x, y: b.y, w: b.w, h: b.h });
     if (art.show.frontTeam) {
       const t = textShape(art.team, art.font, { w: L.team.w * k, h: L.team.h * k }, { cx: L.team.cx * p.w, cy: teamCy(p, art) });
       if (t) out.push(...inked(t.segs, look, k));
@@ -331,6 +335,8 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
       if (t) out.push(...inked(t.segs, look, k));
     }
   }
+
+  for (const b of sponsorBoxes(p, art, part)) out.push({ kind: "image", png: b.img.png, x: b.x, y: b.y, w: b.w, h: b.h });
 
   if (opts.cutLine) out.push({ kind: "path", segs: cut, stroke: CUT_COLOR, width: 0.353 });
   if (opts.sizeMark) {

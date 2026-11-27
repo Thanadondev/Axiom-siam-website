@@ -1,6 +1,6 @@
 import { zipSync } from "fflate";
 import { jobFolderName, safeName } from "../orders/nas-export";
-import { BibDesignSchema, type BibDesign, type RosterRow } from "./design";
+import { BibDesignSchema, SPONSOR_SLOTS, type BibDesign, type RosterRow, type SponsorSlot } from "./design";
 import { drawPiece, moveShapes, pngSize, type Art, type Shape } from "./draw";
 import { orderSheetJpeg, orderSheetSvg, type SheetMeta } from "./order-sheet";
 import { printPdf } from "./print-pdf";
@@ -24,14 +24,15 @@ export function logoArt(d: BibDesign, png?: Uint8Array): Art["logo"] {
 }
 
 /** the sponsors' logos, scaled down to `maxPx` (print or preview) */
-export function sponsorArt(pngs: { left?: Uint8Array; right?: Uint8Array } | undefined, maxPx: number): Art["sponsors"] {
+export function sponsorArt(pngs: SponsorPngs | undefined, maxPx: number): Art["sponsors"] {
   const out: NonNullable<Art["sponsors"]> = {};
-  for (const side of ["left", "right"] as const) {
-    const b = pngs?.[side];
-    if (b) { const png = fitPng(b, maxPx); out[side] = { png, ...pngSize(png) }; }
+  for (const slot of SPONSOR_SLOTS) {
+    const b = pngs?.[slot];
+    if (b) { const png = fitPng(b, maxPx); out[slot] = { png, ...pngSize(png) }; }
   }
-  return out.left || out.right ? out : undefined;
+  return Object.keys(out).length ? out : undefined;
 }
+export type SponsorPngs = Partial<Record<SponsorSlot, Uint8Array>>;
 
 /**
  * A web-designed bib order as the same job package the graphics team makes:
@@ -92,7 +93,7 @@ export function teamFont(d: BibDesign, data?: Uint8Array): { font?: FontRef; not
   return { note: `Team font (${ext}) could not be read: names and numbers are set in ${FONT_NAMES[d.font]} - set them in the team's font` };
 }
 
-export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array; fontData?: Uint8Array; sponsorPngs?: { left?: Uint8Array; right?: Uint8Array } }): Promise<BuiltJob> {
+export async function buildBibJob(input: unknown, meta: SheetMeta & { logoPng?: Uint8Array; fontData?: Uint8Array; sponsorPngs?: SponsorPngs }): Promise<BuiltJob> {
   const d = BibDesignSchema.parse(input);
   const tf = teamFont(d, meta.fontData);
   const sheetMeta: SheetMeta = { ...meta, notes: [...(meta.notes ?? []), ...(tf.note ? [tf.note] : [])] };

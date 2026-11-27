@@ -4,8 +4,8 @@ import { createHash } from "crypto";
 import { resolve } from "path";
 import { PrismaService } from "../prisma/prisma.service";
 import { OrderFilesService } from "../orders/order-files.service";
-import { BibDesignSchema, type BibDesign } from "./design";
-import { buildBibJob, logoArt, sponsorArt, teamFont, type BuiltJob } from "./job";
+import { BibDesignSchema, SPONSOR_SLOTS, type BibDesign } from "./design";
+import { buildBibJob, logoArt, sponsorArt, teamFont, type BuiltJob, type SponsorPngs } from "./job";
 import { orderSheetSvg } from "./order-sheet";
 import { pngSize } from "./draw";
 import { BIB_SIZES, type BibSize } from "./template";
@@ -122,8 +122,10 @@ export class BibJobService {
   }
 
   /** the sponsors' logo bytes, from the design's URLs (checked as the team logo is) */
-  async sponsors(d: BibDesign): Promise<{ left?: Uint8Array; right?: Uint8Array }> {
-    return { left: await this.logo(d.sponsors.left), right: await this.logo(d.sponsors.right) };
+  async sponsors(d: BibDesign): Promise<SponsorPngs> {
+    const out: SponsorPngs = {};
+    for (const slot of SPONSOR_SLOTS) out[slot] = await this.logo(d.sponsors[slot]);
+    return out;
   }
 
   /** the order sheet for one size, as SVG: the designer's live preview */

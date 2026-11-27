@@ -143,13 +143,15 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
         // the sponsors: their printed size, out to their own side of the piece
         for (const sb of sponsorBoxes(p, art)) {
           const y = y0 + (sb.y + sb.h / 2) * s;
-          callout(out, `${Math.round(sb.w)}x${Math.round(sb.h)}mm`, { x: x0 + (sb.side === "left" ? sb.x : sb.x + sb.w) * s, y }, { x: sb.side === "left" ? x0 - 24 : R, y });
+          callout(out, `${Math.round(sb.w)}x${Math.round(sb.h)}mm`, { x: x0 + (sb.slot === "left" ? sb.x : sb.x + sb.w) * s, y }, { x: sb.slot === "left" ? x0 - 24 : R, y });
         }
         const tcy = teamCy(p, art);
         if (art.show.frontTeam && d.team) callout(out, `W${Math.round(F.team.w * k)}mm`, { x: x0 + (0.5 * p.w + 165 * k) * s, y: y0 + tcy * s }, { x: R + 30, y: y0 + tcy * s + 50 * k * s });
       } else {
         const B = LAYOUT.back;
         if (art.show.backName && art.name) callout(out, `H${Math.round(B.name.h * k)}mm`, { x: x0 + (0.5 * p.w + 120 * k) * s, y: y0 + (B.name.top * p.h + 17 * k) * s }, { x: R, y: y0 + (B.name.top * p.h + 17 * k) * s });
+        // the sponsors under the number: each one's printed size under it (leaders out to the side would cross the others)
+        for (const sb of sponsorBoxes(p, art, "back")) label(`${Math.round(sb.w)}x${Math.round(sb.h)}mm`, 15, { cx: x0 + (sb.x + sb.w / 2) * s, top: y0 + (sb.y + sb.h) * s + 8 }, GREEN, out);
         if (art.show.backNumber && art.number) callout(out, `H${Math.round(B.number.h * k)}mm`, { x: x0 + (0.5 * p.w + 120 * k) * s, y: y0 + (B.number.top * p.h + 100 * k) * s }, { x: R, y: y0 + (B.number.top * p.h + 100 * k) * s });
       }
     });

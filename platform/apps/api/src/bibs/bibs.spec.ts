@@ -156,12 +156,12 @@ describe("paths and outlined text", () => {
       for (const [left, right] of [[wide, tall], [tall, wide]]) for (const numberCenter of [false, true]) {
         const a = { ...art, number: "188", numberCenter, sponsors: { left, right } };
         const boxes = sponsorBoxes(p, a), at = `${size}${numberCenter ? " numberCenter" : ""}`;
-        expect(boxes.map(b => b.side)).toEqual(["left", "right"]);
+        expect(boxes.map(b => b.slot)).toEqual(["left", "right"]);
         const team = bounds(textShape("SAGINUMA FC", "block", { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
         for (const b of boxes) {
           expect(b.w, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.maxW * k + 0.01);
           expect(b.h, at).toBeLessThanOrEqual(LAYOUT.front.sponsor.h * k + 0.01);
-          expect(b.side === "left" ? b.x + b.w < p.w / 2 : b.x > p.w / 2, at).toBe(true);
+          expect(b.slot === "left" ? b.x + b.w < p.w / 2 : b.x > p.w / 2, at).toBe(true);
           expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
           expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);
           expect(p.h - (b.y + b.h), at).toBeGreaterThanOrEqual(HEM_BAND + 10);
@@ -172,6 +172,33 @@ describe("paths and outlined text", () => {
       const one = { ...art, sponsors: { right: wide } };
       expect(drawPiece(p, "front", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(1);
       expect(drawPiece(piecesFor(size, "A").back!, "back", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(0);
+    }
+  });
+
+  it("sponsors on the back sit in a row under the number: inside the piece, apart, clear of the number and the hem band", () => {
+    const wide = { png: new Uint8Array(0), w: 3000, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").back!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut), B = LAYOUT.back;
+      const num = bounds(drawPiece(p, "back", look("#ffffff", false), { ...art, number: "88" }).filter(s => s.kind === "path" && s.fill === YELLOW).flatMap(s => s.kind === "path" ? s.segs : []))!;
+      for (const logos of [[wide, wide, wide], [square, wide, square], [wide, square, wide]]) {
+        const a = { ...art, number: "88", sponsors: { backLeft: logos[0], backCenter: logos[1], backRight: logos[2] } };
+        const boxes = sponsorBoxes(p, a, "back"), at = `${size} ${logos.map(l => l.w).join("/")}`;
+        expect(boxes.map(b => b.slot)).toEqual(["backLeft", "backCenter", "backRight"]);
+        expect(boxes[1].x + boxes[1].w / 2, at).toBeCloseTo(p.w / 2, 3);
+        for (const [i, b] of boxes.entries()) {
+          expect(b.w, at).toBeLessThanOrEqual(B.sponsor.maxW * k + 0.01);
+          expect(b.h, at).toBeLessThanOrEqual(B.sponsor.h * k + 0.01);
+          expect(b.y - (num.y + num.h), at).toBeGreaterThanOrEqual(15 * k);
+          expect(p.h - (b.y + b.h), at).toBeGreaterThanOrEqual(HEM_BAND + 10);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(30 * k);
+          expect(edgeX(cut, b.y, b.y + b.h, "right", p.w / 2) - (b.x + b.w), at).toBeGreaterThanOrEqual(30 * k);
+          if (i) expect(b.x - (boxes[i - 1].x + boxes[i - 1].w), at).toBeGreaterThanOrEqual(10 * k);
+        }
+      }
+      // the back's sponsors are drawn on the back only
+      const one = { ...art, sponsors: { backCenter: wide } };
+      expect(drawPiece(p, "back", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(1);
+      expect(drawPiece(piecesFor(size, "A").front!, "front", look("#ffffff"), one).filter(s => s.kind === "image")).toHaveLength(0);
     }
   });
 

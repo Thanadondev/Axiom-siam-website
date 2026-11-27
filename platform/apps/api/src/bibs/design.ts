@@ -11,6 +11,10 @@ import { BIB_SIZES } from "./template";
 /** a logo the kit-asset upload stored: the browser re-encodes every logo to PNG */
 const LOGO_URL = z.string().regex(/^\/uploads\/kit-assets\/logos\/[a-f0-9]{64}\.png$/, "logo must be uploaded on the design page");
 
+/** where sponsors go: two on the front, three on the back */
+export const SPONSOR_SLOTS = ["left", "right", "backLeft", "backCenter", "backRight"] as const;
+export type SponsorSlot = (typeof SPONSOR_SLOTS)[number];
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "colour must be #RRGGBB").transform(s => s.toLowerCase());
 
 /**
@@ -63,8 +67,8 @@ export const BibDesignSchema = z.object({
   logoTint: z.boolean().default(false),
   /** with no team logo, the Axiom mark in its place (always one colour, a little smaller), as the kit studio shows it */
   axiomMark: z.boolean().default(false),
-  /** sponsors' logos in the front's bottom corners, left and right as you look at the front (full colour) */
-  sponsors: z.object({ left: LOGO_URL.optional(), right: LOGO_URL.optional() }).default({}),
+  /** sponsors' logos, full colour: the front's bottom corners (left, right as you look at the front), and a row under the back number */
+  sponsors: z.object(Object.fromEntries(SPONSOR_SLOTS.map(s => [s, LOGO_URL.optional()])) as Record<SponsorSlot, z.ZodOptional<typeof LOGO_URL>>).default({}),
   /** the team's own font for names and numbers (uploaded in the kit studio); ours stand in for what it lacks */
   fontUrl: z.string().regex(/^\/uploads\/kit-assets\/fonts\/[a-f0-9]{64}\.(ttf|otf|woff|woff2)$/).optional(),
   /** made in the kit studio: the kit, named on the order sheet and the job folder */
@@ -103,6 +107,8 @@ export const LAYOUT = {
   back: {
     name: { cx: 0.5, top: 0.146, h: 35, maxW: 380 },
     number: { cx: 0.5, top: 0.286, h: 200, maxW: 330 },
+    /** sponsors in a row under the number: each fitted in an h × maxW box, left / middle / right at cx, 0.5, 1 - cx, `gap` mm under the number's full height */
+    sponsor: { cx: 0.2, gap: 25, h: 65, maxW: 130 },
   },
   /** keyline round name/number, mm on M */
   outline: 3,
