@@ -78,7 +78,8 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const fontInput = useRef<HTMLInputElement>(null);
   const [show, setShow] = useState<Show>({ frontNumber: true, frontLogo: true, frontTeam: true, backName: true, backNumber: true });
   // the chest logo on the left or right as you look at the front; the front number takes the other side
-  const [logoLeft, setLogoLeft] = useState(false);
+  const [logoPos, setLogoPos] = useState<"left" | "center" | "right">("right");
+  const logoLeft = logoPos === "left", logoCenter = logoPos === "center";
   // the front number beside the logo, or in the middle of the chest
   const [numberCenter, setNumberCenter] = useState(false);
   const [sides, setSides] = useState<[Side, Side]>([SIDE_A, SIDE_B]);
@@ -115,13 +116,13 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
   const used = product === "bib_r" ? sides : [sides[0]];
 
   const design = useMemo(() => ({
-    product, team: team.trim(), font, show, logoLeft, numberCenter,
+    product, team: team.trim(), font, show, logoLeft, logoCenter, numberCenter,
     sponsors: Object.fromEntries(Object.entries(sponsors).map(([k, v]) => [k, v!.url])),
     ...(teamFont ? { fontUrl: teamFont.url } : {}),
     sides: used.map(sideOut),
     // the preview draws a sample bib until there's a list
     roster: roster.rows.length ? roster.rows : [{ name: "NAME", number: "10", size: "M" as BibSize }],
-  }), [product, team, font, teamFont, show, logoLeft, numberCenter, sponsors, used, roster]);
+  }), [product, team, font, teamFont, show, logoLeft, logoCenter, numberCenter, sponsors, used, roster]);
 
   // ---------- data
   useEffect(() => {
@@ -397,11 +398,13 @@ function BibDesigner({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void
               <>
                 <span className="flabel">{L("ตำแหน่งโลโก้ (มองจากด้านหน้า)", "Logo position (looking at the front)", "ロゴの位置（正面から見て）")}</span>
                 <div className="bd-seg" role="radiogroup" aria-label={L("ตำแหน่งโลโก้", "Logo position", "ロゴの位置")}>
-                  {([[true, L("ซ้าย", "Left", "左")], [false, L("ขวา", "Right", "右")]] as const).map(([left, label]) => (
-                    <button key={label} type="button" role="radio" aria-checked={logoLeft === left} onClick={() => setLogoLeft(left)}>{label}</button>
+                  {([["left", L("ซ้าย", "Left", "左")], ["center", L("กลาง", "Middle", "中央")], ["right", L("ขวา", "Right", "右")]] as const).map(([pos, label]) => (
+                    <button key={pos} type="button" role="radio" aria-checked={logoPos === pos} onClick={() => setLogoPos(pos)}>{label}</button>
                   ))}
                 </div>
-                {show.frontNumber && !numberCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
+                {show.frontNumber && !numberCenter && <span className="dim" style={{ fontSize: 12.5, marginLeft: 10 }}>{logoCenter
+                  ? L("เบอร์ด้านหน้าจะอยู่ทางซ้าย และเล็กลงถ้าที่ไม่พอ — เลือกเบอร์ \"กลางตัว\" ได้เบอร์ใหญ่กว่า", "the front number goes on the left, smaller if it doesn't fit — an \"In the middle\" number stays full size", "前面の番号は左側に入り、入らない場合は小さくなります。「中央」の番号なら大きいままです")
+                  : L("เบอร์ด้านหน้าจะอยู่อีกฝั่ง", "the front number goes on the other side", "前面の番号は反対側に入ります")}</span>}
               </>
             )}
           </div>

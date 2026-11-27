@@ -77,6 +77,8 @@ export interface Art {
   logo?: { png: Uint8Array; w: number; h: number; tint?: boolean; scale?: number };
   /** the logo on the viewer's left and the number on the right (the kit studio's front) */
   logoLeft?: boolean;
+  /** the logo in the middle of the chest */
+  logoCenter?: boolean;
   /** the front number in the middle of the chest; the logo keeps its side and the number keeps clear of it */
   numberCenter?: boolean;
   /** sponsors' logos (PNG): the front's bottom corners, as you look at the front, and the row under the back number */
@@ -226,7 +228,7 @@ export const FRONT_NUMBER_CLEAR = { edge: 45, centre: 15, logo: 12 };
 /** where the chest logo prints on the front piece (mm), or null when there is none */
 export function logoBox(p: Piece, art: Art): { x: number; y: number; w: number; h: number } | null {
   if (!art.show.frontLogo || !art.logo) return null;
-  const k = p.w / BASE_WIDTH, L = frontLayout(!!art.logoLeft), g = art.logo.scale ?? 1;
+  const k = p.w / BASE_WIDTH, L = frontLayout(!!art.logoLeft, !!art.logoCenter), g = art.logo.scale ?? 1;
   let h = L.logo.h * k * g, w = (h * art.logo.w) / art.logo.h;
   if (w > L.logo.maxW * k * g) { w = L.logo.maxW * k * g; h = (w * art.logo.h) / art.logo.w; }
   // a smaller logo keeps its centre where the full-size one would be
@@ -255,21 +257,31 @@ export function sponsorBoxes(p: Piece, art: Art, part: Part = "front"): { slot: 
   return out;
 }
 
+/**
+ * A number in the middle: its centre height (mm). The middle of the piece, or lower when a logo in the
+ * middle of the chest reaches down that far (the big sizes): it stays clear under the logo.
+ */
+export function middleNumberCy(p: Piece, art: Art): number {
+  const k = p.w / BASE_WIDTH, M = LAYOUT.front.middle;
+  const lb = art.logoCenter ? logoBox(p, art) : null;
+  return Math.max(M.cy * p.h, lb ? lb.y + lb.h + (M.logoGap + M.h / 2) * k : 0);
+}
+
 /** the team name's centre height (mm): under the number when the number is in the middle, else the middle */
 export function teamCy(p: Piece, art: Art): number {
   const k = p.w / BASE_WIDTH, F = LAYOUT.front, M = F.middle;
-  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return M.cy * p.h + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
+  if (art.numberCenter && art.show.frontNumber && art.number.trim()) return middleNumberCy(p, art) + (M.h / 2 + M.teamGap + F.team.h / 2) * k;
   return F.team.cy * p.h;
 }
 
 export function frontNumber(p: Piece, art: Art): TextShape | null {
   const k = p.w / BASE_WIDTH;
-  const L = frontLayout(!!art.logoLeft);
+  const L = frontLayout(!!art.logoLeft, !!art.logoCenter);
   const mid = p.w / 2;
   if (art.numberCenter) {
     // in the middle of the piece: as wide as the armholes (and the logo, if it reaches down that far) leave room for
     const M = LAYOUT.front.middle;
-    const at = { cx: mid, cy: M.cy * p.h };
+    const at = { cx: mid, cy: middleNumberCy(p, art) };
     let t = textShape(art.number, art.font, { h: M.h * k }, at);
     if (!t) return null;
     const cut = parsePath(p.cut);
@@ -290,8 +302,14 @@ export function frontNumber(p: Piece, art: Art): TextShape | null {
   const onLeft = L.number.cx < 0.5;
   const e = edgeX(parsePath(p.cut), t.box.y, t.box.y + t.box.h, onLeft ? "left" : "right", mid);
   if (!Number.isFinite(e)) return t;
-  const lo = onLeft ? e + FRONT_NUMBER_CLEAR.edge * k : mid + FRONT_NUMBER_CLEAR.centre * k;
-  const hi = onLeft ? mid - FRONT_NUMBER_CLEAR.centre * k : e - FRONT_NUMBER_CLEAR.edge * k;
+  let lo = onLeft ? e + FRONT_NUMBER_CLEAR.edge * k : mid + FRONT_NUMBER_CLEAR.centre * k;
+  let hi = onLeft ? mid - FRONT_NUMBER_CLEAR.centre * k : e - FRONT_NUMBER_CLEAR.edge * k;
+  // a logo at the same height reaching into the number's half (one in the middle of the chest): the number keeps clear of it
+  const lb = logoBox(p, art);
+  if (lb && lb.y < t.box.y + t.box.h && lb.y + lb.h > t.box.y) {
+    if (onLeft) hi = Math.min(hi, lb.x - FRONT_NUMBER_CLEAR.logo * k);
+    else lo = Math.max(lo, lb.x + lb.w + FRONT_NUMBER_CLEAR.logo * k);
+  }
   if (t.box.w > hi - lo) t = textShape(art.number, art.font, { h: L.number.h * k, maxW: hi - lo }, at)!;
   const x = Math.min(Math.max(t.box.x, lo), hi - t.box.w);
   return x === t.box.x ? t : { segs: mapPath(t.segs, 1, x - t.box.x, 0), box: { ...t.box, x } };
@@ -313,7 +331,7 @@ export function drawPiece(p: Piece, part: Part, look: SideLook, art: Art, opts: 
   }
 
   if (part === "front") {
-    const L = frontLayout(!!art.logoLeft);
+    const L = frontLayout(!!art.logoLeft, !!art.logoCenter);
     if (art.show.frontNumber) {
       const t = frontNumber(p, art);
       if (t) out.push(...inked(t.segs, look, k));

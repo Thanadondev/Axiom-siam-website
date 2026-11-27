@@ -142,7 +142,7 @@ export class BibJobService {
     const logo = logoArt(d, png);
     // the team's own font, as the print files will set it (or the note saying it couldn't be read)
     const tf = teamFont(d, await this.font(d.fontUrl));
-    const { svg } = orderSheetSvg(d, { font: tf.font ?? d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, numberCenter: d.numberCenter, sponsors: sponsorArt(await this.sponsors(d), PREVIEW_LOGO_PX) }, z, counts, { ref: "PREVIEW", date: new Date(), ...(tf.note ? { notes: [tf.note] } : {}) });
+    const { svg } = orderSheetSvg(d, { font: tf.font ?? d.font, team: d.team, name: row.name, number: row.number, logo, show: d.show, logoLeft: d.logoLeft, logoCenter: d.logoCenter, numberCenter: d.numberCenter, sponsors: sponsorArt(await this.sponsors(d), PREVIEW_LOGO_PX) }, z, counts, { ref: "PREVIEW", date: new Date(), ...(tf.note ? { notes: [tf.note] } : {}) });
     return { svg, size: z, sizes: BIB_SIZES.filter(s => counts[s]) };
   }
 

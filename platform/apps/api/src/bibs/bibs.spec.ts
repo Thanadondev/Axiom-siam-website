@@ -149,6 +149,32 @@ describe("paths and outlined text", () => {
     expect(frontNumber(m, { ...art, numberCenter: true, number: "88", logo: { png: new Uint8Array(0), w: 1000, h: 1000 } })!.box.h).toBeCloseTo(85, 0);
   });
 
+  it("a logo in the middle of the chest: a number beside it or under it keeps clear of it", () => {
+    const wide = { png: new Uint8Array(0), w: 1300, h: 1000 }, square = { png: new Uint8Array(0), w: 1000, h: 1000 };
+    for (const size of BIB_SIZES) {
+      const p = piecesFor(size, "A").front!, k = p.w / TEMPLATE.sizes.M.A!.front.w, cut = parsePath(p.cut);
+      for (const logo of [wide, square]) for (const font of ["block", "classic", "thai"] as const) for (const number of ["7", "88", "188"]) for (const numberCenter of [false, true]) {
+        const a = { ...art, font, number, logo, logoCenter: true, numberCenter };
+        const l = logoBox(p, a)!, at = `${size} ${font} ${number} ${logo.w}${numberCenter ? " numberCenter" : ""}`;
+        expect(l.x + l.w / 2, at).toBeCloseTo(p.w / 2, 3);
+        const b = bounds(frontNumber(p, a)!.segs)!;
+        if (numberCenter) {
+          // under the logo, in the middle across; the team name under it, above the hem
+          expect(b.x + b.w / 2, at).toBeCloseTo(p.w / 2, 0);
+          expect(b.y - (l.y + l.h), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.logo * k - 1);
+          const team = bounds(textShape("SAGINUMA FC", font, { w: 320 * k, h: 50 * k }, { cx: p.w / 2, cy: teamCy(p, a) })!.segs)!;
+          expect(team.y - (b.y + b.h), at).toBeGreaterThanOrEqual(10 * k);
+          expect(team.y + team.h, at).toBeLessThan(p.h - 30 * k);
+        } else {
+          // on the left, clear of the logo and the armhole
+          expect(l.x - (b.x + b.w), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.logo * k - 0.5);
+          expect(b.x - edgeX(cut, b.y, b.y + b.h, "left", p.w / 2), at).toBeGreaterThanOrEqual(FRONT_NUMBER_CLEAR.edge * k - 0.5);
+          if (number.length < 3) expect(b.h, at).toBeGreaterThan(40 * k); // three digits beside a wide logo get small: the page says so
+        }
+      }
+    }
+  });
+
   it("sponsors sit in the front's bottom corners: inside the piece, clear of the hem band and the team name", () => {
     const wide = { png: new Uint8Array(0), w: 3000, h: 1000 }, tall = { png: new Uint8Array(0), w: 600, h: 1000 };
     for (const size of BIB_SIZES) {

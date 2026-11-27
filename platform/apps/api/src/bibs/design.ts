@@ -61,6 +61,8 @@ export const BibDesignSchema = z.object({
   roster: z.array(RosterRowSchema).min(1).max(500),
   /** the chest logo on the wearer's right (the viewer's left) and the number opposite, as the kit studio places them */
   logoLeft: z.boolean().default(false),
+  /** the chest logo in the middle of the chest instead (logoLeft then doesn't count); a number beside it goes on the viewer's left */
+  logoCenter: z.boolean().default(false),
   /** the front number in the middle of the chest instead of beside the logo (the logo keeps its side) */
   numberCenter: z.boolean().default(false),
   /** print the logo in one colour, the side's ink (the kit studio's "one colour" logo) */
@@ -82,9 +84,10 @@ export type SideLook = z.infer<typeof SideLookSchema>;
 export type RosterRow = z.infer<typeof RosterRowSchema>;
 export type BibDesign = z.infer<typeof BibDesignSchema>;
 
-/** the front's layout, with the logo and number swapped when the logo goes on the viewer's left */
-export function frontLayout(logoLeft: boolean) {
+/** the front's layout: the logo and number swapped when the logo goes on the viewer's left; a logo in the middle leaves the number on the left */
+export function frontLayout(logoLeft: boolean, logoCenter = false) {
   const F = LAYOUT.front;
+  if (logoCenter) return { ...F, logo: { ...F.logo, cx: 0.5 } };
   return logoLeft ? { ...F, number: { ...F.number, cx: F.logo.cx }, logo: { ...F.logo, cx: F.number.cx } } : F;
 }
 
@@ -99,8 +102,8 @@ export const LAYOUT = {
     number: { cx: 0.264, top: 0.278, h: 85 },
     logo: { cx: 0.743, top: 0.268, h: 85, maxW: 110 },
     team: { cx: 0.5, cy: 0.5, w: 320, h: 50 },
-    /** numberCenter: the number in the middle of the piece, and the team name moved under it (mm on M) */
-    middle: { cy: 0.5, h: 85, teamGap: 15 },
+    /** numberCenter: the number in the middle of the piece, and the team name moved under it; under a logo in the middle, at least logoGap below it (mm on M) */
+    middle: { cy: 0.5, h: 85, teamGap: 15, logoGap: 20 },
     /** sponsors in the bottom corners: fitted in an h × maxW box centred at cx (the right one at 1 - cx), `bottom` mm above the hem's cut line (clear of its 20 mm band) */
     sponsor: { cx: 0.25, bottom: 35, h: 80, maxW: 170 },
   },

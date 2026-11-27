@@ -127,7 +127,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
       // the print sizes, as on the team's sheets
       const R = x0 + p.w * s + 24;
       if (part === "front") {
-        const F = frontLayout(!!art.logoLeft);
+        const F = frontLayout(!!art.logoLeft, !!art.logoCenter);
         // the note of whatever is on the viewer's left sits left of the piece, as on the team's sheets; the other's right
         const note = (text: string, it: { cx: number; top: number }, reach: number, left = it.cx < 0.5) => {
           const y = y0 + (it.top * p.h + 42 * k) * s;
@@ -139,7 +139,7 @@ export function orderSheetSvg(d: BibDesign, art: Art, size: BibSize, counts: Par
         // a number in the middle points out on the side away from the logo
         if (fn) note(`H${Math.round(fn.box.h)}mm`, { cx: (fn.box.x + fn.box.w / 2) / p.w, top: art.numberCenter ? fn.box.y / p.h : F.number.top },
           art.numberCenter ? fn.box.w / 2 / k + 6 : art.logoLeft ? 45 : 30, art.numberCenter ? !art.logoLeft : undefined);
-        if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoLeft ? 30 : 45);
+        if (art.show.frontLogo && art.logo) note(`H${Math.round(F.logo.h * k * (art.logo.scale ?? 1))}mm`, F.logo, art.logoCenter ? 62 : art.logoLeft ? 30 : 45);
         // the sponsors: their printed size, out to their own side of the piece
         for (const sb of sponsorBoxes(p, art)) {
           const y = y0 + (sb.y + sb.h / 2) * s;

@@ -91,6 +91,7 @@ export function kitBibDesign(s: KitSnapshot, roster: RosterRow[]): BibDesign {
     show: { frontNumber: true, frontLogo: s.logo !== "none", frontTeam: false, backName: true, backNumber: true },
     roster,
     logoLeft: true,
+    logoCenter: false,
     numberCenter: false,
     sponsors: {},
     logoTint: s.logoTint === true,
